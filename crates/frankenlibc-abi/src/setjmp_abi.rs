@@ -138,8 +138,7 @@ fn terminate_deferred_transfer(
 ) -> ! {
     // SAFETY: writes thread-local errno before explicit process termination.
     unsafe { set_abi_errno(errno_val) };
-    // SAFETY: explicit deterministic termination for deferred non-local transfer.
-    unsafe { libc::abort() }
+    std::process::abort()
 }
 
 fn capture_entrypoint(env: *mut c_void, savemask: bool) -> c_int {

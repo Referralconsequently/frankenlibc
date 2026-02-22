@@ -29,6 +29,11 @@ fn clear_dlerror() {
     DLERROR_MSG.with(|cell| cell.set(std::ptr::null()));
 }
 
+#[inline]
+pub(crate) unsafe fn dlvsym_next(symbol: *const c_char, version: *const c_char) -> *mut c_void {
+    unsafe { libc::dlvsym(libc::RTLD_NEXT, symbol, version) }
+}
+
 // ---------------------------------------------------------------------------
 // dlopen
 // ---------------------------------------------------------------------------

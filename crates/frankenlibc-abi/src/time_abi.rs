@@ -9,6 +9,8 @@ use std::os::raw::c_long;
 use frankenlibc_core::errno;
 use frankenlibc_core::time as time_core;
 
+use crate::util::scan_c_string;
+
 /// Set the ABI errno via `__errno_location`.
 #[inline]
 unsafe fn set_abi_errno(val: c_int) {
@@ -388,7 +390,7 @@ pub unsafe extern "C" fn strftime(
     }
 
     // Read the format string as a byte slice.
-    let fmt_len = unsafe { libc::strlen(format as *const _) };
+    let (fmt_len, _terminated) = unsafe { scan_c_string(format, None) };
     let fmt = unsafe { std::slice::from_raw_parts(format as *const u8, fmt_len) };
 
     // Read the broken-down time.

@@ -277,8 +277,14 @@ pub unsafe extern "C" fn tcsendbreak(fd: c_int, duration: c_int) -> c_int {
         runtime_policy::observe(ApiFamily::Termios, decision.profile, 5, true);
         return -1;
     }
+    let request = if duration > 0 {
+        libc::TCSBRKP
+    } else {
+        libc::TCSBRK
+    };
+    let arg = if duration > 0 { duration as libc::c_long as usize } else { 0 };
     let rc = match unsafe {
-        syscall::sys_ioctl(fd, libc::TCSBRK as usize, duration as libc::c_long as usize)
+        syscall::sys_ioctl(fd, request as usize, arg)
     } {
         Ok(_) => 0,
         Err(e) => {

@@ -343,8 +343,7 @@ unsafe fn delegate_to_host_libc_start_main(
     // SAFETY: versioned lookup via host dynamic loader, bypassing our interposed
     // dlsym symbol to avoid recursive startup-resolution loops.
     let mut ptr = unsafe {
-        libc::dlvsym(
-            libc::RTLD_NEXT,
+        crate::dlfcn_abi::dlvsym_next(
             symbol.as_ptr().cast::<c_char>(),
             glibc_v34.as_ptr().cast::<c_char>(),
         )
@@ -352,8 +351,7 @@ unsafe fn delegate_to_host_libc_start_main(
     if ptr.is_null() {
         // SAFETY: fallback to older glibc symbol version when 2.34 alias is absent.
         ptr = unsafe {
-            libc::dlvsym(
-                libc::RTLD_NEXT,
+            crate::dlfcn_abi::dlvsym_next(
                 symbol.as_ptr().cast::<c_char>(),
                 glibc_v225.as_ptr().cast::<c_char>(),
             )

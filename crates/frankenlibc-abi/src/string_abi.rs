@@ -1496,9 +1496,10 @@ pub unsafe extern "C" fn stpncpy(dst: *mut c_char, src: *const c_char, n: usize)
     }
 
     // SAFETY: bounded scan by `n` matches `stpncpy` return contract.
-    let src_prefix = unsafe { strnlen(src, n) };
-    let offset = if src_prefix < n { src_prefix } else { n };
-    // SAFETY: offset is bounded by `n`, the API contract's writable span.
+    // By measuring `dst` instead of `src`, we automatically respect any
+    // bounds clamping that `strncpy` applied in hardened mode.
+    let offset = unsafe { strnlen(dst, n) };
+    // SAFETY: offset is bounded by `n` (and clamped membrane bounds).
     unsafe { dst.add(offset) }
 }
 
@@ -1723,9 +1724,11 @@ pub unsafe extern "C" fn strncat(dst: *mut c_char, src: *const c_char, n: usize)
                             );
                         }
                         *dst.add(dst_len.saturating_add(copy_payload)) = 0;
-                        let truncated = (!src_terminated && src_scan_bound == Some(src_len))
-                            || copy_payload < src_len
-                            || src_len == n;
+                        let hit_src_alloc_bound = !src_terminated
+                            && src_bound.is_some()
+                            && src_bound.unwrap() < n
+                            && src_len == src_bound.unwrap();
+                        let truncated = hit_src_alloc_bound || copy_payload < src_len;
                         if truncated {
                             record_truncation(n.saturating_add(1), copy_payload);
                         }
@@ -1740,7 +1743,11 @@ pub unsafe extern "C" fn strncat(dst: *mut c_char, src: *const c_char, n: usize)
                         raw_memcpy_bytes(dst.add(dst_len).cast::<u8>(), src.cast::<u8>(), src_len);
                     }
                     *dst.add(dst_len.saturating_add(src_len)) = 0;
-                    let truncated = !src_terminated && src_scan_bound == Some(src_len);
+                    let hit_src_alloc_bound = !src_terminated
+                        && src_bound.is_some()
+                        && src_bound.unwrap() < n
+                        && src_len == src_bound.unwrap();
+                    let truncated = hit_src_alloc_bound;
                     if truncated {
                         record_truncation(n.saturating_add(1), src_len);
                     }

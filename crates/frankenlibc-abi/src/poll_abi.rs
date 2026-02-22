@@ -52,7 +52,38 @@ pub unsafe extern "C" fn poll(fds: *mut libc::pollfd, nfds: libc::nfds_t, timeou
         nfds
     };
 
+    // SYS_poll doesn't exist on aarch64; use SYS_ppoll with timeout conversion.
+    #[cfg(target_arch = "x86_64")]
     let rc = unsafe { libc::syscall(libc::SYS_poll as c_long, fds, actual_nfds, timeout) as c_int };
+    #[cfg(not(target_arch = "x86_64"))]
+    let rc = {
+        // Convert millisecond timeout to timespec for ppoll.
+        let (ts_ptr, ts_storage);
+        if timeout < 0 {
+            ts_storage = libc::timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            };
+            let _ = &ts_storage; // suppress unused warning
+            ts_ptr = std::ptr::null::<libc::timespec>();
+        } else {
+            ts_storage = libc::timespec {
+                tv_sec: (timeout / 1000) as libc::time_t,
+                tv_nsec: ((timeout % 1000) as i64) * 1_000_000,
+            };
+            ts_ptr = &ts_storage as *const libc::timespec;
+        }
+        unsafe {
+            libc::syscall(
+                libc::SYS_ppoll as c_long,
+                fds,
+                actual_nfds,
+                ts_ptr,
+                std::ptr::null::<libc::sigset_t>(),
+                0usize,
+            ) as c_int
+        }
+    };
     let adverse = rc < 0;
     if adverse {
         let e = std::io::Error::last_os_error()
@@ -168,6 +199,8 @@ pub unsafe extern "C" fn select(
         nfds
     };
 
+    // SYS_select doesn't exist on aarch64; use SYS_pselect6 with timeout conversion.
+    #[cfg(target_arch = "x86_64")]
     let rc = unsafe {
         libc::syscall(
             libc::SYS_select as c_long,
@@ -177,6 +210,37 @@ pub unsafe extern "C" fn select(
             exceptfds,
             timeout,
         ) as c_int
+    };
+    #[cfg(not(target_arch = "x86_64"))]
+    let rc = {
+        // Convert timeval to timespec for pselect6.
+        let (ts_ptr, ts_storage);
+        if timeout.is_null() {
+            ts_storage = libc::timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            };
+            let _ = &ts_storage;
+            ts_ptr = std::ptr::null::<libc::timespec>();
+        } else {
+            let tv = unsafe { &*timeout };
+            ts_storage = libc::timespec {
+                tv_sec: tv.tv_sec,
+                tv_nsec: tv.tv_usec * 1000,
+            };
+            ts_ptr = &ts_storage as *const libc::timespec;
+        }
+        unsafe {
+            libc::syscall(
+                libc::SYS_pselect6 as c_long,
+                actual_nfds,
+                readfds,
+                writefds,
+                exceptfds,
+                ts_ptr,
+                std::ptr::null::<[usize; 2]>(),
+            ) as c_int
+        }
     };
     let adverse = rc < 0;
     if adverse {

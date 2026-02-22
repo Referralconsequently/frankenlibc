@@ -462,6 +462,6 @@ pub unsafe extern "C" fn sigwait(set: *const libc::sigset_t, sig: *mut c_int) ->
         0
     } else {
         // On error, return the errno value per POSIX sigwait semantics.
-        unsafe { *libc::__errno_location() }
+        last_host_errno(libc::EINTR)
     }
 }

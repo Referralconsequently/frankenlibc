@@ -11,6 +11,7 @@ use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
 use crate::malloc_abi::known_remaining;
 use crate::runtime_policy;
+use crate::util::scan_c_string;
 
 #[inline]
 fn repair_enabled(heals_enabled: bool, action: MembraneAction) -> bool {
@@ -1230,8 +1231,7 @@ pub unsafe extern "C" fn wcsdup(s: *const u32) -> *mut u32 {
         let alloc_elems = len + 1;
         let alloc_bytes = alloc_elems * 4;
 
-        // Use libc malloc for allocation
-        let ptr = libc::malloc(alloc_bytes) as *mut u32;
+        let ptr = crate::malloc_abi::malloc(alloc_bytes) as *mut u32;
         if ptr.is_null() {
             runtime_policy::observe(ApiFamily::StringMemory, decision.profile, 8, true);
             return std::ptr::null_mut();
@@ -1623,8 +1623,8 @@ pub unsafe extern "C" fn mbstowcs(dst: *mut u32, src: *const u8, n: usize) -> us
     if src.is_null() {
         return usize::MAX; // (size_t)-1
     }
-    let src_len = unsafe { libc::strlen(src as *const _) + 1 }; // include NUL
-    let src_slice = unsafe { std::slice::from_raw_parts(src, src_len) };
+    let (src_len, _terminated) = unsafe { scan_c_string(src as *const std::ffi::c_char, None) };
+    let src_slice = unsafe { std::slice::from_raw_parts(src, src_len.saturating_add(1)) }; // include NUL
     if dst.is_null() {
         // Count mode
         let mut count = 0usize;
@@ -1765,7 +1765,7 @@ pub unsafe extern "C" fn basename(path: *mut std::ffi::c_char) -> *mut std::ffi:
     if path.is_null() {
         return dot.as_ptr() as *mut std::ffi::c_char;
     }
-    let len = unsafe { libc::strlen(path as *const _) };
+    let (len, _terminated) = unsafe { scan_c_string(path as *const std::ffi::c_char, None) };
     if len == 0 {
         return dot.as_ptr() as *mut std::ffi::c_char;
     }
@@ -1794,7 +1794,7 @@ pub unsafe extern "C" fn dirname(path: *mut std::ffi::c_char) -> *mut std::ffi::
     if path.is_null() {
         return dot.as_ptr() as *mut std::ffi::c_char;
     }
-    let len = unsafe { libc::strlen(path as *const _) };
+    let (len, _terminated) = unsafe { scan_c_string(path as *const std::ffi::c_char, None) };
     if len == 0 {
         return dot.as_ptr() as *mut std::ffi::c_char;
     }
@@ -2105,8 +2105,8 @@ pub unsafe extern "C" fn mbsrtowcs(
         return 0;
     }
 
-    // SAFETY: source pointer references a NUL-terminated byte string.
-    let src_len_with_nul = unsafe { libc::strlen(src_ptr) + 1 };
+    let (src_len, _terminated) = unsafe { scan_c_string(src_ptr, None) };
+    let src_len_with_nul = src_len.saturating_add(1);
     // SAFETY: bounded by strlen + NUL.
     let src_bytes = unsafe { std::slice::from_raw_parts(src_ptr as *const u8, src_len_with_nul) };
 

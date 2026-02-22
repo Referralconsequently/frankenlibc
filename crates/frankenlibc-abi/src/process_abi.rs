@@ -69,7 +69,7 @@ unsafe fn execvp_via_execve(file: *const c_char, argv: *const *const c_char) -> 
         };
         // execve only returns on failure (rc == -1); on success the process is replaced.
 
-        let err = unsafe { *super::errno_abi::__errno_location() };
+        let err = last_host_errno(libc::ENOENT);
         if err != libc::ENOENT && err != libc::ENOTDIR {
             return -1;
         }
@@ -397,7 +397,7 @@ pub unsafe extern "C" fn execvpe(
             return rc;
         }
 
-        let err = unsafe { *super::errno_abi::__errno_location() };
+        let err = last_host_errno(libc::ENOENT);
         if err != libc::ENOENT && err != libc::ENOTDIR {
             return -1;
         }

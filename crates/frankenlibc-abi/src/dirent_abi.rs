@@ -376,12 +376,21 @@ pub unsafe extern "C" fn readdir_r(
     if dirp.is_null() || entry.is_null() || result.is_null() {
         return libc::EINVAL;
     }
-    // readdir returns a thread-local pointer; copy into caller's buffer.
+    // To distinguish EOF from error without modifying the caller's errno.
+    let old_errno = unsafe { *super::errno_abi::__errno_location() };
+    unsafe { set_abi_errno(0) };
     let ptr = unsafe { readdir(dirp) };
     if ptr.is_null() {
         unsafe { *result = std::ptr::null_mut() };
-        0 // End of directory — not an error
+        let e = unsafe { *super::errno_abi::__errno_location() };
+        unsafe { set_abi_errno(old_errno) };
+        if e != 0 {
+            e
+        } else {
+            0 // End of directory
+        }
     } else {
+        unsafe { set_abi_errno(old_errno) };
         unsafe {
             std::ptr::copy_nonoverlapping(ptr, entry, 1);
             *result = entry;
@@ -484,10 +493,10 @@ pub unsafe extern "C" fn scandir(
 
         if include {
             let size = std::mem::size_of::<libc::dirent>();
-            let copy = unsafe { libc::malloc(size) } as *mut libc::dirent;
+            let copy = unsafe { crate::malloc_abi::malloc(size) } as *mut libc::dirent;
             if copy.is_null() {
                 for &e in &entries {
-                    unsafe { libc::free(e as *mut c_void) };
+                    unsafe { crate::malloc_abi::free(e as *mut c_void) };
                 }
                 unsafe { closedir(dir) };
                 unsafe { set_abi_errno(errno::ENOMEM) };
@@ -505,7 +514,7 @@ pub unsafe extern "C" fn scandir(
     // Allocate the namelist array
     if count == 0 {
         // Empty result — allocate a minimal array
-        let array = unsafe { libc::malloc(std::mem::size_of::<*mut libc::dirent>()) }
+        let array = unsafe { crate::malloc_abi::malloc(std::mem::size_of::<*mut libc::dirent>()) }
             as *mut *mut libc::dirent;
         if array.is_null() {
             unsafe { set_abi_errno(errno::ENOMEM) };
@@ -516,10 +525,10 @@ pub unsafe extern "C" fn scandir(
     }
 
     let array_size = count * std::mem::size_of::<*mut libc::dirent>();
-    let array = unsafe { libc::malloc(array_size) } as *mut *mut libc::dirent;
+    let array = unsafe { crate::malloc_abi::malloc(array_size) } as *mut *mut libc::dirent;
     if array.is_null() {
         for &e in &entries {
-            unsafe { libc::free(e as *mut c_void) };
+            unsafe { crate::malloc_abi::free(e as *mut c_void) };
         }
         unsafe { set_abi_errno(errno::ENOMEM) };
         return -1;
