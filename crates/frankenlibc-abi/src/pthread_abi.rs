@@ -86,6 +86,16 @@ static FORCE_NATIVE_MUTEX: std::sync::atomic::AtomicBool =
 static FORCE_NATIVE_THREADING: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 const MANAGED_MUTEX_MAGIC: u32 = 0x474d_5854; // "GMXT"
+
+// ---------------------------------------------------------------------------
+// Mutex type constants (POSIX values)
+// ---------------------------------------------------------------------------
+const PTHREAD_MUTEX_NORMAL_TYPE: i32 = 0;
+const PTHREAD_MUTEX_RECURSIVE_TYPE: i32 = 1;
+const PTHREAD_MUTEX_ERRORCHECK_TYPE: i32 = 2;
+
+/// Sentinel value for "no owner" in owner_tid fields.
+const MUTEX_NO_OWNER: i32 = 0;
 const MANAGED_RWLOCK_MAGIC: u32 = 0x4752_5758; // "GRWX"
 static THREAD_HANDLE_REGISTRY: LazyLock<Mutex<HashMap<usize, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -399,6 +409,63 @@ fn mark_managed_mutex(mutex: *mut libc::pthread_mutex_t) -> bool {
     true
 }
 
+/// Returns a pointer to the mutex type field at byte offset 8 within the
+/// `pthread_mutex_t` opaque storage. Layout: [lock_word(4)][magic(4)][type(4)]...
+fn mutex_type_ptr(mutex: *mut libc::pthread_mutex_t) -> Option<*mut AtomicI32> {
+    if mutex.is_null() {
+        return None;
+    }
+    let base = mutex.cast::<u8>();
+    // offset 8: past lock_word (4 bytes) + magic (4 bytes)
+    let ptr = unsafe { base.add(8) };
+    let align = std::mem::align_of::<AtomicI32>();
+    if !(ptr as usize).is_multiple_of(align) {
+        return None;
+    }
+    Some(ptr.cast::<AtomicI32>())
+}
+
+/// Returns a pointer to the owner tid field at byte offset 12.
+/// Layout: [lock_word(4)][magic(4)][type(4)][owner_tid(4)]...
+fn mutex_owner_ptr(mutex: *mut libc::pthread_mutex_t) -> Option<*mut AtomicI32> {
+    if mutex.is_null() {
+        return None;
+    }
+    let base = mutex.cast::<u8>();
+    let ptr = unsafe { base.add(12) };
+    let align = std::mem::align_of::<AtomicI32>();
+    if !(ptr as usize).is_multiple_of(align) {
+        return None;
+    }
+    Some(ptr.cast::<AtomicI32>())
+}
+
+/// Returns a pointer to the lock count field at byte offset 16.
+/// Layout: [lock_word(4)][magic(4)][type(4)][owner_tid(4)][lock_count(4)]...
+fn mutex_lock_count_ptr(mutex: *mut libc::pthread_mutex_t) -> Option<*mut AtomicU32> {
+    if mutex.is_null() {
+        return None;
+    }
+    let base = mutex.cast::<u8>();
+    let ptr = unsafe { base.add(16) };
+    let align = std::mem::align_of::<AtomicU32>();
+    if !(ptr as usize).is_multiple_of(align) {
+        return None;
+    }
+    Some(ptr.cast::<AtomicU32>())
+}
+
+/// Read the mutex type stored at offset 8. Returns NORMAL (0) for unmanaged
+/// or unrecognized mutexes.
+fn read_mutex_type(mutex: *mut libc::pthread_mutex_t) -> i32 {
+    let Some(type_ptr) = mutex_type_ptr(mutex) else {
+        return PTHREAD_MUTEX_NORMAL_TYPE;
+    };
+    // SAFETY: alignment and non-null checked above.
+    let mtype = unsafe { &*type_ptr };
+    mtype.load(Ordering::Acquire)
+}
+
 fn clear_managed_mutex(mutex: *mut libc::pthread_mutex_t) {
     if let Some(magic_ptr) = mutex_magic_ptr(mutex) {
         // SAFETY: alignment and non-null checked in `mutex_magic_ptr`.
@@ -527,14 +594,41 @@ unsafe fn native_pthread_create(
     if thread_out.is_null() {
         return libc::EINVAL;
     }
+
+    // Extract attributes if provided; default to 0 (use core defaults).
+    let mut stack_size: usize = 0;
+    let mut detach_state: c_int = 0;
     if !attr.is_null() {
-        return libc::EINVAL;
+        let mut handled = false;
+        if let Some(data) = attr_data_ptr_const(attr) {
+            // SAFETY: data points to caller-owned memory aligned for PthreadAttrData.
+            let magic = unsafe { (*data).magic };
+            if magic == MANAGED_ATTR_MAGIC {
+                stack_size = unsafe { (*data).stack_size };
+                detach_state = unsafe { (*data).detach_state };
+                handled = true;
+            }
+        }
+        if !handled {
+            // SAFETY: attr is non-null, host libc interprets the opaque structure.
+            unsafe { libc::pthread_attr_getstacksize(attr, &mut stack_size) };
+            // pthread_attr_getdetachstate is not always in the libc crate; use
+            // the host symbol directly.
+            unsafe extern "C" {
+                fn pthread_attr_getdetachstate(
+                    attr: *const libc::pthread_attr_t,
+                    detachstate: *mut c_int,
+                ) -> c_int;
+            }
+            unsafe { pthread_attr_getdetachstate(attr, &mut detach_state) };
+        }
     }
 
-    let handle_ptr = match unsafe { core_create_thread(start_routine as usize, arg as usize) } {
-        Ok(ptr) => ptr,
-        Err(errno) => return errno,
-    };
+    let handle_ptr =
+        match unsafe { core_create_thread(start_routine as usize, arg as usize, stack_size) } {
+            Ok(ptr) => ptr,
+            Err(errno) => return errno,
+        };
 
     let thread_key = handle_ptr as usize;
 
@@ -550,6 +644,20 @@ unsafe fn native_pthread_create(
 
     // SAFETY: thread_out validated non-null above.
     unsafe { *thread_out = thread_key as libc::pthread_t };
+
+    // If created with PTHREAD_CREATE_DETACHED, detach immediately.
+    // Must remove from registry first (same as native_pthread_detach) to
+    // prevent a dangling pointer after the thread self-cleans on exit.
+    if detach_state == libc::PTHREAD_CREATE_DETACHED {
+        {
+            let mut registry = THREAD_HANDLE_REGISTRY
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            registry.remove(&thread_key);
+        }
+        let _ = unsafe { core_detach_thread(handle_ptr) };
+    }
+
     0
 }
 
@@ -1022,10 +1130,18 @@ pub unsafe extern "C" fn pthread_mutex_init(
         return libc::EINVAL;
     }
 
-    // Attribute handling is currently best-effort for preload compatibility:
-    // we always initialize the futex word and only tag managed state when the
-    // in-object marker slot is available.
-    let _ = attr;
+    // Read the mutex type from the attr if provided.
+    let mutex_type = if attr.is_null() {
+        PTHREAD_MUTEX_NORMAL_TYPE
+    } else {
+        // SAFETY: attr is non-null; the first 4 bytes store the type as an i32
+        // (written by our pthread_mutexattr_settype).
+        let kind = unsafe { *(attr.cast::<c_int>()) };
+        if !(0..=2).contains(&kind) {
+            return libc::EINVAL;
+        }
+        kind
+    };
 
     if let Some(word_ptr) = mutex_word_ptr(mutex) {
         // SAFETY: `word_ptr` is alignment-checked and points to caller-owned
@@ -1033,6 +1149,28 @@ pub unsafe extern "C" fn pthread_mutex_init(
         let word = unsafe { &*word_ptr };
         word.store(0, Ordering::Release);
         let _ = mark_managed_mutex(mutex);
+
+        // Store the mutex type at offset 8.
+        if let Some(type_ptr) = mutex_type_ptr(mutex) {
+            // SAFETY: alignment checked; within pthread_mutex_t storage.
+            let mtype = unsafe { &*type_ptr };
+            mtype.store(mutex_type, Ordering::Release);
+        }
+
+        // Initialize owner_tid to "no owner" at offset 12.
+        if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+            // SAFETY: alignment checked; within pthread_mutex_t storage.
+            let owner = unsafe { &*owner_ptr };
+            owner.store(MUTEX_NO_OWNER, Ordering::Release);
+        }
+
+        // Initialize lock_count to 0 at offset 16.
+        if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+            // SAFETY: alignment checked; within pthread_mutex_t storage.
+            let count = unsafe { &*count_ptr };
+            count.store(0, Ordering::Release);
+        }
+
         return 0;
     }
     clear_managed_mutex(mutex);
@@ -1064,6 +1202,23 @@ pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut libc::pthread_mutex_t
         return libc::EBUSY;
     }
 
+    // Clear extended fields (type, owner, count) for hygiene.
+    if let Some(type_ptr) = mutex_type_ptr(mutex) {
+        // SAFETY: alignment checked; within pthread_mutex_t storage.
+        let mtype = unsafe { &*type_ptr };
+        mtype.store(0, Ordering::Release);
+    }
+    if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+        // SAFETY: alignment checked.
+        let owner = unsafe { &*owner_ptr };
+        owner.store(MUTEX_NO_OWNER, Ordering::Release);
+    }
+    if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+        // SAFETY: alignment checked.
+        let count = unsafe { &*count_ptr };
+        count.store(0, Ordering::Release);
+    }
+
     clear_managed_mutex(mutex);
     0
 }
@@ -1086,10 +1241,76 @@ pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut libc::pthread_mutex_t) -
     let Some(word_ptr) = mutex_word_ptr(mutex) else {
         return libc::EINVAL;
     };
-    // SAFETY: alignment is validated by `mutex_word_ptr`; use futex semantics
-    // for both managed and pre-initialized foreign/default mutex layouts.
+    // SAFETY: alignment is validated by `mutex_word_ptr`.
     let word = unsafe { &*word_ptr };
-    futex_lock_normal(word)
+
+    match read_mutex_type(mutex) {
+        PTHREAD_MUTEX_RECURSIVE_TYPE => {
+            let self_tid = core_self_tid();
+            // Check if we already own this mutex.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) == self_tid && self_tid != MUTEX_NO_OWNER {
+                    // We already own it — increment the recursion count.
+                    if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                        // SAFETY: alignment checked.
+                        let count = unsafe { &*count_ptr };
+                        let cur = count.load(Ordering::Relaxed);
+                        if cur == u32::MAX {
+                            return libc::EAGAIN; // overflow guard
+                        }
+                        count.store(cur + 1, Ordering::Release);
+                        return 0;
+                    }
+                }
+            }
+            // Not the owner (or first acquisition) — acquire the underlying lock.
+            let rc = futex_lock_normal(word);
+            if rc != 0 {
+                return rc;
+            }
+            // We now own the mutex — record ownership.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(self_tid, Ordering::Release);
+            }
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let count = unsafe { &*count_ptr };
+                count.store(1, Ordering::Release);
+            }
+            0
+        }
+        PTHREAD_MUTEX_ERRORCHECK_TYPE => {
+            let self_tid = core_self_tid();
+            // If we already own it, return EDEADLK.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) == self_tid && self_tid != MUTEX_NO_OWNER {
+                    return libc::EDEADLK;
+                }
+            }
+            // Acquire the lock.
+            let rc = futex_lock_normal(word);
+            if rc != 0 {
+                return rc;
+            }
+            // Record ownership.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(self_tid, Ordering::Release);
+            }
+            0
+        }
+        _ => {
+            // PTHREAD_MUTEX_NORMAL — existing behavior.
+            futex_lock_normal(word)
+        }
+    }
 }
 
 /// POSIX `pthread_mutex_trylock`.
@@ -1110,10 +1331,75 @@ pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut libc::pthread_mutex_t
     let Some(word_ptr) = mutex_word_ptr(mutex) else {
         return libc::EINVAL;
     };
-    // SAFETY: alignment is validated by `mutex_word_ptr`; use futex semantics
-    // for both managed and pre-initialized foreign/default mutex layouts.
+    // SAFETY: alignment is validated by `mutex_word_ptr`.
     let word = unsafe { &*word_ptr };
-    futex_trylock_normal(word)
+
+    match read_mutex_type(mutex) {
+        PTHREAD_MUTEX_RECURSIVE_TYPE => {
+            let self_tid = core_self_tid();
+            // Check if we already own this mutex.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) == self_tid && self_tid != MUTEX_NO_OWNER {
+                    // Already own it — increment recursion count.
+                    if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                        // SAFETY: alignment checked.
+                        let count = unsafe { &*count_ptr };
+                        let cur = count.load(Ordering::Relaxed);
+                        if cur == u32::MAX {
+                            return libc::EAGAIN;
+                        }
+                        count.store(cur + 1, Ordering::Release);
+                        return 0;
+                    }
+                }
+            }
+            // Try to acquire.
+            let rc = futex_trylock_normal(word);
+            if rc != 0 {
+                return rc;
+            }
+            // Record ownership.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(self_tid, Ordering::Release);
+            }
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let count = unsafe { &*count_ptr };
+                count.store(1, Ordering::Release);
+            }
+            0
+        }
+        PTHREAD_MUTEX_ERRORCHECK_TYPE => {
+            let self_tid = core_self_tid();
+            // If we already own it, return EDEADLK for trylock too.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) == self_tid && self_tid != MUTEX_NO_OWNER {
+                    return libc::EBUSY;
+                }
+            }
+            let rc = futex_trylock_normal(word);
+            if rc != 0 {
+                return rc;
+            }
+            // Record ownership.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(self_tid, Ordering::Release);
+            }
+            0
+        }
+        _ => {
+            // PTHREAD_MUTEX_NORMAL — existing behavior.
+            futex_trylock_normal(word)
+        }
+    }
 }
 
 /// POSIX `pthread_mutex_unlock`.
@@ -1134,10 +1420,59 @@ pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut libc::pthread_mutex_t)
     let Some(word_ptr) = mutex_word_ptr(mutex) else {
         return libc::EINVAL;
     };
-    // SAFETY: alignment is validated by `mutex_word_ptr`; use futex semantics
-    // for both managed and pre-initialized foreign/default mutex layouts.
+    // SAFETY: alignment is validated by `mutex_word_ptr`.
     let word = unsafe { &*word_ptr };
-    futex_unlock_normal(word)
+
+    match read_mutex_type(mutex) {
+        PTHREAD_MUTEX_RECURSIVE_TYPE => {
+            let self_tid = core_self_tid();
+            // Verify ownership.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) != self_tid || self_tid == MUTEX_NO_OWNER {
+                    return libc::EPERM;
+                }
+            }
+            // Decrement lock count.
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let count = unsafe { &*count_ptr };
+                let cur = count.load(Ordering::Relaxed);
+                if cur > 1 {
+                    count.store(cur - 1, Ordering::Release);
+                    return 0; // still held recursively
+                }
+                // count == 1 (or 0 for robustness): release fully.
+                count.store(0, Ordering::Release);
+            }
+            // Clear ownership before releasing the underlying lock.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(MUTEX_NO_OWNER, Ordering::Release);
+            }
+            futex_unlock_normal(word)
+        }
+        PTHREAD_MUTEX_ERRORCHECK_TYPE => {
+            let self_tid = core_self_tid();
+            // Verify ownership — non-owner unlock returns EPERM.
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) != self_tid || self_tid == MUTEX_NO_OWNER {
+                    return libc::EPERM;
+                }
+                // Clear ownership.
+                owner.store(MUTEX_NO_OWNER, Ordering::Release);
+            }
+            futex_unlock_normal(word)
+        }
+        _ => {
+            // PTHREAD_MUTEX_NORMAL — existing behavior.
+            futex_unlock_normal(word)
+        }
+    }
 }
 
 // ===========================================================================
@@ -1225,8 +1560,41 @@ pub unsafe extern "C" fn pthread_cond_wait(
     if word.load(Ordering::Acquire) == 0 {
         return libc::EINVAL;
     }
+
+    let mtype = read_mutex_type(mutex);
+    let mut saved_count = 0;
+    if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE || mtype == PTHREAD_MUTEX_ERRORCHECK_TYPE {
+        if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+            let owner = unsafe { &*owner_ptr };
+            owner.store(MUTEX_NO_OWNER, Ordering::Release);
+        }
+        if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE {
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                let count = unsafe { &*count_ptr };
+                saved_count = count.swap(0, Ordering::Release);
+            }
+        }
+    }
+
     // SAFETY: condvar pointer and mutex futex word pointer are validated/aligned and caller-owned.
-    unsafe { core_condvar_wait(cond_ptr, word_ptr.cast::<u32>() as *const u32) }
+    let rc = unsafe { core_condvar_wait(cond_ptr, word_ptr.cast::<u32>() as *const u32) };
+
+    if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE || mtype == PTHREAD_MUTEX_ERRORCHECK_TYPE {
+        let self_tid = core_self_tid();
+        if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+            let owner = unsafe { &*owner_ptr };
+            owner.store(self_tid, Ordering::Release);
+        }
+        if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE {
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                let count = unsafe { &*count_ptr };
+                // Restore the lock count we had before waiting.
+                count.store(saved_count, Ordering::Release);
+            }
+        }
+    }
+
+    rc
 }
 
 /// POSIX `pthread_cond_signal`.
@@ -1437,16 +1805,48 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
     if word.load(Ordering::Acquire) == 0 {
         return libc::EINVAL;
     }
+
+    let mtype = read_mutex_type(mutex);
+    let mut saved_count = 0;
+    if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE || mtype == PTHREAD_MUTEX_ERRORCHECK_TYPE {
+        if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+            let owner = unsafe { &*owner_ptr };
+            owner.store(MUTEX_NO_OWNER, Ordering::Release);
+        }
+        if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE {
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                let count = unsafe { &*count_ptr };
+                saved_count = count.swap(0, Ordering::Release);
+            }
+        }
+    }
+
     // SAFETY: abstime is non-null, condvar and mutex pointers are validated/aligned.
     let ts = unsafe { &*abstime };
-    unsafe {
+    let rc = unsafe {
         core_condvar_timedwait(
             cond_ptr,
             word_ptr.cast::<u32>() as *const u32,
             ts.tv_sec,
             ts.tv_nsec,
         )
+    };
+
+    if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE || mtype == PTHREAD_MUTEX_ERRORCHECK_TYPE {
+        let self_tid = core_self_tid();
+        if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+            let owner = unsafe { &*owner_ptr };
+            owner.store(self_tid, Ordering::Release);
+        }
+        if mtype == PTHREAD_MUTEX_RECURSIVE_TYPE {
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                let count = unsafe { &*count_ptr };
+                count.store(saved_count, Ordering::Release);
+            }
+        }
     }
+
+    rc
 }
 
 // ===========================================================================
@@ -1463,14 +1863,8 @@ pub unsafe extern "C" fn pthread_key_create(
         return libc::EINVAL;
     }
     let mut internal_key = PthreadKey::default();
-    // Convert the C destructor to the core-expected signature.
-    // Core uses `fn(u64)` where value is the stored pointer-as-integer.
-    let core_dtor: Option<fn(u64)> = destructor.map(|f| {
-        // SAFETY: We transmute the extern "C" fn(*mut c_void) to fn(u64) since
-        // on all 64-bit platforms, *mut c_void and u64 have the same representation.
-        unsafe { std::mem::transmute::<unsafe extern "C" fn(*mut c_void), fn(u64)>(f) }
-    });
-    let rc = core_pthread_key_create(&mut internal_key, core_dtor);
+    // Core now uses the same `unsafe extern "C" fn(*mut c_void)` type as POSIX.
+    let rc = core_pthread_key_create(&mut internal_key, destructor);
     if rc == 0 {
         // SAFETY: key is non-null and we write the index.
         unsafe { *key = internal_key.id };
@@ -1528,60 +1922,59 @@ pub unsafe extern "C" fn pthread_once(
     // SAFETY: pthread_once_t is at least 4-byte aligned on all Linux platforms.
     let state = unsafe { &*(once_control as *const AtomicI32) };
 
-    // Fast path: already done.
-    if state.load(Ordering::Acquire) == ONCE_DONE {
-        return 0;
-    }
+    loop {
+        let s = state.load(Ordering::Acquire);
+        if s == ONCE_DONE {
+            return 0;
+        }
 
-    // Try to become the initializer.
-    match state.compare_exchange(
-        ONCE_INIT,
-        ONCE_IN_PROGRESS,
-        Ordering::Acquire,
-        Ordering::Acquire,
-    ) {
-        Ok(_) => {
-            // We won; run the init routine.
-            // Use catch_unwind to prevent permanent deadlock if routine panics.
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                unsafe { routine() };
-            }));
-            match result {
-                Ok(()) => {
-                    state.store(ONCE_DONE, Ordering::Release);
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = futex_wake_private(state, i32::MAX);
+        if s == ONCE_INIT {
+            match state.compare_exchange(
+                ONCE_INIT,
+                ONCE_IN_PROGRESS,
+                Ordering::Acquire,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    // We won; run the init routine.
+                    // Use catch_unwind to prevent permanent deadlock if routine panics.
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        unsafe { routine() };
+                    }));
+                    match result {
+                        Ok(()) => {
+                            state.store(ONCE_DONE, Ordering::Release);
+                            #[cfg(target_os = "linux")]
+                            {
+                                let _ = futex_wake_private(state, i32::MAX);
+                            }
+                            return 0;
+                        }
+                        Err(_) => {
+                            // Reset to ONCE_INIT so another thread can retry.
+                            state.store(ONCE_INIT, Ordering::Release);
+                            #[cfg(target_os = "linux")]
+                            {
+                                let _ = futex_wake_private(state, i32::MAX);
+                            }
+                            return libc::EINVAL;
+                        }
                     }
-                    0
                 }
                 Err(_) => {
-                    // Reset to ONCE_INIT so another thread can retry.
-                    state.store(ONCE_INIT, Ordering::Release);
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = futex_wake_private(state, i32::MAX);
-                    }
-                    libc::EINVAL
+                    // State changed concurrently. Loop and retry.
+                    continue;
                 }
             }
-        }
-        Err(current) if current == ONCE_DONE => 0,
-        Err(_) => {
-            // Another thread is running init_routine; wait until done.
-            loop {
-                let s = state.load(Ordering::Acquire);
-                if s == ONCE_DONE {
-                    return 0;
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    let _ = futex_wait_private(state, s);
-                }
-                #[cfg(not(target_os = "linux"))]
-                {
-                    core::hint::spin_loop();
-                }
+        } else {
+            // Another thread is running init_routine; wait until done or failed.
+            #[cfg(target_os = "linux")]
+            {
+                let _ = futex_wait_private(state, s);
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                core::hint::spin_loop();
             }
         }
     }
@@ -2027,9 +2420,20 @@ pub unsafe extern "C" fn pthread_spin_unlock(lock: *mut c_void) -> c_int {
 // pthread barriers — native futex-based implementation
 //
 // Internal layout overlaid on the opaque barrier memory:
-//   word 0: count (total threads needed)
-//   word 1: arrived (AtomicU32, threads at the barrier)
-//   word 2: phase (AtomicU32, toggles each time barrier releases)
+//   word 0: magic (AtomicU32, validity sentinel)
+//   word 1: count (total threads needed)
+//   word 2-3: phase_arrived (AtomicU64, phase in upper 32 bits, arrived in lower 32)
+//   word 4: futex_phase (AtomicU32, notification channel for futex wake/wait)
+//
+// The phase and arrival count are packed into a single AtomicU64 so that the
+// last arriving thread can reset the counter and advance the phase in one
+// atomic CAS.  This eliminates the race window that existed when `arrived`
+// and `phase` were separate atomics: a new thread could arrive between the
+// counter reset and the phase advance, increment the reset counter, read the
+// stale phase, and then exit prematurely when the phase finally advanced.
+//
+// The separate `futex_phase` word mirrors the phase portion and is used
+// solely as the futex notification address (futex requires a 32-bit word).
 // ---------------------------------------------------------------------------
 
 const BARRIER_MAGIC: u32 = 0x4742_4152; // "GBAR"
@@ -2037,12 +2441,32 @@ const BARRIER_MAGIC: u32 = 0x4742_4152; // "GBAR"
 /// PTHREAD_BARRIER_SERIAL_THREAD: returned to exactly one thread per barrier cycle.
 const PTHREAD_BARRIER_SERIAL_THREAD: c_int = -1;
 
+/// Pack a phase and arrival count into a single u64.
+#[inline(always)]
+const fn barrier_pack(phase: u32, arrived: u32) -> u64 {
+    ((phase as u64) << 32) | (arrived as u64)
+}
+
+/// Extract the phase (upper 32 bits) from the packed value.
+#[inline(always)]
+const fn barrier_phase(packed: u64) -> u32 {
+    (packed >> 32) as u32
+}
+
+/// Extract the arrival count (lower 32 bits) from the packed value.
+#[inline(always)]
+const fn barrier_arrived(packed: u64) -> u32 {
+    packed as u32
+}
+
 #[repr(C)]
 struct BarrierData {
     magic: AtomicU32,
     count: u32,
-    arrived: AtomicU32,
-    phase: AtomicU32,
+    /// Packed: phase (upper 32) | arrived (lower 32).
+    phase_arrived: AtomicU64,
+    /// Mirrors the phase portion of `phase_arrived`; used as the futex address.
+    futex_phase: AtomicU32,
 }
 
 fn barrier_data_ptr(barrier: *mut c_void) -> Option<*mut BarrierData> {
@@ -2097,8 +2521,10 @@ pub unsafe extern "C" fn pthread_barrier_init(
     unsafe {
         (*data).magic.store(BARRIER_MAGIC, Ordering::Release);
         (*data).count = count;
-        (*data).arrived.store(0, Ordering::Release);
-        (*data).phase.store(0, Ordering::Release);
+        (*data)
+            .phase_arrived
+            .store(barrier_pack(0, 0), Ordering::Release);
+        (*data).futex_phase.store(0, Ordering::Release);
     }
     0
 }
@@ -2110,6 +2536,13 @@ pub unsafe extern "C" fn pthread_barrier_destroy(barrier: *mut c_void) -> c_int 
     };
     // SAFETY: pointer is non-null and aligned; caller owns the memory.
     unsafe {
+        // If any threads are currently blocked at the barrier, destruction is
+        // not permitted (POSIX says behaviour is undefined, but returning
+        // EBUSY is the quality-of-implementation choice made by glibc/musl).
+        let packed = (*data).phase_arrived.load(Ordering::Acquire);
+        if barrier_arrived(packed) > 0 {
+            return libc::EBUSY;
+        }
         (*data).magic.store(0, Ordering::Release);
     }
     0
@@ -2123,27 +2556,70 @@ pub unsafe extern "C" fn pthread_barrier_wait(barrier: *mut c_void) -> c_int {
     // SAFETY: pointer is non-null and aligned; caller owns the memory.
     let bd = unsafe { &*data };
     let count = bd.count;
-    let my_phase = bd.phase.load(Ordering::Acquire);
 
-    let arrived = bd.arrived.fetch_add(1, Ordering::AcqRel) + 1;
+    // Atomically increment the arrival count via CAS on the packed u64.
+    // This also captures the phase at the time of our arrival.
+    let mut cur = bd.phase_arrived.load(Ordering::Acquire);
+    let my_phase;
+    loop {
+        let phase = barrier_phase(cur);
+        let arrived = barrier_arrived(cur);
+        let new_arrived = arrived + 1;
 
-    if arrived == count {
-        // Last thread to arrive: reset arrived, advance phase, wake all.
-        bd.arrived.store(0, Ordering::Release);
-        bd.phase.store(my_phase.wrapping_add(1), Ordering::Release);
-        futex_wake_u32(&bd.phase, i32::MAX);
-        PTHREAD_BARRIER_SERIAL_THREAD
-    } else {
-        // Wait until phase advances.
-        loop {
-            let cur = bd.phase.load(Ordering::Acquire);
-            if cur != my_phase {
-                break;
+        if new_arrived == count {
+            // We are the last thread to arrive.  Atomically advance the phase
+            // and reset the counter to 0 in a single CAS so that no thread
+            // can observe the intermediate state.
+            let new_phase = phase.wrapping_add(1);
+            let desired = barrier_pack(new_phase, 0);
+            match bd.phase_arrived.compare_exchange_weak(
+                cur,
+                desired,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    // Update the futex notification word and wake all waiters.
+                    bd.futex_phase.store(new_phase, Ordering::Release);
+                    futex_wake_u32(&bd.futex_phase, i32::MAX);
+                    return PTHREAD_BARRIER_SERIAL_THREAD;
+                }
+                Err(actual) => {
+                    // CAS failed — another thread raced us; retry.
+                    cur = actual;
+                    continue;
+                }
             }
-            futex_wait_u32(&bd.phase, my_phase);
+        } else {
+            // Not the last thread — just bump the arrival count.
+            let desired = barrier_pack(phase, new_arrived);
+            match bd.phase_arrived.compare_exchange_weak(
+                cur,
+                desired,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    my_phase = phase;
+                    break;
+                }
+                Err(actual) => {
+                    cur = actual;
+                    continue;
+                }
+            }
         }
-        0
     }
+
+    // Wait until the phase advances past our arrival phase.
+    loop {
+        let fp = bd.futex_phase.load(Ordering::Acquire);
+        if fp != my_phase {
+            break;
+        }
+        futex_wait_u32(&bd.futex_phase, my_phase);
+    }
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -2160,6 +2636,10 @@ pub unsafe extern "C" fn pthread_setname_np(
     _thread: libc::pthread_t,
     name: *const std::ffi::c_char,
 ) -> c_int {
+    if _thread != native_pthread_self() {
+        // We currently only support setting the calling thread's name via prctl.
+        return libc::ENOSYS;
+    }
     if name.is_null() {
         return libc::EINVAL;
     }
@@ -2169,9 +2649,6 @@ pub unsafe extern "C" fn pthread_setname_np(
         return libc::ERANGE;
     }
     // SAFETY: prctl(PR_SET_NAME) sets the calling thread's name.
-    // Note: POSIX pthread_setname_np takes a thread argument, but Linux prctl
-    // only sets the calling thread's name. For cross-thread naming, we'd need
-    // /proc/tid/comm, but this covers the common self-naming case.
     let ret = unsafe { libc::syscall(libc::SYS_prctl, PR_SET_NAME, name) };
     if ret == 0 { 0 } else { libc::EINVAL }
 }
@@ -2182,6 +2659,10 @@ pub unsafe extern "C" fn pthread_getname_np(
     name: *mut std::ffi::c_char,
     len: usize,
 ) -> c_int {
+    if _thread != native_pthread_self() {
+        // We currently only support getting the calling thread's name via prctl.
+        return libc::ENOSYS;
+    }
     if name.is_null() || len == 0 {
         return libc::EINVAL;
     }
