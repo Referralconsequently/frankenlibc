@@ -59,8 +59,8 @@ impl LargeAllocator {
 
         let mapped_size = page_align(size);
         let base = self.next_base;
-        self.next_base += mapped_size;
-        self.total_mapped += mapped_size;
+        self.next_base = self.next_base.checked_add(mapped_size)?;
+        self.total_mapped = self.total_mapped.saturating_add(mapped_size);
 
         let alloc = LargeAllocation {
             base,

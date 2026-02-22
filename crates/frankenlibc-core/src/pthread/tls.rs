@@ -108,23 +108,14 @@ static TLS_TIDS: [AtomicI32; TLS_TABLE_SLOTS] = [const { AtomicI32::new(0) }; TL
 /// cast to usize. 0 = no pointer.
 static TLS_PTRS: [AtomicUsize; TLS_TABLE_SLOTS] = [const { AtomicUsize::new(0) }; TLS_TABLE_SLOTS];
 
-/// Static TLS values for the main thread (and any thread that calls setspecific
-/// before being explicitly registered).
-static MAIN_TLS_VALUES: MainTlsBlock = MainTlsBlock::new();
-
-/// Wrapper around a fixed TLS value array for the main thread.
-/// Uses a Mutex for interior mutability since we can't use UnsafeCell in safe code
-/// across threads. The main thread can safely take the lock.
-struct MainTlsBlock {
-    values: [AtomicUsize; PTHREAD_KEYS_MAX],
-}
-
-impl MainTlsBlock {
-    const fn new() -> Self {
-        Self {
-            values: [const { AtomicUsize::new(0) }; PTHREAD_KEYS_MAX],
-        }
-    }
+// Thread-local fallback values for threads that are not explicitly registered
+// in the TID -> pointer table.
+//
+// This preserves per-thread isolation for host-created threads while remaining
+// allocation-free for clone-based threads (which are expected to register).
+std::thread_local! {
+    static FALLBACK_TLS_VALUES: [AtomicUsize; PTHREAD_KEYS_MAX] =
+        const { [const { AtomicUsize::new(0) }; PTHREAD_KEYS_MAX] };
 }
 
 /// Register a TID → values-pointer mapping in the global table.
@@ -245,7 +236,7 @@ fn current_tid() -> i32 {
 // ---------------------------------------------------------------------------
 
 /// Read a TLS value for the given TID and key index.
-/// Falls back to the main thread's static block if the TID is not in the table.
+/// Falls back to thread-local storage if the TID is not in the table.
 fn read_tls_value(tid: i32, key_id: usize) -> u64 {
     let ptr = table_lookup(tid);
     if !ptr.is_null() {
@@ -254,13 +245,13 @@ fn read_tls_value(tid: i32, key_id: usize) -> u64 {
         // test-allocated block. key_id < PTHREAD_KEYS_MAX checked by caller.
         unsafe { *ptr.add(key_id) }
     } else {
-        // Main thread or unregistered thread: use static block.
-        MAIN_TLS_VALUES.values[key_id].load(Ordering::Acquire) as u64
+        // Unregistered thread: use thread-local fallback storage.
+        FALLBACK_TLS_VALUES.with(|values| values[key_id].load(Ordering::Acquire) as u64)
     }
 }
 
 /// Write a TLS value for the given TID and key index.
-/// Falls back to the main thread's static block if the TID is not in the table.
+/// Falls back to thread-local storage if the TID is not in the table.
 fn write_tls_value(tid: i32, key_id: usize, value: u64) {
     let ptr = table_lookup(tid);
     if !ptr.is_null() {
@@ -268,8 +259,10 @@ fn write_tls_value(tid: i32, key_id: usize, value: u64) {
         // thread. Only the owning thread writes to its own values.
         unsafe { *ptr.add(key_id) = value };
     } else {
-        // Main thread or unregistered thread: use static block.
-        MAIN_TLS_VALUES.values[key_id].store(value as usize, Ordering::Release);
+        // Unregistered thread: use thread-local fallback storage.
+        FALLBACK_TLS_VALUES.with(|values| {
+            values[key_id].store(value as usize, Ordering::Release);
+        });
     }
 }
 
@@ -515,10 +508,12 @@ pub(crate) fn reset_tls_state() {
         TLS_TIDS[i].store(TLS_SLOT_EMPTY, Ordering::Release);
         TLS_PTRS[i].store(0, Ordering::Release);
     }
-    // Clear main thread values.
-    for i in 0..PTHREAD_KEYS_MAX {
-        MAIN_TLS_VALUES.values[i].store(0, Ordering::Release);
-    }
+    // Clear fallback values for the current thread.
+    FALLBACK_TLS_VALUES.with(|values| {
+        for slot in values.iter() {
+            slot.store(0, Ordering::Release);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

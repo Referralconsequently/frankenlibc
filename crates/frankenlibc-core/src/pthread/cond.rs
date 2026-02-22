@@ -182,11 +182,13 @@ pub unsafe fn condvar_wait(condvar_ptr: *mut CondvarData, mutex_futex_word: *con
 
     // Validate mutex association invariant.
     let mutex_addr = mutex_futex_word as usize;
-    let stored = cv.assoc_mutex.load(Ordering::Acquire);
-    if stored == 0 {
-        cv.assoc_mutex.store(mutex_addr, Ordering::Release);
-    } else if stored != mutex_addr {
-        return errno::EINVAL;
+    match cv
+        .assoc_mutex
+        .compare_exchange(0, mutex_addr, Ordering::AcqRel, Ordering::Acquire)
+    {
+        Ok(_) => {} // Successfully associated this mutex.
+        Err(existing) if existing == mutex_addr => {} // Already associated with same mutex.
+        Err(_) => return errno::EINVAL, // Different mutex -- POSIX violation.
     }
 
     // Capture seq before releasing mutex.
@@ -270,11 +272,13 @@ pub unsafe fn condvar_timedwait(
 
     // Validate mutex association invariant.
     let mutex_addr = mutex_futex_word as usize;
-    let stored = cv.assoc_mutex.load(Ordering::Acquire);
-    if stored == 0 {
-        cv.assoc_mutex.store(mutex_addr, Ordering::Release);
-    } else if stored != mutex_addr {
-        return errno::EINVAL;
+    match cv
+        .assoc_mutex
+        .compare_exchange(0, mutex_addr, Ordering::AcqRel, Ordering::Acquire)
+    {
+        Ok(_) => {} // Successfully associated this mutex.
+        Err(existing) if existing == mutex_addr => {} // Already associated with same mutex.
+        Err(_) => return errno::EINVAL, // Different mutex -- POSIX violation.
     }
 
     let expected_seq = cv.seq.load(Ordering::Acquire);
