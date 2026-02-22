@@ -539,21 +539,11 @@ impl MallocState {
             self.record_allocator_stats("realloc");
             return out;
         }
-        if new_size == 0 {
-            self.free(ptr);
-            self.record_lifecycle(
-                AllocatorLogLevel::Trace,
-                "realloc",
-                "realloc_zero_as_free",
-                Some(ptr),
-                Some(new_size),
-                None,
-                "freed",
-                "new_size_was_zero",
-            );
-            self.record_allocator_stats("realloc");
-            return None;
-        }
+        // realloc(ptr, 0): consistent with malloc(0) which returns a 1-byte
+        // allocation.  This avoids the asymmetry where malloc(0) returns
+        // non-NULL but realloc(ptr, 0) returned NULL, which programs interpret
+        // as OOM.
+        let new_size = if new_size == 0 { 1 } else { new_size };
 
         let old_record = self.active.get(&ptr).cloned();
         let old_size = old_record.as_ref().map_or(0, |r| r.user_size);
@@ -743,8 +733,14 @@ mod tests {
     fn test_realloc_zero_size() {
         let mut state = MallocState::new();
         let ptr = state.malloc(100).unwrap();
-        assert!(state.realloc(ptr, 0).is_none());
-        assert_eq!(state.active_count(), 0);
+        // POSIX: realloc(ptr, 0) should return a minimum-size allocation, not free.
+        let new_ptr = state.realloc(ptr, 0);
+        assert!(
+            new_ptr.is_some(),
+            "realloc(ptr, 0) should return a valid allocation"
+        );
+        assert_eq!(state.active_count(), 1);
+        state.free(new_ptr.unwrap());
     }
 
     #[test]
@@ -1004,11 +1000,7 @@ mod tests {
                     let ptr = live[idx];
                     let new_size = ((r >> 16) as usize) % (MAX_SMALL_SIZE * 2);
                     let next = state.realloc(ptr, new_size);
-                    if new_size == 0 {
-                        // realloc(ptr, 0) behaves like free(ptr)
-                        live.swap_remove(idx);
-                        assert!(next.is_none());
-                    } else if let Some(new_ptr) = next {
+                    if let Some(new_ptr) = next {
                         live[idx] = new_ptr;
                     }
                 }

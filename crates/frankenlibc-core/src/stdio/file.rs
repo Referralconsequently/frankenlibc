@@ -331,8 +331,14 @@ impl StdioStream {
     }
 
     /// Fill the read buffer with externally-fetched data.
-    pub fn fill_read_buffer(&mut self, data: &[u8]) {
-        self.buffer.fill(data);
+    /// Returns the number of bytes actually buffered.
+    pub fn fill_read_buffer(&mut self, data: &[u8]) -> usize {
+        self.buffer.fill(data)
+    }
+
+    /// Total capacity of the internal buffer.
+    pub fn buffer_capacity(&self) -> usize {
+        self.buffer.capacity()
     }
 
     /// Push a byte back (ungetc). Returns false if already one pushed back.

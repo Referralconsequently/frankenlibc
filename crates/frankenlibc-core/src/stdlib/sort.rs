@@ -16,10 +16,12 @@ where
         return;
     }
 
-    quicksort_safe(base, width, &compare);
+    // Depth limit: 2 * floor(log2(num)). Prevents O(n^2) stack depth.
+    let depth_limit = 2 * (usize::BITS - num.leading_zeros()) as usize;
+    quicksort_safe(base, width, &compare, depth_limit);
 }
 
-fn quicksort_safe<F>(buffer: &mut [u8], width: usize, compare: &F)
+fn quicksort_safe<F>(buffer: &mut [u8], width: usize, compare: &F, depth_limit: usize)
 where
     F: Fn(&[u8], &[u8]) -> i32,
 {
@@ -29,22 +31,24 @@ where
         return;
     }
 
+    // Fall back to insertion sort when recursion is too deep.
+    if depth_limit == 0 {
+        insertion_sort(buffer, width, compare);
+        return;
+    }
+
     // Partition
     let pivot_index = partition(buffer, width, compare);
 
-    // Split at pivot
+    // Split at pivot.
+    // Left is [0..pivot_index], right is [pivot_index..end].
+    // Pivot element is at right[0..width].
+    // Recurse on left and right[width..].
     let (left, right) = buffer.split_at_mut(pivot_index * width);
 
-    // Right part includes pivot at index 0?
-    // partition returns index of pivot.
-    // We split at pivot_index * width.
-    // Left is [0..pivot]. Right is [pivot..end].
-    // Pivot element is at right[0].
-    // We want to sort left and right[width..].
-
-    quicksort_safe(left, width, compare);
+    quicksort_safe(left, width, compare, depth_limit - 1);
     if right.len() > width {
-        quicksort_safe(&mut right[width..], width, compare);
+        quicksort_safe(&mut right[width..], width, compare, depth_limit - 1);
     }
 }
 
@@ -53,7 +57,31 @@ where
     F: Fn(&[u8], &[u8]) -> i32,
 {
     let count = buffer.len() / width;
-    let pivot_idx = count - 1;
+    let last = count - 1;
+
+    // Median-of-three pivot selection: compare first, middle, and last
+    // elements, then swap the median into the last position as pivot.
+    if count >= 3 {
+        let mid = count / 2;
+        // Sort the three candidates so the median ends up in position `mid`.
+        if compare(&buffer[0..width], &buffer[mid * width..(mid + 1) * width]) > 0 {
+            swap_chunks(buffer, 0, mid, width);
+        }
+        if compare(&buffer[0..width], &buffer[last * width..(last + 1) * width]) > 0 {
+            swap_chunks(buffer, 0, last, width);
+        }
+        if compare(
+            &buffer[mid * width..(mid + 1) * width],
+            &buffer[last * width..(last + 1) * width],
+        ) > 0
+        {
+            swap_chunks(buffer, mid, last, width);
+        }
+        // Now first <= mid <= last. Swap median (mid) into pivot position (last).
+        swap_chunks(buffer, mid, last, width);
+    }
+
+    let pivot_idx = last;
 
     let mut i = 0;
     for j in 0..pivot_idx {
@@ -90,6 +118,28 @@ fn swap_chunks(buffer: &mut [u8], i: usize, j: usize, width: usize) {
     };
 
     first.swap_with_slice(&mut tail[0..width]);
+}
+
+/// Insertion sort fallback for small or deeply-recursed subarrays.
+fn insertion_sort<F>(buffer: &mut [u8], width: usize, compare: &F)
+where
+    F: Fn(&[u8], &[u8]) -> i32,
+{
+    let count = buffer.len() / width;
+    for i in 1..count {
+        let mut j = i;
+        while j > 0 {
+            let cmp = compare(
+                &buffer[(j - 1) * width..j * width],
+                &buffer[j * width..(j + 1) * width],
+            );
+            if cmp <= 0 {
+                break;
+            }
+            swap_chunks(buffer, j - 1, j, width);
+            j -= 1;
+        }
+    }
 }
 
 /// Generic bsearch implementation.

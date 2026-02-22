@@ -418,27 +418,40 @@ pub fn format_float(value: f64, spec: &FormatSpec, buf: &mut Vec<u8>) {
     };
 
     // Handle special values.
-    if value.is_nan() {
-        let s = if spec.conversion.is_ascii_uppercase() {
-            b"NAN"
+    if value.is_nan() || value.is_infinite() {
+        let negative = value.is_sign_negative();
+        let sign_prefix: &[u8] = if negative {
+            b"-"
+        } else if spec.flags.force_sign {
+            b"+"
+        } else if spec.flags.space_sign {
+            b" "
         } else {
-            b"nan"
+            b""
         };
-        return format_float_special(s, spec, buf);
-    }
-    if value.is_infinite() {
-        let s = if spec.conversion.is_ascii_uppercase() {
-            if value > 0.0 {
-                b"INF" as &[u8]
+        let label: &[u8] = if value.is_nan() {
+            if spec.conversion.is_ascii_uppercase() {
+                b"NAN"
             } else {
-                b"-INF" as &[u8]
+                b"nan"
             }
-        } else if value > 0.0 {
-            b"inf" as &[u8]
+        } else if spec.conversion.is_ascii_uppercase() {
+            b"INF"
         } else {
-            b"-inf" as &[u8]
+            b"inf"
         };
-        return format_float_special(s, spec, buf);
+        let total_len = sign_prefix.len() + label.len();
+        let width = resolve_width(spec);
+        let pad_total = width.saturating_sub(total_len);
+        if !spec.flags.left_justify {
+            pad(buf, b' ', pad_total);
+        }
+        buf.extend_from_slice(sign_prefix);
+        buf.extend_from_slice(label);
+        if spec.flags.left_justify {
+            pad(buf, b' ', pad_total);
+        }
+        return;
     }
 
     let negative = value.is_sign_negative();
@@ -625,24 +638,10 @@ fn alt_prefix(spec: &FormatSpec) -> &'static [u8] {
 }
 
 fn pad(buf: &mut Vec<u8>, byte: u8, count: usize) {
-    // Bounded: maximum pad from width spec.
-    let count = count.min(4096);
-    for _ in 0..count {
-        buf.push(byte);
-    }
-}
-
-/// Format a special float value (nan/inf) with width/flags.
-fn format_float_special(s: &[u8], spec: &FormatSpec, buf: &mut Vec<u8>) {
-    let width = resolve_width(spec);
-    let pad_total = width.saturating_sub(s.len());
-    if !spec.flags.left_justify {
-        pad(buf, b' ', pad_total);
-    }
-    buf.extend_from_slice(s);
-    if spec.flags.left_justify {
-        pad(buf, b' ', pad_total);
-    }
+    // Bounded to prevent pathological allocations while allowing POSIX-conformant
+    // wide fields. 1 MiB is generous enough for any real-world format width.
+    let count = count.min(1_048_576);
+    buf.extend(std::iter::repeat_n(byte, count));
 }
 
 /// `%f` / `%F` formatting: fixed-point decimal.

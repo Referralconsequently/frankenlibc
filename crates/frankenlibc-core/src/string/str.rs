@@ -364,9 +364,9 @@ pub fn strndup_bytes(s: &[u8], n: usize) -> Vec<u8> {
 ///
 /// Equivalent to BSD `strsep`. Modifies `s` in place by writing a NUL at the delimiter.
 /// Returns `(token_start, next_start)` or `None` if `s` starts with NUL.
-pub fn strsep(s: &mut [u8], delim: &[u8]) -> Option<(usize, usize)> {
+pub fn strsep(s: &mut [u8], delim: &[u8]) -> Option<usize> {
     let s_len = strlen(s);
-    if s_len == 0 {
+    if s_len == 0 && s.first() == Some(&0) {
         return None;
     }
     let delim_len = strlen(delim);
@@ -375,11 +375,11 @@ pub fn strsep(s: &mut [u8], delim: &[u8]) -> Option<(usize, usize)> {
     for (i, byte) in s[..s_len].iter_mut().enumerate() {
         if delim_set.contains(byte) {
             *byte = 0;
-            return Some((0, i + 1));
+            return Some(i);
         }
     }
-    // No delimiter found - entire string is the token.
-    Some((0, s_len))
+    // No delimiter found.
+    None
 }
 
 /// Copies `src` into `dest` with size limit, always NUL-terminating.
@@ -625,8 +625,8 @@ mod tests {
     fn test_strsep_basic() {
         let mut s = *b"hello,world,end\0";
         let result = strsep(&mut s, b",\0");
-        assert_eq!(result, Some((0, 6))); // "hello" + NUL at index 5, next at 6
-        assert_eq!(s[5], 0); // comma replaced with NUL
+        assert_eq!(result, Some(5)); // comma replaced with NUL
+        assert_eq!(s[5], 0); 
     }
 
     #[test]

@@ -15,7 +15,14 @@ pub enum ConversionStatus {
 
 pub fn atoi(s: &[u8]) -> i32 {
     let (val, _, _) = strtol_impl(s, 10);
-    val as i32
+    // Clamp to i32 range (C atoi is equivalent to (int)strtol which clamps).
+    if val > i32::MAX as i64 {
+        i32::MAX
+    } else if val < i32::MIN as i64 {
+        i32::MIN
+    } else {
+        val as i32
+    }
 }
 
 pub fn atol(s: &[u8]) -> i64 {
@@ -275,6 +282,17 @@ pub fn strtoumax(s: &[u8], base: i32) -> (u64, usize) {
 // Floating-point conversion
 // ---------------------------------------------------------------------------
 
+/// Convert a single ASCII hex digit to its numeric value (0-15).
+/// Caller must ensure `c.is_ascii_hexdigit()`.
+fn hex_digit_val(c: u8) -> u8 {
+    match c {
+        b'0'..=b'9' => c - b'0',
+        b'a'..=b'f' => c - b'a' + 10,
+        b'A'..=b'F' => c - b'A' + 10,
+        _ => 0,
+    }
+}
+
 /// Parses a floating-point number from a NUL-terminated byte slice.
 ///
 /// Returns `(value, bytes_consumed)`. On failure, returns `(0.0, 0)`.
@@ -300,46 +318,102 @@ pub fn strtod_impl(s: &[u8]) -> (f64, usize) {
     // Check for "inf", "infinity", "nan" (case-insensitive)
     if i + 3 <= slice.len() {
         let word = &slice[i..i + 3];
+        let special_sign: f64 = if start < slice.len() && slice[start] == b'-' {
+            -1.0
+        } else {
+            1.0
+        };
         if word.eq_ignore_ascii_case(b"inf") {
             i += 3;
             if i + 5 <= slice.len() && slice[i..i + 5].eq_ignore_ascii_case(b"inity") {
                 i += 5;
             }
-            let sign: f64 = if start < slice.len() && slice[start] == b'-' {
-                -1.0
-            } else {
-                1.0
-            };
-            return (sign * f64::INFINITY, i);
+            return (special_sign * f64::INFINITY, i);
         }
         if word.eq_ignore_ascii_case(b"nan") {
             i += 3;
-            return (f64::NAN, i);
+            // Preserve sign bit: -NaN and +NaN are distinct per IEEE 754.
+            return (special_sign * f64::NAN, i);
         }
     }
 
     // Check for hex float (0x...)
-    // Note: Rust's core::str::parse::<f64>() does not support hex floats.
-    // A complete C99 strtod implementation would require a custom hex float parser.
-    // For now, we will parse the prefix, but `parse::<f64>()` will fail and return 0.0.
     let is_hex =
         i + 1 < slice.len() && slice[i] == b'0' && (slice[i + 1] == b'x' || slice[i + 1] == b'X');
+
     if is_hex {
-        i += 2;
+        // Parse hex floating-point: [sign] 0x hex_significand [p binary_exponent]
+        // sign was already consumed; `start` marks where sign (or first digit) began.
+        let negative = start < slice.len() && slice[start] == b'-';
+        i += 2; // skip "0x" / "0X"
+
+        // Parse integer part of hex significand
+        let mut significand: f64 = 0.0;
+        let mut has_digits = false;
+
+        while i < slice.len() && slice[i].is_ascii_hexdigit() {
+            has_digits = true;
+            significand = significand * 16.0 + hex_digit_val(slice[i]) as f64;
+            i += 1;
+        }
+
+        // Parse fractional part
+        let mut frac_hex_digits: i32 = 0;
+        if i < slice.len() && slice[i] == b'.' {
+            i += 1;
+            while i < slice.len() && slice[i].is_ascii_hexdigit() {
+                has_digits = true;
+                frac_hex_digits += 1;
+                significand = significand * 16.0 + hex_digit_val(slice[i]) as f64;
+                i += 1;
+            }
+        }
+
+        if !has_digits {
+            return (0.0, 0);
+        }
+
+        // Parse binary exponent (p/P followed by optional sign and decimal digits)
+        let mut bin_exp: i32 = 0;
+        if i < slice.len() && (slice[i] == b'p' || slice[i] == b'P') {
+            i += 1;
+            let mut exp_neg = false;
+            if i < slice.len() && slice[i] == b'+' {
+                i += 1;
+            } else if i < slice.len() && slice[i] == b'-' {
+                exp_neg = true;
+                i += 1;
+            }
+            while i < slice.len() && slice[i].is_ascii_digit() {
+                bin_exp = bin_exp
+                    .saturating_mul(10)
+                    .saturating_add((slice[i] - b'0') as i32);
+                i += 1;
+            }
+            if exp_neg {
+                bin_exp = -bin_exp;
+            }
+        }
+
+        // Each hex fractional digit shifts by 4 binary positions, so adjust.
+        // result = significand * 2^(bin_exp - 4 * frac_hex_digits)
+        let effective_exp = bin_exp - 4 * frac_hex_digits;
+        let val = libm::ldexp(significand, effective_exp);
+
+        let val = if negative { -val } else { val };
+        return (val, i);
     }
 
+    // Decimal float path
     // Consume digits, decimal point, exponent.
     let mut has_digits = false;
-    while i < slice.len() && (slice[i].is_ascii_digit() || (is_hex && slice[i].is_ascii_hexdigit()))
-    {
+    while i < slice.len() && slice[i].is_ascii_digit() {
         has_digits = true;
         i += 1;
     }
     if i < slice.len() && slice[i] == b'.' {
         i += 1;
-        while i < slice.len()
-            && (slice[i].is_ascii_digit() || (is_hex && slice[i].is_ascii_hexdigit()))
-        {
+        while i < slice.len() && slice[i].is_ascii_digit() {
             has_digits = true;
             i += 1;
         }
@@ -348,16 +422,19 @@ pub fn strtod_impl(s: &[u8]) -> (f64, usize) {
         return (0.0, 0);
     }
     // Exponent
-    if i < slice.len() {
-        let exp_char = if is_hex { b'p' } else { b'e' };
-        if slice[i].to_ascii_lowercase() == exp_char {
+    if i < slice.len() && (slice[i] == b'e' || slice[i] == b'E') {
+        let saved_i = i;
+        i += 1;
+        if i < slice.len() && (slice[i] == b'+' || slice[i] == b'-') {
             i += 1;
-            if i < slice.len() && (slice[i] == b'+' || slice[i] == b'-') {
-                i += 1;
-            }
-            while i < slice.len() && slice[i].is_ascii_digit() {
-                i += 1;
-            }
+        }
+        let mut has_exp_digits = false;
+        while i < slice.len() && slice[i].is_ascii_digit() {
+            has_exp_digits = true;
+            i += 1;
+        }
+        if !has_exp_digits {
+            i = saved_i;
         }
     }
 
@@ -560,6 +637,102 @@ mod tests {
         let (val, consumed) = strtof(b"3.25\0");
         assert!((val - 3.25_f32).abs() < 1e-5);
         assert_eq!(consumed, 4);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_basic() {
+        // 0x1p0 = 1.0 * 2^0 = 1.0
+        let (val, consumed) = strtod(b"0x1p0\0");
+        assert_eq!(val, 1.0);
+        assert_eq!(consumed, 5);
+
+        // 0x1p1 = 1.0 * 2^1 = 2.0
+        let (val, consumed) = strtod(b"0x1p1\0");
+        assert_eq!(val, 2.0);
+        assert_eq!(consumed, 5);
+
+        // 0x1p-3 = 1.0 * 2^-3 = 0.125
+        let (val, consumed) = strtod(b"0x1p-3\0");
+        assert_eq!(val, 0.125);
+        assert_eq!(consumed, 6);
+
+        // 0xAp0 = 10.0
+        let (val, _) = strtod(b"0xAp0\0");
+        assert_eq!(val, 10.0);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_fractional() {
+        // 0x1.0p0 = 1.0
+        let (val, consumed) = strtod(b"0x1.0p0\0");
+        assert_eq!(val, 1.0);
+        assert_eq!(consumed, 7);
+
+        // 0x1.8p0 = 1.5 (0x1 = 1, .8 = 8/16 = 0.5)
+        let (val, _) = strtod(b"0x1.8p0\0");
+        assert_eq!(val, 1.5);
+
+        // 0x1.fp10 = (1 + 15/16) * 2^10 = 1.9375 * 1024 = 1984.0
+        let (val, consumed) = strtod(b"0x1.fp10\0");
+        assert_eq!(val, 1984.0);
+        assert_eq!(consumed, 8);
+
+        // 0xA.Bp5 = (10 + 11/16) * 2^5 = 10.6875 * 32 = 342.0
+        let (val, consumed) = strtod(b"0xA.Bp5\0");
+        assert_eq!(val, 342.0);
+        assert_eq!(consumed, 7);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_negative() {
+        // -0x1.0p0 = -1.0
+        let (val, consumed) = strtod(b"-0x1.0p0\0");
+        assert_eq!(val, -1.0);
+        assert_eq!(consumed, 8);
+
+        // -0x1.fp10 = -1984.0
+        let (val, _) = strtod(b"-0x1.fp10\0");
+        assert_eq!(val, -1984.0);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_no_exponent() {
+        // 0xff = 255.0 (no p exponent, binary exponent defaults to 0)
+        let (val, consumed) = strtod(b"0xff\0");
+        assert_eq!(val, 255.0);
+        assert_eq!(consumed, 4);
+
+        // 0x1.8 = 1.5
+        let (val, consumed) = strtod(b"0x1.8\0");
+        assert_eq!(val, 1.5);
+        assert_eq!(consumed, 5);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_uppercase() {
+        // 0X1P10 = 1024.0
+        let (val, consumed) = strtod(b"0X1P10\0");
+        assert_eq!(val, 1024.0);
+        assert_eq!(consumed, 6);
+
+        // 0X1.FP10 = 1984.0
+        let (val, _) = strtod(b"0X1.FP10\0");
+        assert_eq!(val, 1984.0);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_trailing_chars() {
+        // "0x1.8p1xyz" should parse "0x1.8p1" = 3.0, consumed = 7
+        let (val, consumed) = strtod(b"0x1.8p1xyz\0");
+        assert_eq!(val, 3.0);
+        assert_eq!(consumed, 7);
+    }
+
+    #[test]
+    fn test_strtod_hex_float_with_leading_whitespace() {
+        let (val, consumed) = strtod(b"  0x1p2\0");
+        assert_eq!(val, 4.0);
+        assert_eq!(consumed, 7);
     }
 
     proptest! {

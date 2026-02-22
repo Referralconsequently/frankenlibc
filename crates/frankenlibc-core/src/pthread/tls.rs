@@ -31,6 +31,7 @@
 use crate::syscall;
 
 use crate::rcu;
+use core::ffi::c_void;
 use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -68,7 +69,7 @@ pub struct PthreadKey {
 #[derive(Clone, Copy)]
 struct KeySlot {
     in_use: bool,
-    destructor: Option<fn(u64)>,
+    destructor: Option<unsafe extern "C" fn(*mut c_void)>,
     /// Generation counter — incremented on create and delete to detect stale keys.
     seq: u32,
 }
@@ -276,7 +277,10 @@ fn write_tls_value(tid: i32, key_id: usize, value: u64) {
 /// when a thread exits with a non-null value for this key.
 ///
 /// Returns 0 on success, `EAGAIN` if all keys are in use.
-pub fn pthread_key_create(key: &mut PthreadKey, destructor: Option<fn(u64)>) -> i32 {
+pub fn pthread_key_create(
+    key: &mut PthreadKey,
+    destructor: Option<unsafe extern "C" fn(*mut c_void)>,
+) -> i32 {
     let _write_guard = KEY_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Read current registry via RCU and clone it.
@@ -436,7 +440,8 @@ pub(crate) fn teardown_thread_tls(tid: i32) {
         // Max 64 destructor calls per iteration to bound stack usage.
         // POSIX doesn't limit this but 64 is more than enough for practice.
         const MAX_CALLS: usize = 64;
-        let mut calls: [(u64, fn(u64)); MAX_CALLS] = [(0, noop_destructor); MAX_CALLS];
+        let mut calls: [(u64, unsafe extern "C" fn(*mut c_void)); MAX_CALLS] =
+            [(0, noop_destructor); MAX_CALLS];
 
         rcu::rcu_read_lock();
         unsafe {
@@ -469,7 +474,9 @@ pub(crate) fn teardown_thread_tls(tid: i32) {
 
         // Call destructors outside the RCU read section.
         for &(value, dtor) in calls.iter().take(call_count) {
-            dtor(value);
+            // SAFETY: dtor is the POSIX destructor registered via pthread_key_create.
+            // The value was stored as u64 but represents a *mut c_void pointer.
+            unsafe { dtor(value as *mut c_void) };
         }
     }
 
@@ -479,7 +486,7 @@ pub(crate) fn teardown_thread_tls(tid: i32) {
 }
 
 /// No-op destructor used as default in the calls array.
-fn noop_destructor(_: u64) {}
+unsafe extern "C" fn noop_destructor(_: *mut c_void) {}
 
 // ---------------------------------------------------------------------------
 // Test support: reset global state between tests
@@ -535,7 +542,7 @@ mod tests {
     }
 
     /// Helper: create a key, return it.
-    fn create_key(dtor: Option<fn(u64)>) -> PthreadKey {
+    fn create_key(dtor: Option<unsafe extern "C" fn(*mut c_void)>) -> PthreadKey {
         let mut key = PthreadKey::default();
         let rc = pthread_key_create(&mut key, dtor);
         assert_eq!(rc, 0, "pthread_key_create failed");
@@ -686,7 +693,7 @@ mod tests {
         static DTOR_COUNT: AtomicU32 = AtomicU32::new(0);
         DTOR_COUNT.store(0, AtomicOrdering::SeqCst);
 
-        fn dtor(_val: u64) {
+        unsafe extern "C" fn dtor(_val: *mut c_void) {
             DTOR_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
         }
 
@@ -709,14 +716,14 @@ mod tests {
         ITER_COUNT.store(0, AtomicOrdering::SeqCst);
         static KEY_ID: AtomicU32 = AtomicU32::new(0);
 
-        fn dtor_reset(val: u64) {
+        unsafe extern "C" fn dtor_reset(val: *mut c_void) {
             let count = ITER_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
             if count < 2 {
                 // Re-set the value so teardown iterates again.
                 let key = PthreadKey {
                     id: KEY_ID.load(AtomicOrdering::SeqCst),
                 };
-                let _ = pthread_setspecific(key, val + 1);
+                let _ = pthread_setspecific(key, val as u64 + 1);
             }
         }
 
@@ -798,10 +805,10 @@ mod tests {
         DTOR1_COUNT.store(0, AtomicOrdering::SeqCst);
         DTOR2_COUNT.store(0, AtomicOrdering::SeqCst);
 
-        fn dtor1(_: u64) {
+        unsafe extern "C" fn dtor1(_: *mut c_void) {
             DTOR1_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
         }
-        fn dtor2(_: u64) {
+        unsafe extern "C" fn dtor2(_: *mut c_void) {
             DTOR2_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
         }
 
@@ -992,7 +999,7 @@ mod tests {
         let _g = lock_and_reset();
         static DTOR_COUNT: AtomicU32 = AtomicU32::new(0);
         DTOR_COUNT.store(0, AtomicOrdering::SeqCst);
-        fn dtor(_: u64) {
+        unsafe extern "C" fn dtor(_: *mut c_void) {
             DTOR_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
         }
 
@@ -1019,7 +1026,7 @@ mod tests {
         let _g = lock_and_reset();
         static DTOR_COUNT: AtomicU32 = AtomicU32::new(0);
         DTOR_COUNT.store(0, AtomicOrdering::SeqCst);
-        fn dtor(_: u64) {
+        unsafe extern "C" fn dtor(_: *mut c_void) {
             DTOR_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
         }
 
@@ -1041,7 +1048,7 @@ mod tests {
         let _g = lock_and_reset();
         static DTOR_SUM: AtomicU32 = AtomicU32::new(0);
         DTOR_SUM.store(0, AtomicOrdering::SeqCst);
-        fn dtor(val: u64) {
+        unsafe extern "C" fn dtor(val: *mut c_void) {
             DTOR_SUM.fetch_add(val as u32, AtomicOrdering::SeqCst);
         }
 
@@ -1071,7 +1078,7 @@ mod tests {
         DTOR_CALLS.store(0, AtomicOrdering::SeqCst);
 
         // This destructor always re-sets the value, forcing iteration.
-        fn dtor_always_reset(_val: u64) {
+        unsafe extern "C" fn dtor_always_reset(_val: *mut c_void) {
             let count = DTOR_CALLS.fetch_add(1, AtomicOrdering::SeqCst);
             // Always re-set, even past the iteration limit.
             let key = PthreadKey {
@@ -1108,7 +1115,7 @@ mod tests {
         let _g = lock_and_reset();
         static WITH_DTOR_COUNT: AtomicU32 = AtomicU32::new(0);
         WITH_DTOR_COUNT.store(0, AtomicOrdering::SeqCst);
-        fn dtor(_: u64) {
+        unsafe extern "C" fn dtor(_: *mut c_void) {
             WITH_DTOR_COUNT.fetch_add(1, AtomicOrdering::SeqCst);
         }
 
@@ -1137,8 +1144,8 @@ mod tests {
         let _g = lock_and_reset();
         static RECEIVED_VALUE: AtomicU64 = AtomicU64::new(0);
         RECEIVED_VALUE.store(0, AtomicOrdering::SeqCst);
-        fn dtor(val: u64) {
-            RECEIVED_VALUE.store(val, AtomicOrdering::SeqCst);
+        unsafe extern "C" fn dtor(val: *mut c_void) {
+            RECEIVED_VALUE.store(val as u64, AtomicOrdering::SeqCst);
         }
 
         let key = create_key(Some(dtor));
@@ -1158,8 +1165,8 @@ mod tests {
         static OBSERVED_VALUES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
         static KEY_SLOT2: AtomicU32 = AtomicU32::new(0);
 
-        fn dtor_check_cleared(val: u64) {
-            OBSERVED_VALUES.lock().unwrap().push(val);
+        unsafe extern "C" fn dtor_check_cleared(val: *mut c_void) {
+            OBSERVED_VALUES.lock().unwrap().push(val as u64);
             // Read the value for this key — it should already be cleared to 0.
             let key = PthreadKey {
                 id: KEY_SLOT2.load(AtomicOrdering::SeqCst),

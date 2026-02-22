@@ -178,12 +178,13 @@ impl StreamBuffer {
     }
 
     /// Fill the read buffer with data from an external source.
-    /// Resets position to 0.
-    pub fn fill(&mut self, data: &[u8]) {
+    /// Resets position to 0. Returns the number of bytes accepted.
+    pub fn fill(&mut self, data: &[u8]) -> usize {
         let take = data.len().min(self.data.len());
         self.data[..take].copy_from_slice(&data[..take]);
         self.pos = 0;
         self.filled = take;
+        take
     }
 
     /// Push a single byte back into the read buffer (for ungetc).

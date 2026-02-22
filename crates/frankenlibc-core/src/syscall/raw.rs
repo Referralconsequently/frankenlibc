@@ -328,9 +328,6 @@ pub unsafe fn clone_thread_asm(
     // parent path (rax>0) falls through to label 2.
     unsafe {
         asm!(
-            // Move child_tid and tls into the registers clone expects
-            "mov r10, {ctid}",
-            "mov r8, {tls}",
             // SYS_clone = 56
             "mov eax, 56",
             "syscall",
@@ -355,11 +352,11 @@ pub unsafe fn clone_thread_asm(
             // ===== Parent path =====
             "2:",
             // rax = child TID (positive) or -errno (negative)
-            ctid = in(reg) child_tid,
-            tls = in(reg) tls,
             in("rdi") flags,
             in("rsi") child_sp,
             in("rdx") parent_tid,
+            in("r10") child_tid,
+            in("r8") tls,
             lateout("rax") ret,
             lateout("rcx") _,     // clobbered by syscall
             lateout("r11") _,     // clobbered by syscall

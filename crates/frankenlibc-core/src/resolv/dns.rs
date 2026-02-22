@@ -417,6 +417,10 @@ pub fn encode_domain_name(name: &[u8]) -> Vec<u8> {
     result
 }
 
+/// Maximum number of compression pointer hops allowed before aborting.
+/// This prevents stack overflow from pointer loops (e.g., mutual back-references).
+const MAX_POINTER_HOPS: usize = 64;
+
 /// Decode a domain name from DNS wire format, handling compression.
 ///
 /// Returns the decoded name (as "example.com") and bytes consumed.
@@ -443,8 +447,8 @@ fn decode_domain_name(buf: &[u8], full_msg: &[u8]) -> Option<(Vec<u8>, usize)> {
             }
             let offset = (((len & 0x3F) as usize) << 8) | (buf[pos + 1] as usize);
 
-            // Follow the pointer in full_msg
-            return decode_domain_name_at_offset(full_msg, offset, &mut result)
+            // Follow the pointer in full_msg, starting hop counter at 1
+            return decode_domain_name_at_offset(full_msg, offset, &mut result, 1)
                 .map(|_| (result, pos + 2));
         }
 
@@ -463,7 +467,21 @@ fn decode_domain_name(buf: &[u8], full_msg: &[u8]) -> Option<(Vec<u8>, usize)> {
 }
 
 /// Helper for decoding a name at a specific offset (for compression).
-fn decode_domain_name_at_offset(msg: &[u8], offset: usize, result: &mut Vec<u8>) -> Option<()> {
+///
+/// `pointer_hops` tracks the total number of compression pointers followed
+/// across all recursive calls. This prevents stack overflow from pointer loops
+/// (e.g., offset A -> offset B -> offset A) that the simple `new_offset >= pos`
+/// check cannot catch.
+fn decode_domain_name_at_offset(
+    msg: &[u8],
+    offset: usize,
+    result: &mut Vec<u8>,
+    pointer_hops: usize,
+) -> Option<()> {
+    if pointer_hops > MAX_POINTER_HOPS {
+        return None;
+    }
+
     let mut pos = offset;
     let mut depth = 0;
 
@@ -487,7 +505,7 @@ fn decode_domain_name_at_offset(msg: &[u8], offset: usize, result: &mut Vec<u8>)
                 // Forward pointer would cause infinite loop
                 return None;
             }
-            return decode_domain_name_at_offset(msg, new_offset, result);
+            return decode_domain_name_at_offset(msg, new_offset, result, pointer_hops + 1);
         }
 
         let label_len = len as usize;

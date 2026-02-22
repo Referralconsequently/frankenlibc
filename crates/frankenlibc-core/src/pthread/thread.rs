@@ -255,26 +255,32 @@ unsafe extern "C" fn thread_trampoline(args_raw: usize) -> usize {
         }
         Err(THREAD_DETACHED) => {
             // Thread was detached while running. Free the heap-allocated
-            // handle. The stack will be reclaimed by the OS on process exit.
+            // handle and reclaim the stack.
             //
             // CRITICAL: Before freeing the handle, tell the kernel not to
             // write to the TID address on thread exit. Otherwise
             // CLONE_CHILD_CLEARTID would write 0 to freed memory.
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
             {
-                // Disable CLONE_CHILD_CLEARTID so the kernel won't write to
-                // the freed handle's TID field on thread exit.
                 syscall::sys_set_tid_address(0);
             }
+
+            // Save stack info before freeing the handle.
+            let stack_base = handle.stack_base;
+            let stack_total_size = handle.stack_total_size;
 
             // SAFETY: handle_ptr was created via Box::into_raw in create_thread,
             // and no other thread will access it after detach.
             unsafe { drop(Box::from_raw(handle_ptr)) };
 
-            // Fall through — asm trampoline will call sys_exit(0).
-            //
-            // TODO(bd-rth1): add signal masking + munmap to safely reclaim
-            // detached thread stacks without SIGSEGV risk.
+            // Unmap our own stack and exit in a single register-only sequence.
+            // This prevents the 2 MiB stack leak for detached threads.
+            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+            if stack_base != 0 && stack_total_size != 0 {
+                unsafe { unmapself_and_exit(stack_base, stack_total_size) };
+            }
+
+            // Fallback: exit without stack reclamation (non-x86_64 or zero stack).
         }
         Err(_) => {
             // Unexpected state — shouldn't happen with correct usage.
@@ -284,6 +290,75 @@ unsafe extern "C" fn thread_trampoline(args_raw: usize) -> usize {
 
     // Return value becomes the exit status (asm trampoline calls sys_exit with it).
     0
+}
+
+// ---------------------------------------------------------------------------
+// Stack reclamation for detached threads
+// ---------------------------------------------------------------------------
+
+/// Unmap the thread's own stack and exit immediately.
+///
+/// This is the only safe way to reclaim a detached thread's stack: by doing
+/// the munmap and exit as two consecutive syscalls with no stack access in
+/// between. Equivalent to musl's `__unmapself`.
+///
+/// # Safety
+///
+/// - `stack_base` must be the base of the current thread's mmap'd stack region.
+/// - `stack_total_size` must be the total size of that region.
+/// - This function never returns.
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+unsafe fn unmapself_and_exit(stack_base: usize, stack_total_size: usize) -> ! {
+    // SYS_munmap = 11, SYS_exit = 60 on x86_64.
+    // All arguments go into registers — no stack access after munmap.
+    // SAFETY: This is the only safe way to unmap our own stack — two
+    // consecutive register-only syscalls with no intervening stack access.
+    unsafe {
+        core::arch::asm!(
+            "syscall",           // munmap(stack_base, stack_total_size)
+            "xor edi, edi",      // exit_code = 0
+            "mov eax, 60",       // SYS_exit
+            "syscall",           // exit(0)
+            in("rax") 11u64,     // SYS_munmap
+            in("rdi") stack_base,
+            in("rsi") stack_total_size,
+            options(noreturn)
+        );
+    }
+}
+
+/// Unmap the thread's own stack and exit immediately.
+///
+/// This is the only safe way to reclaim a detached thread's stack: by doing
+/// the munmap and exit as two consecutive syscalls with no stack access in
+/// between. Equivalent to musl's `__unmapself`.
+///
+/// # Safety
+///
+/// - `stack_base` must be the base of the current thread's mmap'd stack region.
+/// - `stack_total_size` must be the total size of that region.
+/// - This function never returns.
+#[cfg(target_arch = "aarch64")]
+#[allow(unsafe_code)]
+unsafe fn unmapself_and_exit(stack_base: usize, stack_total_size: usize) -> ! {
+    // SYS_munmap = 215, SYS_exit = 93 on aarch64.
+    // All arguments go into registers — no stack access after munmap.
+    // SAFETY: This is the only safe way to unmap our own stack — two
+    // consecutive register-only syscalls with no intervening stack access.
+    unsafe {
+        core::arch::asm!(
+            "mov x8, 215",       // SYS_munmap
+            "svc 0",             // munmap(stack_base, stack_total_size)
+            "mov x0, 0",         // exit_code = 0
+            "mov x8, 93",        // SYS_exit
+            "svc 0",             // exit(0)
+            "brk #0",            // unreachable
+            in("x0") stack_base,
+            in("x1") stack_total_size,
+            options(noreturn)
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +373,7 @@ unsafe extern "C" fn thread_trampoline(args_raw: usize) -> usize {
 /// - `usable_top` is the top of the usable stack (stack grows down)
 ///
 /// Returns `Err(errno)` on failure.
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 #[allow(unsafe_code)]
 fn allocate_thread_stack(stack_size: usize) -> Result<(usize, usize, usize), i32> {
     let total_size = GUARD_PAGE_SIZE
@@ -334,7 +409,7 @@ fn allocate_thread_stack(stack_size: usize) -> Result<(usize, usize, usize), i32
 }
 
 /// Free a thread stack allocated by `allocate_thread_stack`.
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 #[allow(unsafe_code)]
 fn free_thread_stack(base: usize, total_size: usize) {
     // SAFETY: base/total_size were returned by allocate_thread_stack (mmap).
@@ -368,9 +443,19 @@ fn free_thread_stack(base: usize, total_size: usize) {
 /// * `arg` must be valid for the lifetime of the new thread.
 #[cfg(target_arch = "x86_64")]
 #[allow(unsafe_code)]
-pub unsafe fn create_thread(start_routine: usize, arg: usize) -> Result<*mut ThreadHandle, i32> {
+pub unsafe fn create_thread(
+    start_routine: usize,
+    arg: usize,
+    stack_size: usize,
+) -> Result<*mut ThreadHandle, i32> {
+    // Use the requested stack size, or the default if 0.
+    let actual_stack_size = if stack_size > 0 {
+        stack_size
+    } else {
+        DEFAULT_STACK_SIZE
+    };
     // Allocate stack.
-    let (stack_base, stack_total_size, stack_top) = allocate_thread_stack(DEFAULT_STACK_SIZE)?;
+    let (stack_base, stack_total_size, stack_top) = allocate_thread_stack(actual_stack_size)?;
 
     // Allocate the ThreadHandle on the heap (Box).
     let handle = Box::new(ThreadHandle {
@@ -478,7 +563,7 @@ pub unsafe fn create_thread(start_routine: usize, arg: usize) -> Result<*mut Thr
 /// Wait for the child thread to signal startup completion.
 ///
 /// Uses futex wait on `handle.started` until it becomes non-zero.
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 #[allow(unsafe_code)]
 fn wait_for_startup(handle_ptr: *mut ThreadHandle) {
     // SAFETY: handle_ptr is valid (we just allocated it).
@@ -789,7 +874,7 @@ mod tests {
     fn create_and_join_thread_returns_value() {
         let sentinel: usize = 0xDEAD_BEEF;
         // SAFETY: echo_start is a valid function, sentinel is a plain integer.
-        let handle = unsafe { create_thread(echo_start as *const () as usize, sentinel) };
+        let handle = unsafe { create_thread(echo_start as *const () as usize, sentinel, 0) };
         assert!(handle.is_ok(), "create_thread failed: {:?}", handle.err());
         let handle_ptr = handle.unwrap();
 
@@ -809,7 +894,7 @@ mod tests {
         let flag_ptr = &*flag as *const AtomicU32 as usize;
 
         // SAFETY: signal_start is valid, flag_ptr points to a valid AtomicU32.
-        let handle = unsafe { create_thread(signal_start as *const () as usize, flag_ptr) };
+        let handle = unsafe { create_thread(signal_start as *const () as usize, flag_ptr, 0) };
         assert!(handle.is_ok());
         let handle_ptr = handle.unwrap();
 
@@ -828,7 +913,7 @@ mod tests {
         let mut handles = Vec::new();
         for i in 0..4u64 {
             // SAFETY: echo_start is valid, i is a plain integer.
-            let handle = unsafe { create_thread(echo_start as *const () as usize, i as usize) };
+            let handle = unsafe { create_thread(echo_start as *const () as usize, i as usize, 0) };
             assert!(handle.is_ok(), "create_thread({i}) failed");
             handles.push(handle.unwrap());
         }
@@ -847,7 +932,7 @@ mod tests {
         let flag_ptr = &*flag as *const AtomicU32 as usize;
 
         // SAFETY: signal_start is valid.
-        let handle = unsafe { create_thread(signal_start as *const () as usize, flag_ptr) };
+        let handle = unsafe { create_thread(signal_start as *const () as usize, flag_ptr, 0) };
         assert!(handle.is_ok());
         let handle_ptr = handle.unwrap();
 
@@ -880,7 +965,7 @@ mod tests {
         let flag = Box::new(AtomicU32::new(0));
         let flag_ptr = &*flag as *const AtomicU32 as usize;
         let handle =
-            unsafe { create_thread(signal_start as *const () as usize, flag_ptr) }.unwrap();
+            unsafe { create_thread(signal_start as *const () as usize, flag_ptr, 0) }.unwrap();
 
         // Detach the thread.
         // SAFETY: handle is valid.
@@ -901,7 +986,7 @@ mod tests {
     #[test]
     fn detach_after_join_not_possible() {
         // Create and join a thread, then verify we can't detach it.
-        let handle = unsafe { create_thread(echo_start as *const () as usize, 99) }.unwrap();
+        let handle = unsafe { create_thread(echo_start as *const () as usize, 99, 0) }.unwrap();
 
         // SAFETY: handle is valid.
         let join_result = unsafe { join_thread(handle) };
@@ -917,7 +1002,7 @@ mod tests {
     #[test]
     fn detach_finished_thread_cleans_up_immediately() {
         // Create a thread that finishes quickly.
-        let handle = unsafe { create_thread(echo_start as *const () as usize, 0) }.unwrap();
+        let handle = unsafe { create_thread(echo_start as *const () as usize, 0, 0) }.unwrap();
 
         // Wait for it to finish.
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -947,7 +1032,7 @@ mod tests {
     #[test]
     fn detach_running_thread_self_cleans_on_exit() {
         // Create a thread that runs for a bit.
-        let handle = unsafe { create_thread(slow_start as *const () as usize, 20) }.unwrap();
+        let handle = unsafe { create_thread(slow_start as *const () as usize, 20, 0) }.unwrap();
 
         // Detach while it's still running.
         // SAFETY: handle is valid.
