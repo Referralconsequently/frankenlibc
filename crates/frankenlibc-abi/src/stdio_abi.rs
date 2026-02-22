@@ -710,7 +710,14 @@ pub unsafe extern "C" fn fseek(stream: *mut c_void, offset: c_long, whence: c_in
     }
 
     let (target_off, target_whence) = if whence == libc::SEEK_CUR {
-        (s.offset().saturating_add(offset), libc::SEEK_SET)
+        match s.offset().checked_add(offset) {
+            Some(off) => (off, libc::SEEK_SET),
+            None => {
+                unsafe { set_abi_errno(errno::EOVERFLOW) };
+                runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+                return -1;
+            }
+        }
     } else {
         (offset, whence)
     };
@@ -950,17 +957,7 @@ pub unsafe extern "C" fn puts(s: *const c_char) -> c_int {
 /// POSIX `getchar`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getchar() -> c_int {
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, 0, 1, true, false, 0);
-    if matches!(decision.action, MembraneAction::Deny) {
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
-        return libc::EOF;
-    }
-
-    let mut byte = [0_u8; 1];
-    let rc = unsafe { sys_read_fd(libc::STDIN_FILENO, byte.as_mut_ptr().cast(), 1) };
-    let adverse = rc != 1;
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, adverse);
-    if adverse { libc::EOF } else { byte[0] as c_int }
+    unsafe { fgetc(STDIN_SENTINEL as *mut c_void) }
 }
 
 // ---------------------------------------------------------------------------
