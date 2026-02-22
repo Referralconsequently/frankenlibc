@@ -1,5 +1,9 @@
 # FrankenLibC
 
+<div align="center">
+  <img src="franken_libc_illustration.webp" alt="FrankenLibC - Safety-focused glibc interposition layer in Rust">
+</div>
+
 **Safety-focused glibc interposition layer in Rust with incremental replacement kernels.**
 
 C programs call `malloc`, `memcpy`, `strlen`, `printf` every microsecond and trust that nothing goes wrong. FrankenLibC places a Transparent Safety Membrane at that ABI boundary and incrementally replaces host-libc behavior with Rust-owned implementations, raw syscall veneers, and deterministic fallback contracts.
