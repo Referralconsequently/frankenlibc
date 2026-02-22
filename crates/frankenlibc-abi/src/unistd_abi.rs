@@ -1171,6 +1171,73 @@ pub unsafe extern "C" fn openat(
     rc
 }
 
+/// Linux `name_to_handle_at` — translate pathname to an opaque file handle.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn name_to_handle_at(
+    dirfd: c_int,
+    path: *const c_char,
+    handle: *mut c_void,
+    mount_id: *mut c_int,
+    flags: c_int,
+) -> c_int {
+    let (_, decision) = runtime_policy::decide(ApiFamily::IoFd, path as usize, 0, true, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EPERM) };
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
+        return -1;
+    }
+    if path.is_null() || handle.is_null() || mount_id.is_null() {
+        unsafe { set_abi_errno(errno::EFAULT) };
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
+        return -1;
+    }
+
+    let rc = unsafe {
+        syscall_ret_int(
+            libc::syscall(
+                libc::SYS_name_to_handle_at,
+                dirfd,
+                path,
+                handle,
+                mount_id,
+                flags,
+            ),
+            errno::ENOENT,
+        )
+    };
+    runtime_policy::observe(ApiFamily::IoFd, decision.profile, 15, rc < 0);
+    rc
+}
+
+/// Linux `open_by_handle_at` — open by handle returned from `name_to_handle_at`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn open_by_handle_at(
+    mount_fd: c_int,
+    handle: *mut c_void,
+    flags: c_int,
+) -> c_int {
+    let (_, decision) = runtime_policy::decide(ApiFamily::IoFd, handle as usize, 0, true, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EPERM) };
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
+        return -1;
+    }
+    if handle.is_null() {
+        unsafe { set_abi_errno(errno::EFAULT) };
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
+        return -1;
+    }
+
+    let rc = unsafe {
+        syscall_ret_int(
+            libc::syscall(libc::SYS_open_by_handle_at, mount_fd, handle, flags),
+            errno::EBADF,
+        )
+    };
+    runtime_policy::observe(ApiFamily::IoFd, decision.profile, 12, rc < 0);
+    rc
+}
+
 /// POSIX `fstatat` — get file status relative to a directory file descriptor.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn fstatat(

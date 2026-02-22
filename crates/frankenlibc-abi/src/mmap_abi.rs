@@ -294,6 +294,19 @@ pub unsafe extern "C" fn mlock(addr: *const c_void, len: usize) -> c_int {
     rc
 }
 
+/// Linux `mlock2` — lock a range of memory with additional flags.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mlock2(addr: *const c_void, len: usize, flags: c_int) -> c_int {
+    let rc = unsafe { libc::syscall(libc::SYS_mlock2 as c_long, addr, len, flags) as c_int };
+    if rc < 0 {
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::ENOMEM);
+        unsafe { set_abi_errno(e) };
+    }
+    rc
+}
+
 /// POSIX `munlock` — unlock a range of memory.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn munlock(addr: *const c_void, len: usize) -> c_int {
