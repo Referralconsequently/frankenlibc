@@ -798,7 +798,7 @@ fn futex_rwlock_wrlock(word: &AtomicI32) -> c_int {
             return 0;
         }
 
-        let state = word.load(Ordering::Relaxed);
+        let state = word.load(Ordering::Acquire);
 
         #[cfg(target_os = "linux")]
         {
@@ -1542,13 +1542,29 @@ pub unsafe extern "C" fn pthread_once(
     ) {
         Ok(_) => {
             // We won; run the init routine.
-            unsafe { routine() };
-            state.store(ONCE_DONE, Ordering::Release);
-            #[cfg(target_os = "linux")]
-            {
-                let _ = futex_wake_private(state, i32::MAX);
+            // Use catch_unwind to prevent permanent deadlock if routine panics.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                unsafe { routine() };
+            }));
+            match result {
+                Ok(()) => {
+                    state.store(ONCE_DONE, Ordering::Release);
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = futex_wake_private(state, i32::MAX);
+                    }
+                    0
+                }
+                Err(_) => {
+                    // Reset to ONCE_INIT so another thread can retry.
+                    state.store(ONCE_INIT, Ordering::Release);
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = futex_wake_private(state, i32::MAX);
+                    }
+                    libc::EINVAL
+                }
             }
-            0
         }
         Err(current) if current == ONCE_DONE => 0,
         Err(_) => {

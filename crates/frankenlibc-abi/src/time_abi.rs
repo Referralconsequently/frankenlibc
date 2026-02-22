@@ -39,7 +39,7 @@ pub unsafe extern "C" fn time(tloc: *mut i64) -> i64 {
     if rc != 0 {
         return -1;
     }
-    let secs = ts.tv_sec as i64;
+    let secs = ts.tv_sec;
     if !tloc.is_null() {
         unsafe { *tloc = secs };
     }
@@ -80,8 +80,7 @@ pub unsafe extern "C" fn clock() -> i64 {
     if rc != 0 {
         return -1;
     }
-    ts.tv_sec as i64 * time_core::CLOCKS_PER_SEC
-        + ts.tv_nsec as i64 / (1_000_000_000 / time_core::CLOCKS_PER_SEC)
+    ts.tv_sec * time_core::CLOCKS_PER_SEC + ts.tv_nsec / (1_000_000_000 / time_core::CLOCKS_PER_SEC)
 }
 
 // ---------------------------------------------------------------------------
@@ -306,7 +305,14 @@ pub unsafe extern "C" fn clock_nanosleep(
         ) as c_int
     };
     // clock_nanosleep returns the error number directly (not via errno).
-    rc
+    // libc::syscall returns -1 on error and sets errno, so convert.
+    if rc < 0 {
+        std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::EINVAL)
+    } else {
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------

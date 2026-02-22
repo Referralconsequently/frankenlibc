@@ -1031,7 +1031,8 @@ pub unsafe extern "C" fn wmemcmp(s1: *const u32, s2: *const u32, n: usize) -> c_
         let mut res = 0;
         for i in 0..cmp_len {
             if a[i] != b[i] {
-                res = if a[i] < b[i] { -1 } else { 1 };
+                // wchar_t is signed (i32) on Linux; compare as signed values.
+                res = if (a[i] as i32) < (b[i] as i32) { -1 } else { 1 };
                 break;
             }
         }

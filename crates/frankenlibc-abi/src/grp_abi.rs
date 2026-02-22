@@ -12,9 +12,16 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::time::UNIX_EPOCH;
 
+use frankenlibc_core::errno;
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
 use crate::runtime_policy;
+
+#[inline]
+unsafe fn set_abi_errno(val: c_int) {
+    let p = unsafe { super::errno_abi::__errno_location() };
+    unsafe { *p = val };
+}
 
 const GROUP_PATH: &str = "/etc/group";
 const GROUP_PATH_ENV: &str = "FRANKENLIBC_GROUP_PATH";
@@ -289,6 +296,7 @@ pub unsafe extern "C" fn getgrnam(name: *const c_char) -> *mut libc::group {
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Resolver, name as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
         return ptr::null_mut();
     }
@@ -305,6 +313,7 @@ pub unsafe extern "C" fn getgrnam(name: *const c_char) -> *mut libc::group {
 pub unsafe extern "C" fn getgrgid(gid: libc::gid_t) -> *mut libc::group {
     let (_, decision) = runtime_policy::decide(ApiFamily::Resolver, 0, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
         return ptr::null_mut();
     }

@@ -10,6 +10,7 @@
 
 use std::cell::Cell;
 use std::ffi::{c_int, c_void};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use frankenlibc_core::errno::{EINVAL, ENOMEM};
 use frankenlibc_membrane::arena::{AllocationArena, FreeResult};
@@ -18,6 +19,12 @@ use frankenlibc_membrane::heal::{HealingAction, global_healing_policy};
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
 use crate::runtime_policy;
+
+#[inline]
+unsafe fn set_abi_errno(val: c_int) {
+    let p = unsafe { super::errno_abi::__errno_location() };
+    unsafe { *p = val };
+}
 
 unsafe extern "C" {
     #[link_name = "__libc_malloc@GLIBC_2.2.5"]
@@ -74,6 +81,7 @@ unsafe fn native_libc_posix_memalign(
     if ptr.is_null() {
         return ENOMEM;
     }
+    fallback_insert(ptr);
     // SAFETY: memptr non-null and caller-provided writable out pointer.
     unsafe { *memptr = ptr };
     0
@@ -93,6 +101,137 @@ unsafe fn native_libc_aligned_alloc(alignment: usize, size: usize) -> *mut c_voi
 
 thread_local! {
     static ALLOCATOR_REENTRY_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+// Native-fallback allocation tracking.
+//
+// Some bootstrap/reentrant paths intentionally allocate via native libc
+// instead of the membrane arena. These pointers must later use native
+// realloc/free semantics to preserve C behavior.
+const FALLBACK_ALLOC_TABLE_SLOTS: usize = 4096;
+const FALLBACK_SLOT_EMPTY: usize = 0;
+const FALLBACK_SLOT_TOMBSTONE: usize = 1;
+static FALLBACK_ALLOC_PTRS: [AtomicUsize; FALLBACK_ALLOC_TABLE_SLOTS] =
+    [const { AtomicUsize::new(FALLBACK_SLOT_EMPTY) }; FALLBACK_ALLOC_TABLE_SLOTS];
+
+#[inline]
+fn fallback_key(ptr: *mut c_void) -> Option<usize> {
+    let key = ptr as usize;
+    if key <= FALLBACK_SLOT_TOMBSTONE {
+        None
+    } else {
+        Some(key)
+    }
+}
+
+#[inline]
+fn fallback_start_index(key: usize) -> usize {
+    key.wrapping_mul(0x9e37_79b9_7f4a_7c15) % FALLBACK_ALLOC_TABLE_SLOTS
+}
+
+fn fallback_contains(ptr: *mut c_void) -> bool {
+    let Some(key) = fallback_key(ptr) else {
+        return false;
+    };
+    let start = fallback_start_index(key);
+    for i in 0..FALLBACK_ALLOC_TABLE_SLOTS {
+        let idx = (start + i) % FALLBACK_ALLOC_TABLE_SLOTS;
+        let slot = FALLBACK_ALLOC_PTRS[idx].load(Ordering::Acquire);
+        if slot == key {
+            return true;
+        }
+        if slot == FALLBACK_SLOT_EMPTY {
+            return false;
+        }
+    }
+    false
+}
+
+fn fallback_insert(ptr: *mut c_void) {
+    let Some(key) = fallback_key(ptr) else {
+        return;
+    };
+    let start = fallback_start_index(key);
+    let mut first_tombstone: Option<usize> = None;
+    for i in 0..FALLBACK_ALLOC_TABLE_SLOTS {
+        let idx = (start + i) % FALLBACK_ALLOC_TABLE_SLOTS;
+        let slot = FALLBACK_ALLOC_PTRS[idx].load(Ordering::Acquire);
+        if slot == key {
+            return;
+        }
+        if slot == FALLBACK_SLOT_TOMBSTONE {
+            if first_tombstone.is_none() {
+                first_tombstone = Some(idx);
+            }
+            continue;
+        }
+        if slot == FALLBACK_SLOT_EMPTY {
+            if let Some(tomb_idx) = first_tombstone {
+                if FALLBACK_ALLOC_PTRS[tomb_idx]
+                    .compare_exchange(
+                        FALLBACK_SLOT_TOMBSTONE,
+                        key,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .is_ok()
+                {
+                    return;
+                }
+                first_tombstone = None;
+                continue;
+            }
+            if FALLBACK_ALLOC_PTRS[idx]
+                .compare_exchange(
+                    FALLBACK_SLOT_EMPTY,
+                    key,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_ok()
+            {
+                return;
+            }
+        }
+    }
+
+    if let Some(tomb_idx) = first_tombstone {
+        let _ = FALLBACK_ALLOC_PTRS[tomb_idx].compare_exchange(
+            FALLBACK_SLOT_TOMBSTONE,
+            key,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+}
+
+fn fallback_remove(ptr: *mut c_void) -> bool {
+    let Some(key) = fallback_key(ptr) else {
+        return false;
+    };
+    let start = fallback_start_index(key);
+    for i in 0..FALLBACK_ALLOC_TABLE_SLOTS {
+        let idx = (start + i) % FALLBACK_ALLOC_TABLE_SLOTS;
+        let slot = FALLBACK_ALLOC_PTRS[idx].load(Ordering::Acquire);
+        if slot == key {
+            if FALLBACK_ALLOC_PTRS[idx]
+                .compare_exchange(
+                    key,
+                    FALLBACK_SLOT_TOMBSTONE,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_ok()
+            {
+                return true;
+            }
+            continue;
+        }
+        if slot == FALLBACK_SLOT_EMPTY {
+            return false;
+        }
+    }
+    false
 }
 
 #[must_use]
@@ -192,7 +331,9 @@ pub(crate) fn known_remaining(addr: usize) -> Option<usize> {
 pub unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
     let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
         // SAFETY: reentrant path bypasses membrane/runtime-policy to avoid allocator recursion.
-        return unsafe { native_libc_malloc(size.max(1)) };
+        let out = unsafe { native_libc_malloc(size.max(1)) };
+        fallback_insert(out);
+        return out;
     };
 
     let _trace_scope = runtime_policy::entrypoint_scope("malloc");
@@ -201,6 +342,7 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
 
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(ENOMEM as c_int) };
         record_allocator_stage_outcome(
             &ordering,
             aligned,
@@ -223,7 +365,9 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
         },
         None => {
             // SAFETY: reentrant allocator bootstrap falls back to libc allocator.
-            unsafe { native_libc_malloc(req) }
+            let out = unsafe { native_libc_malloc(req) };
+            fallback_insert(out);
+            out
         }
     };
     runtime_policy::observe(
@@ -262,6 +406,7 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
 pub unsafe extern "C" fn free(ptr: *mut c_void) {
     let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
         // SAFETY: reentrant path bypasses membrane/runtime-policy to avoid allocator recursion.
+        let _ = fallback_remove(ptr);
         unsafe { native_libc_free(ptr) };
         return;
     };
@@ -293,6 +438,7 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
 
     let Some(pipeline) = crate::membrane_state::try_global_pipeline() else {
         // SAFETY: reentrant allocator bootstrap falls back to libc allocator.
+        let _ = fallback_remove(ptr);
         unsafe { native_libc_free(ptr) };
         runtime_policy::observe(ApiFamily::Allocator, decision.profile, 6, false);
         record_allocator_stage_outcome(&ordering, aligned, recent_page, None);
@@ -320,12 +466,17 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
             // A real glibc would abort, but our membrane prioritizes defined behavior.
         }
         FreeResult::ForeignPointer => {
-            adverse = true;
-            if runtime_policy::mode().heals_enabled() {
-                let policy = global_healing_policy();
-                policy.record(&HealingAction::IgnoreForeignFree);
+            if fallback_remove(ptr) {
+                // SAFETY: pointer is tracked as native-fallback allocation.
+                unsafe { native_libc_free(ptr) };
+            } else {
+                adverse = true;
+                if runtime_policy::mode().heals_enabled() {
+                    let policy = global_healing_policy();
+                    policy.record(&HealingAction::IgnoreForeignFree);
+                }
+                // Strict mode: foreign pointer free is ignored.
             }
-            // Strict mode: foreign pointer free is ignored.
         }
         FreeResult::InvalidPointer => {
             // Pointer is in an invalid state. Ignore to avoid undefined behavior.
@@ -362,7 +513,9 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
 pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
     let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
         // SAFETY: reentrant path bypasses membrane/runtime-policy to avoid allocator recursion.
-        return unsafe { native_libc_calloc(nmemb, size) };
+        let out = unsafe { native_libc_calloc(nmemb, size) };
+        fallback_insert(out);
+        return out;
     };
 
     let _trace_scope = runtime_policy::entrypoint_scope("calloc");
@@ -384,6 +537,7 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
 
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, total, total, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(ENOMEM as c_int) };
         record_allocator_stage_outcome(
             &ordering,
             aligned,
@@ -410,7 +564,9 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
         },
         None => {
             // SAFETY: reentrant allocator bootstrap falls back to libc allocator.
-            unsafe { native_libc_calloc(nmemb, size) }
+            let out = unsafe { native_libc_calloc(nmemb, size) };
+            fallback_insert(out);
+            out
         }
     };
     runtime_policy::observe(
@@ -449,7 +605,12 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
 pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
         // SAFETY: reentrant path bypasses membrane/runtime-policy to avoid allocator recursion.
-        return unsafe { native_libc_realloc(ptr, size) };
+        let out = unsafe { native_libc_realloc(ptr, size) };
+        if !out.is_null() {
+            let _ = fallback_remove(ptr);
+            fallback_insert(out);
+        }
+        return out;
     };
 
     let _trace_scope = runtime_policy::entrypoint_scope("realloc");
@@ -468,6 +629,7 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Allocator, ptr as usize, size, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(ENOMEM as c_int) };
         record_allocator_stage_outcome(
             &ordering,
             aligned,
@@ -485,7 +647,12 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
 
     let Some(pipeline) = crate::membrane_state::try_global_pipeline() else {
         // SAFETY: reentrant allocator bootstrap falls back to libc allocator.
-        return unsafe { native_libc_realloc(ptr, size) };
+        let out = unsafe { native_libc_realloc(ptr, size) };
+        if !out.is_null() {
+            let _ = fallback_remove(ptr);
+            fallback_insert(out);
+        }
+        return out;
     };
     let arena: &AllocationArena = &pipeline.arena;
 
@@ -510,6 +677,33 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
             return std::ptr::null_mut();
         }
         None => {
+            if fallback_contains(ptr) {
+                // Pointer originated from native fallback allocation path.
+                // Preserve realloc copy semantics by delegating to native realloc.
+                let out = unsafe { native_libc_realloc(ptr, size) };
+                if !out.is_null() {
+                    let _ = fallback_remove(ptr);
+                    fallback_insert(out);
+                }
+                record_allocator_stage_outcome(
+                    &ordering,
+                    aligned,
+                    recent_page,
+                    if out.is_null() {
+                        Some(stage_index(&ordering, CheckStage::Arena))
+                    } else {
+                        None
+                    },
+                );
+                runtime_policy::observe(
+                    ApiFamily::Allocator,
+                    decision.profile,
+                    runtime_policy::scaled_cost(12, size),
+                    out.is_null(),
+                );
+                return out;
+            }
+
             // Foreign pointer -- in hardened mode, treat as malloc
             if runtime_policy::mode().heals_enabled() {
                 let policy = global_healing_policy();
@@ -627,7 +821,9 @@ pub unsafe extern "C" fn posix_memalign(
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void {
     // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
-    unsafe { native_libc_memalign(alignment, size) }
+    let out = unsafe { native_libc_memalign(alignment, size) };
+    fallback_insert(out);
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -646,5 +842,7 @@ pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn aligned_alloc(alignment: usize, size: usize) -> *mut c_void {
     // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
-    unsafe { native_libc_aligned_alloc(alignment, size) }
+    let out = unsafe { native_libc_aligned_alloc(alignment, size) };
+    fallback_insert(out);
+    out
 }

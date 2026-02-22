@@ -198,6 +198,7 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Stdio, pathname as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return std::ptr::null_mut();
     }
@@ -276,9 +277,20 @@ pub unsafe extern "C" fn fclose(stream: *mut c_void) -> c_int {
     let mut adverse = false;
 
     if !pending.is_empty() && fd >= 0 {
-        let rc = unsafe { sys_write_fd(fd, pending.as_ptr().cast(), pending.len()) };
-        if rc < 0 || rc as usize != pending.len() {
-            adverse = true;
+        let mut written = 0usize;
+        while written < pending.len() {
+            let rc = unsafe {
+                sys_write_fd(
+                    fd,
+                    pending[written..].as_ptr().cast(),
+                    pending.len() - written,
+                )
+            };
+            if rc <= 0 {
+                adverse = true;
+                break;
+            }
+            written += rc as usize;
         }
     }
 
@@ -686,6 +698,7 @@ pub unsafe extern "C" fn fseek(stream: *mut c_void, offset: c_long, whence: c_in
     let id = stream as usize;
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, id, 0, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
         return -1;
     }
@@ -701,11 +714,21 @@ pub unsafe extern "C" fn fseek(stream: *mut c_void, offset: c_long, whence: c_in
     let pending = s.prepare_seek();
     let fd = s.fd();
     if !pending.is_empty() {
-        let rc = unsafe { sys_write_fd(fd, pending.as_ptr().cast(), pending.len()) };
-        if rc < 0 || rc as usize != pending.len() {
-            s.set_error();
-            runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
-            return -1;
+        let mut written = 0usize;
+        while written < pending.len() {
+            let rc = unsafe {
+                sys_write_fd(
+                    fd,
+                    pending[written..].as_ptr().cast(),
+                    pending.len() - written,
+                )
+            };
+            if rc <= 0 {
+                s.set_error();
+                runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+                return -1;
+            }
+            written += rc as usize;
         }
     }
 
@@ -725,7 +748,10 @@ pub unsafe extern "C" fn fseek(stream: *mut c_void, offset: c_long, whence: c_in
     let new_off =
         unsafe { libc::syscall(libc::SYS_lseek as c_long, fd, target_off, target_whence) as i64 };
     if new_off < 0 {
-        unsafe { set_abi_errno(errno::EINVAL) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::EINVAL);
+        unsafe { set_abi_errno(e) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
     }
@@ -741,6 +767,7 @@ pub unsafe extern "C" fn ftell(stream: *mut c_void) -> c_long {
     let id = stream as usize;
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, id, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
         return -1;
     }
@@ -947,11 +974,7 @@ pub unsafe extern "C" fn puts(s: *const c_char) -> c_int {
         adverse,
     );
 
-    if rc_nl == libc::EOF {
-        libc::EOF
-    } else {
-        0
-    }
+    if rc_nl == libc::EOF { libc::EOF } else { 0 }
 }
 
 /// POSIX `getchar`.
@@ -1850,6 +1873,7 @@ pub unsafe extern "C" fn fdopen(fd: c_int, mode: *const c_char) -> *mut c_void {
 
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, fd as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
         return std::ptr::null_mut();
     }
@@ -1891,6 +1915,7 @@ pub unsafe extern "C" fn freopen(
     let id = stream as usize;
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, id, 0, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return std::ptr::null_mut();
     }
@@ -2114,6 +2139,7 @@ pub unsafe extern "C" fn getline(
 pub unsafe extern "C" fn tmpfile() -> *mut c_void {
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, 0, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 20, true);
         return std::ptr::null_mut();
     }
@@ -2287,6 +2313,7 @@ pub unsafe extern "C" fn popen(command: *const c_char, typ: *const c_char) -> *m
 
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, 0, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 50, true);
         return std::ptr::null_mut();
     }

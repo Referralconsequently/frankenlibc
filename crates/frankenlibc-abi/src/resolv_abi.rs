@@ -22,6 +22,12 @@ use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 use crate::malloc_abi::known_remaining;
 use crate::runtime_policy;
 
+#[inline]
+unsafe fn set_abi_errno(val: c_int) {
+    let p = unsafe { super::errno_abi::__errno_location() };
+    unsafe { *p = val };
+}
+
 const HOST_NOT_FOUND_ERRNO: c_int = 1;
 const NO_RECOVERY_ERRNO: c_int = 3;
 
@@ -835,6 +841,7 @@ pub unsafe extern "C" fn gethostbyname(name: *const c_char) -> *mut c_void {
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(frankenlibc_core::errno::EACCES) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 18, true);
         return ptr::null_mut();
     }

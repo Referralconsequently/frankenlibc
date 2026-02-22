@@ -12,9 +12,16 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::time::UNIX_EPOCH;
 
+use frankenlibc_core::errno;
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
 use crate::runtime_policy;
+
+#[inline]
+unsafe fn set_abi_errno(val: c_int) {
+    let p = unsafe { super::errno_abi::__errno_location() };
+    unsafe { *p = val };
+}
 
 const PASSWD_PATH: &str = "/etc/passwd";
 const PASSWD_PATH_ENV: &str = "FRANKENLIBC_PASSWD_PATH";
@@ -285,6 +292,7 @@ pub unsafe extern "C" fn getpwnam(name: *const c_char) -> *mut libc::passwd {
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Resolver, name as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
         return ptr::null_mut();
     }
@@ -301,6 +309,7 @@ pub unsafe extern "C" fn getpwnam(name: *const c_char) -> *mut libc::passwd {
 pub unsafe extern "C" fn getpwuid(uid: libc::uid_t) -> *mut libc::passwd {
     let (_, decision) = runtime_policy::decide(ApiFamily::Resolver, 0, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EACCES) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
         return ptr::null_mut();
     }

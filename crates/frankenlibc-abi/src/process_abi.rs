@@ -158,6 +158,10 @@ pub unsafe extern "C" fn execve(
     let rc = unsafe { libc::syscall(libc::SYS_execve as c_long, pathname, argv, envp) as c_int };
 
     // execve only returns on failure.
+    let e = std::io::Error::last_os_error()
+        .raw_os_error()
+        .unwrap_or(libc::ENOENT);
+    unsafe { set_abi_errno(e) };
     runtime_policy::observe(ApiFamily::Process, decision.profile, 40, true);
     rc
 }
