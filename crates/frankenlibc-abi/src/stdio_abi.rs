@@ -135,14 +135,17 @@ unsafe fn flush_stream(stream: &mut StdioStream) -> bool {
     }
     let fd = stream.fd();
     let data = pending.to_vec();
-    let rc = unsafe { sys_write_fd(fd, data.as_ptr().cast(), data.len()) };
-    if rc >= 0 && rc as usize == data.len() {
-        stream.mark_flushed();
-        true
-    } else {
-        stream.set_error();
-        false
+    let mut written = 0usize;
+    while written < data.len() {
+        let rc = unsafe { sys_write_fd(fd, data[written..].as_ptr().cast(), data.len() - written) };
+        if rc <= 0 {
+            stream.set_error();
+            return false;
+        }
+        written += rc as usize;
     }
+    stream.mark_flushed();
+    true
 }
 
 /// Fill a stream's read buffer from its fd. Returns bytes read (0 on EOF, -1 on error).
@@ -221,7 +224,10 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
     };
 
     if fd < 0 {
-        unsafe { set_abi_errno(errno::ENOENT) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::ENOENT);
+        unsafe { set_abi_errno(e) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 30, true);
         return std::ptr::null_mut();
     }
@@ -886,16 +892,8 @@ pub unsafe extern "C" fn setbuf(stream: *mut c_void, buf: *mut c_char) {
 /// POSIX `putchar`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn putchar(c: c_int) -> c_int {
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, 0, 1, false, false, 0);
-    if matches!(decision.action, MembraneAction::Deny) {
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
-        return libc::EOF;
-    }
-
-    let byte = c as u8;
-    let rc = unsafe { sys_write_fd(libc::STDOUT_FILENO, (&byte as *const u8).cast(), 1) };
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, rc != 1);
-    if rc == 1 { byte as c_int } else { libc::EOF }
+    // POSIX: putchar(c) is equivalent to fputc(c, stdout).
+    unsafe { fputc(c, STDOUT_SENTINEL as *mut c_void) }
 }
 
 /// POSIX `puts`.
@@ -920,10 +918,21 @@ pub unsafe extern "C" fn puts(s: *const c_char) -> c_int {
         });
     }
 
-    let rc_body = unsafe { sys_write_fd(libc::STDOUT_FILENO, s.cast(), len) };
-    let newline = [b'\n'];
-    let rc_nl = unsafe { sys_write_fd(libc::STDOUT_FILENO, newline.as_ptr().cast(), 1) };
-    let adverse = rc_body < 0 || rc_nl != 1 || (!terminated && repair);
+    // POSIX: puts writes s followed by a newline to stdout.
+    // Use the buffered stream to maintain coherence with fprintf(stdout, ...).
+    let stdout_ptr = STDOUT_SENTINEL as *mut c_void;
+    let rc_body = unsafe { fputs(s, stdout_ptr) };
+    if rc_body == libc::EOF {
+        runtime_policy::observe(
+            ApiFamily::Stdio,
+            decision.profile,
+            runtime_policy::scaled_cost(10, len.saturating_add(1)),
+            true,
+        );
+        return libc::EOF;
+    }
+    let rc_nl = unsafe { fputc(b'\n' as c_int, stdout_ptr) };
+    let adverse = rc_nl == libc::EOF || (!terminated && repair);
     runtime_policy::observe(
         ApiFamily::Stdio,
         decision.profile,
@@ -931,7 +940,7 @@ pub unsafe extern "C" fn puts(s: *const c_char) -> c_int {
         adverse,
     );
 
-    if rc_body < 0 || rc_nl != 1 {
+    if rc_nl == libc::EOF {
         libc::EOF
     } else {
         0
@@ -1932,7 +1941,10 @@ pub unsafe extern "C" fn freopen(
     };
 
     if fd < 0 {
-        unsafe { set_abi_errno(errno::ENOENT) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::ENOENT);
+        unsafe { set_abi_errno(e) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 30, true);
         return std::ptr::null_mut();
     }
