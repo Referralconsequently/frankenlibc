@@ -8,17 +8,17 @@ use frankenlibc_abi::stdlib_abi::{
     strtoull,
 };
 use frankenlibc_abi::unistd_abi::{
-    confstr, creat64, ctermid, ether_aton, ether_aton_r, ether_ntoa, ether_ntoa_r, fpathconf,
-    fstat64, fstatat64, ftruncate64, get_avphys_pages, get_nprocs, get_nprocs_conf, get_phys_pages,
-    getdomainname, gethostid, getlogin, getlogin_r, getopt, getopt_long, getpagesize, grantpt,
-    herror, hstrerror, lockf, lseek64, lstat64, mkdtemp, mq_close, mq_getattr, mq_open, mq_receive,
-    mq_send, mq_setattr, mq_unlink, msgctl, msgget, msgrcv, msgsnd, nice, open64, pathconf,
-    posix_fallocate, posix_madvise, posix_openpt, pread64, ptsname, pwrite64,
-    sched_get_priority_max, sched_get_priority_min, sched_getparam, sched_getscheduler,
-    sched_rr_get_interval, sched_setparam, sched_setscheduler, semctl, semget, semop,
-    setdomainname, sethostname, shm_open, shm_unlink, shmat, shmctl, shmdt, shmget, sigqueue,
-    sigtimedwait, sigwaitinfo, stat64, sysconf, timer_create, timer_delete, timer_getoverrun,
-    timer_gettime, timer_settime, truncate64, ttyname, ttyname_r, unlockpt,
+    __h_errno_location, confstr, creat64, ctermid, ether_aton, ether_aton_r, ether_ntoa,
+    ether_ntoa_r, fpathconf, fstat64, fstatat64, ftruncate64, get_avphys_pages, get_nprocs,
+    get_nprocs_conf, get_phys_pages, getdomainname, gethostid, getlogin, getlogin_r, getopt,
+    getopt_long, getpagesize, grantpt, herror, hstrerror, lockf, lseek64, lstat64, mkdtemp,
+    mq_close, mq_getattr, mq_open, mq_receive, mq_send, mq_setattr, mq_unlink, msgctl, msgget,
+    msgrcv, msgsnd, nice, open64, pathconf, posix_fallocate, posix_madvise, posix_openpt, pread64,
+    ptsname, pwrite64, sched_get_priority_max, sched_get_priority_min, sched_getparam,
+    sched_getscheduler, sched_rr_get_interval, sched_setparam, sched_setscheduler, semctl, semget,
+    semop, setdomainname, sethostname, shm_open, shm_unlink, shmat, shmctl, shmdt, shmget,
+    sigqueue, sigtimedwait, sigwaitinfo, stat64, sysconf, timer_create, timer_delete,
+    timer_getoverrun, timer_gettime, timer_settime, truncate64, ttyname, ttyname_r, unlockpt,
 };
 use std::ffi::CString;
 use std::os::fd::AsRawFd;
@@ -35,7 +35,6 @@ unsafe extern "C" {
     #[link_name = "optopt"]
     static mut OPTOPT_TEST: libc::c_int;
 
-    fn __h_errno_location() -> *mut libc::c_int;
 }
 
 unsafe fn reset_getopt_globals() {
