@@ -35,13 +35,19 @@ pub unsafe extern "C" fn poll(fds: *mut libc::pollfd, nfds: libc::nfds_t, timeou
         return -1;
     }
 
-    let actual_nfds = if mode.heals_enabled() && !poll_core::valid_nfds(nfds) {
-        let clamped = poll_core::clamp_poll_nfds(nfds);
-        global_healing_policy().record(&HealingAction::ClampSize {
-            requested: nfds as usize,
-            clamped: clamped as usize,
-        });
-        clamped
+    let actual_nfds = if !poll_core::valid_nfds(nfds) {
+        if mode.heals_enabled() {
+            let clamped = poll_core::clamp_poll_nfds(nfds);
+            global_healing_policy().record(&HealingAction::ClampSize {
+                requested: nfds as usize,
+                clamped: clamped as usize,
+            });
+            clamped
+        } else {
+            unsafe { set_abi_errno(errno::EINVAL) };
+            runtime_policy::observe(ApiFamily::Poll, decision.profile, 20, true);
+            return -1;
+        }
     } else {
         nfds
     };
@@ -49,7 +55,10 @@ pub unsafe extern "C" fn poll(fds: *mut libc::pollfd, nfds: libc::nfds_t, timeou
     let rc = unsafe { libc::syscall(libc::SYS_poll as c_long, fds, actual_nfds, timeout) as c_int };
     let adverse = rc < 0;
     if adverse {
-        unsafe { set_abi_errno(libc::EINVAL) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::EINVAL);
+        unsafe { set_abi_errno(e) };
     }
     runtime_policy::observe(ApiFamily::Poll, decision.profile, 20, adverse);
     rc
@@ -75,13 +84,19 @@ pub unsafe extern "C" fn ppoll(
         return -1;
     }
 
-    let actual_nfds = if mode.heals_enabled() && !poll_core::valid_nfds(nfds) {
-        let clamped = poll_core::clamp_poll_nfds(nfds);
-        global_healing_policy().record(&HealingAction::ClampSize {
-            requested: nfds as usize,
-            clamped: clamped as usize,
-        });
-        clamped
+    let actual_nfds = if !poll_core::valid_nfds(nfds) {
+        if mode.heals_enabled() {
+            let clamped = poll_core::clamp_poll_nfds(nfds);
+            global_healing_policy().record(&HealingAction::ClampSize {
+                requested: nfds as usize,
+                clamped: clamped as usize,
+            });
+            clamped
+        } else {
+            unsafe { set_abi_errno(errno::EINVAL) };
+            runtime_policy::observe(ApiFamily::Poll, decision.profile, 25, true);
+            return -1;
+        }
     } else {
         nfds
     };
@@ -100,7 +115,10 @@ pub unsafe extern "C" fn ppoll(
     };
     let adverse = rc < 0;
     if adverse {
-        unsafe { set_abi_errno(libc::EINVAL) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::EINVAL);
+        unsafe { set_abi_errno(e) };
     }
     runtime_policy::observe(ApiFamily::Poll, decision.profile, 25, adverse);
     rc
@@ -133,13 +151,19 @@ pub unsafe extern "C" fn select(
         return -1;
     }
 
-    let actual_nfds = if mode.heals_enabled() && !poll_core::valid_select_nfds(nfds) {
-        let clamped = poll_core::clamp_select_nfds(nfds);
-        global_healing_policy().record(&HealingAction::ClampSize {
-            requested: nfds as usize,
-            clamped: clamped as usize,
-        });
-        clamped
+    let actual_nfds = if !poll_core::valid_select_nfds(nfds) {
+        if mode.heals_enabled() {
+            let clamped = poll_core::clamp_select_nfds(nfds);
+            global_healing_policy().record(&HealingAction::ClampSize {
+                requested: nfds as usize,
+                clamped: clamped as usize,
+            });
+            clamped
+        } else {
+            unsafe { set_abi_errno(errno::EINVAL) };
+            runtime_policy::observe(ApiFamily::Poll, decision.profile, 25, true);
+            return -1;
+        }
     } else {
         nfds
     };
@@ -156,7 +180,10 @@ pub unsafe extern "C" fn select(
     };
     let adverse = rc < 0;
     if adverse {
-        unsafe { set_abi_errno(libc::EINVAL) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::EINVAL);
+        unsafe { set_abi_errno(e) };
     }
     runtime_policy::observe(ApiFamily::Poll, decision.profile, 25, adverse);
     rc
@@ -190,13 +217,19 @@ pub unsafe extern "C" fn pselect(
         return -1;
     }
 
-    let actual_nfds = if mode.heals_enabled() && !poll_core::valid_select_nfds(nfds) {
-        let clamped = poll_core::clamp_select_nfds(nfds);
-        global_healing_policy().record(&HealingAction::ClampSize {
-            requested: nfds as usize,
-            clamped: clamped as usize,
-        });
-        clamped
+    let actual_nfds = if !poll_core::valid_select_nfds(nfds) {
+        if mode.heals_enabled() {
+            let clamped = poll_core::clamp_select_nfds(nfds);
+            global_healing_policy().record(&HealingAction::ClampSize {
+                requested: nfds as usize,
+                clamped: clamped as usize,
+            });
+            clamped
+        } else {
+            unsafe { set_abi_errno(errno::EINVAL) };
+            runtime_policy::observe(ApiFamily::Poll, decision.profile, 30, true);
+            return -1;
+        }
     } else {
         nfds
     };
@@ -223,7 +256,10 @@ pub unsafe extern "C" fn pselect(
     };
     let adverse = rc < 0;
     if adverse {
-        unsafe { set_abi_errno(libc::EINVAL) };
+        let e = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(errno::EINVAL);
+        unsafe { set_abi_errno(e) };
     }
     runtime_policy::observe(ApiFamily::Poll, decision.profile, 30, adverse);
     rc
