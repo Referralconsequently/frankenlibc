@@ -429,9 +429,11 @@ pub fn strxfrm(dest: &mut [u8], src: &[u8], n: usize) -> usize {
     let src_len = strlen(src);
     let limit = n.min(dest.len());
     if limit > 0 {
-        let copy_len = src_len.min(limit - 1);
+        let copy_len = src_len.min(limit);
         dest[..copy_len].copy_from_slice(&src[..copy_len]);
-        dest[copy_len] = 0;
+        if copy_len < limit {
+            dest[copy_len] = 0;
+        }
     }
     src_len
 }
