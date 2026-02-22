@@ -3799,18 +3799,15 @@ pub unsafe extern "C" fn strsep(stringp: *mut *mut c_char, delim: *const c_char)
         let s_slice = std::slice::from_raw_parts_mut(s.cast::<u8>(), s_len + 1);
         let delim_slice = std::slice::from_raw_parts(delim.cast::<u8>(), delim_len + 1);
         match frankenlibc_core::string::str::strsep(s_slice, delim_slice) {
-            Some((_start, next)) => {
+            Some(idx) => {
                 // Update *stringp to point past the delimiter.
-                if next < s_len {
-                    *stringp = s.add(next);
-                } else {
-                    *stringp = std::ptr::null_mut();
-                }
+                *stringp = s.add(idx + 1);
                 (s, s_len)
             }
             None => {
                 *stringp = std::ptr::null_mut();
-                (std::ptr::null_mut(), 0)
+                // Return the remaining string as the last token.
+                (s, s_len)
             }
         }
     };
