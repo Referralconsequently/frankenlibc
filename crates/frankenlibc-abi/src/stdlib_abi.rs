@@ -24,6 +24,8 @@ unsafe extern "C" {
     fn native_setenv_sym(name: *const c_char, value: *const c_char, overwrite: c_int) -> c_int;
     #[link_name = "unsetenv@GLIBC_2.2.5"]
     fn native_unsetenv_sym(name: *const c_char) -> c_int;
+    #[link_name = "putenv@GLIBC_2.2.5"]
+    fn native_putenv_sym(string: *mut c_char) -> c_int;
     #[link_name = "__environ"]
     static mut HOST_ENVIRON: *mut *mut c_char;
 }
@@ -233,7 +235,13 @@ pub unsafe extern "C" fn strtol(
     let (len, _terminated) = unsafe { scan_c_string(nptr, bound) };
     let slice = unsafe { std::slice::from_raw_parts(nptr as *const u8, len) };
 
-    let (val, consumed, _status) = frankenlibc_core::stdlib::conversion::strtol_impl(slice, base);
+    let (val, consumed, status) = frankenlibc_core::stdlib::conversion::strtol_impl(slice, base);
+
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+        unsafe { set_abi_errno(libc::ERANGE) };
+    } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
+        unsafe { set_abi_errno(libc::EINVAL) };
+    }
 
     if !endptr.is_null() {
         unsafe {
@@ -301,8 +309,14 @@ pub unsafe extern "C" fn strtoimax(
     let (len, _terminated) = unsafe { scan_c_string(nptr, bound) };
     let slice = unsafe { std::slice::from_raw_parts(nptr as *const u8, len) };
 
-    let (val, consumed, _status) =
+    let (val, consumed, status) =
         frankenlibc_core::stdlib::conversion::strtoimax_impl(slice, base);
+
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+        unsafe { set_abi_errno(libc::ERANGE) };
+    } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
+        unsafe { set_abi_errno(libc::EINVAL) };
+    }
 
     if !endptr.is_null() {
         unsafe {
@@ -383,7 +397,13 @@ pub unsafe extern "C" fn strtoul(
     let (len, _terminated) = unsafe { scan_c_string(nptr, bound) };
     let slice = unsafe { std::slice::from_raw_parts(nptr as *const u8, len) };
 
-    let (val, consumed, _status) = frankenlibc_core::stdlib::conversion::strtoul_impl(slice, base);
+    let (val, consumed, status) = frankenlibc_core::stdlib::conversion::strtoul_impl(slice, base);
+
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+        unsafe { set_abi_errno(libc::ERANGE) };
+    } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
+        unsafe { set_abi_errno(libc::EINVAL) };
+    }
 
     if !endptr.is_null() {
         unsafe {
@@ -451,8 +471,14 @@ pub unsafe extern "C" fn strtoumax(
     let (len, _terminated) = unsafe { scan_c_string(nptr, bound) };
     let slice = unsafe { std::slice::from_raw_parts(nptr as *const u8, len) };
 
-    let (val, consumed, _status) =
+    let (val, consumed, status) =
         frankenlibc_core::stdlib::conversion::strtoumax_impl(slice, base);
+
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+        unsafe { set_abi_errno(libc::ERANGE) };
+    } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
+        unsafe { set_abi_errno(libc::EINVAL) };
+    }
 
     if !endptr.is_null() {
         unsafe {
@@ -552,7 +578,9 @@ pub unsafe extern "C" fn qsort(
     }
 
     // Wrap comparator
-    let compar_fn = compar.expect("qsort called with null comparator");
+    let Some(compar_fn) = compar else {
+        return;
+    };
     let wrapper = |a: &[u8], b: &[u8]| -> i32 {
         unsafe { compar_fn(a.as_ptr() as *const c_void, b.as_ptr() as *const c_void) }
     };
@@ -615,7 +643,9 @@ pub unsafe extern "C" fn bsearch(
         return ptr::null_mut();
     }
 
-    let compar_fn = compar.expect("bsearch called with null comparator");
+    let Some(compar_fn) = compar else {
+        return ptr::null_mut();
+    };
     let wrapper = |a: &[u8], b: &[u8]| -> i32 {
         unsafe { compar_fn(a.as_ptr() as *const c_void, b.as_ptr() as *const c_void) }
     };
@@ -1226,31 +1256,13 @@ pub unsafe extern "C" fn putenv(string: *mut c_char) -> c_int {
     // Find '=' to split name and value.
     let s = unsafe { std::ffi::CStr::from_ptr(string) };
     let bytes = s.to_bytes();
-    let eq_pos = match bytes.iter().position(|&b| b == b'=') {
-        Some(pos) => pos,
-        None => {
-            // No '=': unset the variable (glibc behavior).
-            let name_cstr = s;
-            return unsafe { super::stdlib_abi::unsetenv(name_cstr.as_ptr()) };
-        }
-    };
+    if bytes.iter().position(|&b| b == b'=').is_none() {
+        // No '=': unset the variable (glibc behavior).
+        return unsafe { super::stdlib_abi::unsetenv(string) };
+    }
 
-    // Extract name and value.
-    let name = &bytes[..eq_pos];
-    let value = &bytes[eq_pos + 1..];
-
-    // Build C strings for setenv.
-    let name_vec: Vec<u8> = name.iter().copied().chain(std::iter::once(0)).collect();
-    let value_vec: Vec<u8> = value.iter().copied().chain(std::iter::once(0)).collect();
-
-    // Delegate to setenv with overwrite=1.
-    let ret = unsafe {
-        super::stdlib_abi::setenv(
-            name_vec.as_ptr() as *const c_char,
-            value_vec.as_ptr() as *const c_char,
-            1,
-        )
-    };
+    // Delegate to native putenv.
+    let ret = unsafe { native_putenv_sym(string) };
 
     runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 10, ret != 0);
     ret
@@ -1324,11 +1336,13 @@ unsafe fn mkostemps_inner(template: *mut c_char, suffixlen: c_int, flags: c_int)
 
         // SAFETY: `template` now names a candidate pathname and points to NUL-terminated bytes.
         let fd = unsafe {
-            libc::open(
+            libc::syscall(
+                libc::SYS_openat,
+                libc::AT_FDCWD,
                 template as *const c_char,
                 libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | flags,
                 0o600,
-            )
+            ) as c_int
         };
         if fd >= 0 {
             return (fd, false);
@@ -1349,29 +1363,26 @@ unsafe fn mkostemps_inner(template: *mut c_char, suffixlen: c_int, flags: c_int)
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn reallocarray(ptr: *mut c_void, nmemb: usize, size: usize) -> *mut c_void {
+    let Some(total_size) = nmemb.checked_mul(size) else {
+        // POSIX/glibc semantics: overflow is an allocation failure with ENOMEM.
+        unsafe { set_abi_errno(libc::ENOMEM) };
+        // Can't easily observe without a decision profile, but we can just return null.
+        return ptr::null_mut();
+    };
+
     let adverse_pointer = !ptr.is_null() && known_remaining(ptr as usize).is_none();
     let (_, decision) = runtime_policy::decide(
         ApiFamily::Stdlib,
         ptr as usize,
-        nmemb,
+        total_size,
         true,
         adverse_pointer,
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
-        if nmemb.checked_mul(size).is_none() {
-            unsafe { set_abi_errno(libc::ENOMEM) };
-        }
         runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 6, true);
         return ptr::null_mut();
     }
-
-    let Some(total_size) = nmemb.checked_mul(size) else {
-        // POSIX/glibc semantics: overflow is an allocation failure with ENOMEM.
-        unsafe { set_abi_errno(libc::ENOMEM) };
-        runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 6, true);
-        return ptr::null_mut();
-    };
 
     // SAFETY: ABI contract matches realloc; overflow has already been checked.
     let out = unsafe { crate::malloc_abi::realloc(ptr, total_size) };

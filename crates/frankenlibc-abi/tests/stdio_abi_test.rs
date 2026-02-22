@@ -430,8 +430,9 @@ fn asprintf_allocates_and_formats_output() {
     let rendered = unsafe { CStr::from_ptr(out) };
     assert_eq!(rendered.to_bytes(), b"asprintf-55:ok");
 
-    // SAFETY: pointer was allocated by asprintf and is released once here.
-    unsafe { libc::free(out.cast()) };
+    // SAFETY: `asprintf` in this crate allocates via frankenlibc's allocator,
+    // so release with the matching frankenlibc free entrypoint.
+    unsafe { frankenlibc_abi::malloc_abi::free(out.cast()) };
 }
 
 #[test]

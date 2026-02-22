@@ -73,13 +73,13 @@ unsafe fn native_libc_posix_memalign(
         || !alignment.is_power_of_two()
         || !alignment.is_multiple_of(std::mem::size_of::<usize>())
     {
-        return EINVAL;
+        return EINVAL as c_int;
     }
     let req = size.max(1);
     // SAFETY: direct call to libc allocator symbol.
     let ptr = unsafe { native_libc_memalign(alignment, req) };
     if ptr.is_null() {
-        return ENOMEM;
+        return ENOMEM as c_int;
     }
     fallback_insert(ptr);
     // SAFETY: memptr non-null and caller-provided writable out pointer.
@@ -179,7 +179,8 @@ fn fallback_insert(ptr: *mut c_void) {
                     return;
                 }
                 first_tombstone = None;
-                continue;
+                // Tombstone was taken by another thread. Fall through to try
+                // claiming the empty slot we just found at `idx`.
             }
             if FALLBACK_ALLOC_PTRS[idx]
                 .compare_exchange(
@@ -801,10 +802,77 @@ pub unsafe extern "C" fn posix_memalign(
     alignment: usize,
     size: usize,
 ) -> c_int {
-    // Keep aligned-allocation bootstrap paths delegated to native libc to avoid
-    // recursive allocator lock interactions under LD_PRELOAD thread startup.
-    // SAFETY: forwards arguments to libc-compatible fallback implementation.
-    unsafe { native_libc_posix_memalign(memptr, alignment, size) }
+    if memptr.is_null()
+        || !alignment.is_power_of_two()
+        || !alignment.is_multiple_of(std::mem::size_of::<usize>())
+    {
+        return EINVAL as c_int;
+    }
+
+    let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
+        // SAFETY: forwards arguments to libc-compatible fallback implementation.
+        return unsafe { native_libc_posix_memalign(memptr, alignment, size) };
+    };
+
+    let _trace_scope = runtime_policy::entrypoint_scope("posix_memalign");
+    let req = size.max(1);
+    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
+
+    if matches!(decision.action, MembraneAction::Deny) {
+        record_allocator_stage_outcome(
+            &ordering,
+            aligned,
+            recent_page,
+            Some(stage_index(&ordering, CheckStage::Arena)),
+        );
+        runtime_policy::observe(
+            ApiFamily::Allocator,
+            decision.profile,
+            runtime_policy::scaled_cost(8, req),
+            true,
+        );
+        return ENOMEM as c_int;
+    }
+
+    let out: *mut c_void = match crate::membrane_state::try_global_pipeline() {
+        Some(pipeline) => match pipeline.allocate_aligned(req, alignment) {
+            Some(ptr) => ptr.cast(),
+            None => std::ptr::null_mut(),
+        },
+        None => {
+            // SAFETY: reentrant allocator bootstrap falls back to libc allocator.
+            let ptr = unsafe { native_libc_memalign(alignment, req) };
+            if !ptr.is_null() {
+                fallback_insert(ptr);
+            }
+            ptr
+        }
+    };
+    
+    runtime_policy::observe(
+        ApiFamily::Allocator,
+        decision.profile,
+        runtime_policy::scaled_cost(10, req),
+        out.is_null(),
+    );
+    record_allocator_stage_outcome(
+        &ordering,
+        aligned,
+        recent_page,
+        if out.is_null() {
+            Some(stage_index(&ordering, CheckStage::Arena))
+        } else {
+            None
+        },
+    );
+
+    if out.is_null() {
+        ENOMEM as c_int
+    } else {
+        unsafe { *memptr = out };
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -820,9 +888,65 @@ pub unsafe extern "C" fn posix_memalign(
 /// Caller must eventually `free` the returned pointer exactly once.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void {
-    // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
-    let out = unsafe { native_libc_memalign(alignment, size) };
-    fallback_insert(out);
+    let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
+        // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
+        let out = unsafe { native_libc_memalign(alignment, size) };
+        fallback_insert(out);
+        return out;
+    };
+
+    let _trace_scope = runtime_policy::entrypoint_scope("memalign");
+    let req = size.max(1);
+    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
+
+    if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(ENOMEM as c_int) };
+        record_allocator_stage_outcome(
+            &ordering,
+            aligned,
+            recent_page,
+            Some(stage_index(&ordering, CheckStage::Arena)),
+        );
+        runtime_policy::observe(
+            ApiFamily::Allocator,
+            decision.profile,
+            runtime_policy::scaled_cost(8, req),
+            true,
+        );
+        return std::ptr::null_mut();
+    }
+
+    let out: *mut c_void = match crate::membrane_state::try_global_pipeline() {
+        Some(pipeline) => match pipeline.allocate_aligned(req, alignment) {
+            Some(ptr) => ptr.cast(),
+            None => std::ptr::null_mut(),
+        },
+        None => {
+            let out = unsafe { native_libc_memalign(alignment, req) };
+            if !out.is_null() {
+                fallback_insert(out);
+            }
+            out
+        }
+    };
+    
+    runtime_policy::observe(
+        ApiFamily::Allocator,
+        decision.profile,
+        runtime_policy::scaled_cost(10, req),
+        out.is_null(),
+    );
+    record_allocator_stage_outcome(
+        &ordering,
+        aligned,
+        recent_page,
+        if out.is_null() {
+            Some(stage_index(&ordering, CheckStage::Arena))
+        } else {
+            None
+        },
+    );
     out
 }
 
@@ -841,8 +965,70 @@ pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void 
 /// Caller must eventually `free` the returned pointer exactly once.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn aligned_alloc(alignment: usize, size: usize) -> *mut c_void {
-    // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
-    let out = unsafe { native_libc_aligned_alloc(alignment, size) };
-    fallback_insert(out);
+    // C11 requires size to be a multiple of alignment
+    if alignment == 0 || size % alignment != 0 {
+        unsafe { set_abi_errno(EINVAL as c_int) };
+        return std::ptr::null_mut();
+    }
+    
+    let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
+        // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
+        let out = unsafe { native_libc_aligned_alloc(alignment, size) };
+        fallback_insert(out);
+        return out;
+    };
+
+    let _trace_scope = runtime_policy::entrypoint_scope("aligned_alloc");
+    let req = size.max(1);
+    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
+
+    if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(ENOMEM as c_int) };
+        record_allocator_stage_outcome(
+            &ordering,
+            aligned,
+            recent_page,
+            Some(stage_index(&ordering, CheckStage::Arena)),
+        );
+        runtime_policy::observe(
+            ApiFamily::Allocator,
+            decision.profile,
+            runtime_policy::scaled_cost(8, req),
+            true,
+        );
+        return std::ptr::null_mut();
+    }
+
+    let out: *mut c_void = match crate::membrane_state::try_global_pipeline() {
+        Some(pipeline) => match pipeline.allocate_aligned(req, alignment) {
+            Some(ptr) => ptr.cast(),
+            None => std::ptr::null_mut(),
+        },
+        None => {
+            let out = unsafe { native_libc_aligned_alloc(alignment, req) };
+            if !out.is_null() {
+                fallback_insert(out);
+            }
+            out
+        }
+    };
+    
+    runtime_policy::observe(
+        ApiFamily::Allocator,
+        decision.profile,
+        runtime_policy::scaled_cost(10, req),
+        out.is_null(),
+    );
+    record_allocator_stage_outcome(
+        &ordering,
+        aligned,
+        recent_page,
+        if out.is_null() {
+            Some(stage_index(&ordering, CheckStage::Arena))
+        } else {
+            None
+        },
+    );
     out
 }
