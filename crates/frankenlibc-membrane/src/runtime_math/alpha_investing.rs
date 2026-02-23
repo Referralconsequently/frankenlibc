@@ -127,8 +127,9 @@ pub struct AlphaInvestingController {
     /// Per-controller alarm latch: tracks which controllers are currently alarming.
     /// Used to count transitions (alarm onset) rather than every tick.
     alarm_active: [bool; N],
-    /// Pending alarm onsets waiting to be tested at the next cadence.
-    pending_onsets: [bool; N],
+    /// Pending maximum severity waiting to be tested at the next cadence.
+    /// 0 indicates no pending onset.
+    pending_severity: [u8; N],
     /// Current state.
     state: AlphaInvestingState,
 }
@@ -143,7 +144,7 @@ impl AlphaInvestingController {
             suppressions: 0,
             count: 0,
             alarm_active: [false; N],
-            pending_onsets: [false; N],
+            pending_severity: [0; N],
             state: AlphaInvestingState::Calibrating,
         }
     }
@@ -156,13 +157,15 @@ impl AlphaInvestingController {
 
         // Always update alarm latches so onset detection works across
         // cadence boundaries. Track which controllers just transitioned
-        // from non-alarm to alarm.
+        // from non-alarm to alarm, and record their peak severity.
         for (i, &sev) in severity.iter().enumerate() {
             let is_alarming = sev >= 2;
             let was_alarming = self.alarm_active[i];
             self.alarm_active[i] = is_alarming;
             if is_alarming && !was_alarming {
-                self.pending_onsets[i] = true;
+                self.pending_severity[i] = sev;
+            } else if self.pending_severity[i] > 0 {
+                self.pending_severity[i] = self.pending_severity[i].max(sev);
             }
         }
 
@@ -177,17 +180,17 @@ impl AlphaInvestingController {
 
         let mut accepted = 0u32;
 
-        // Collect pending indices first to avoid borrowing self twice.
-        let pending_indices: Vec<usize> = self
-            .pending_onsets
+        // Collect pending indices and severities first to avoid borrowing self twice.
+        let pending: Vec<(usize, u8)> = self
+            .pending_severity
             .iter()
             .enumerate()
-            .filter_map(|(i, &p)| if p { Some(i) } else { None })
+            .filter_map(|(i, &sev)| if sev > 0 { Some((i, sev)) } else { None })
             .collect();
 
-        for i in pending_indices {
-            accepted += self.test_alarm(severity[i]);
-            self.pending_onsets[i] = false;
+        for (i, peak_sev) in pending {
+            accepted += self.test_alarm(peak_sev);
+            self.pending_severity[i] = 0;
         }
 
         self.state = self.classify_state();
