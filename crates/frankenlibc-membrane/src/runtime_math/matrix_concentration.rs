@@ -229,9 +229,10 @@ impl MatrixConcentrationMonitor {
         self.matrix_var += alpha * (summand_sq_spectral - self.matrix_var);
 
         // Bernstein bound: ε(n, δ) = √(2σ² log(2d/δ) / n) + L log(2d/δ) / (3n).
-        // Use the actual observation count for n (not EWMA effective_n) so
-        // the bound tightens properly with accumulated data.
-        let n = (self.count as f64).max(1.0);
+        // Since spectral_deviation is an EWMA estimator (which forgets old data and thus
+        // has a variance floor), we MUST use the EWMA effective sample size here, not the
+        // unbounded total observation count. Otherwise the bound falsely shrinks to 0.
+        let n = self.effective_n.max(1.0);
         let bernstein = (2.0 * self.matrix_var * LOG_2D_OVER_DELTA / n).sqrt()
             + L_BOUND * LOG_2D_OVER_DELTA / (3.0 * n);
 
@@ -259,7 +260,7 @@ impl MatrixConcentrationMonitor {
 
     /// Current Bernstein bound value.
     pub fn bernstein_bound(&self) -> f64 {
-        let n = (self.count as f64).max(1.0);
+        let n = self.effective_n.max(1.0);
         (2.0 * self.matrix_var * LOG_2D_OVER_DELTA / n).sqrt()
             + L_BOUND * LOG_2D_OVER_DELTA / (3.0 * n)
     }
