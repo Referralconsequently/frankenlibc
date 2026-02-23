@@ -1862,7 +1862,17 @@ pub unsafe extern "C" fn vsnprintf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    unsafe { libc_vsnprintf(str_buf, size, format, ap) }
+    if format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, size, true, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vsnprintf(str_buf, size, format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `vsprintf` — format into buffer from va_list (no size limit).
@@ -1906,19 +1916,50 @@ pub unsafe extern "C" fn vfprintf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    unsafe { libc_vfprintf(stream, format, ap) }
+    if format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vfprintf(stream, format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `vprintf` — format to stdout from va_list.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn vprintf(format: *const c_char, ap: *mut c_void) -> c_int {
-    unsafe { libc_vprintf(format, ap) }
+    if format.is_null() {
+        return -1;
+    }
+    let stdout_ptr = STDOUT_SENTINEL as *mut c_void;
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stdout_ptr as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vprintf(format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `vdprintf` — format to file descriptor from va_list.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn vdprintf(fd: c_int, format: *const c_char, ap: *mut c_void) -> c_int {
-    unsafe { libc_vdprintf(fd, format, ap) }
+    if format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, fd as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vdprintf(fd, format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// GNU `vasprintf` — allocate and format from va_list.
@@ -1928,7 +1969,18 @@ pub unsafe extern "C" fn vasprintf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    unsafe { libc_vasprintf(strp, format, ap) }
+    if strp.is_null() || format.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, strp as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vasprintf(strp, format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 // ===========================================================================
@@ -1950,7 +2002,17 @@ unsafe extern "C" {
 /// POSIX `sscanf` — scan formatted input from string.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn sscanf(s: *const c_char, format: *const c_char, mut args: ...) -> c_int {
-    unsafe { libc_vsscanf(s, format, (&mut args) as *mut _ as *mut c_void) }
+    if s.is_null() || format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, s as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vsscanf(s, format, (&mut args) as *mut _ as *mut c_void) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `fscanf` — scan formatted input from stream.
@@ -1960,13 +2022,34 @@ pub unsafe extern "C" fn fscanf(
     format: *const c_char,
     mut args: ...
 ) -> c_int {
-    unsafe { libc_vfscanf(stream, format, (&mut args) as *mut _ as *mut c_void) }
+    if format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vfscanf(stream, format, (&mut args) as *mut _ as *mut c_void) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `scanf` — scan formatted input from stdin.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn scanf(format: *const c_char, mut args: ...) -> c_int {
-    unsafe { libc_vscanf(format, (&mut args) as *mut _ as *mut c_void) }
+    if format.is_null() {
+        return -1;
+    }
+    let stdin_ptr = STDIN_SENTINEL as *mut c_void;
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stdin_ptr as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vscanf(format, (&mut args) as *mut _ as *mut c_void) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `vsscanf` — scan formatted input from string with va_list.
@@ -1976,7 +2059,17 @@ pub unsafe extern "C" fn vsscanf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    unsafe { libc_vsscanf(s, format, ap) }
+    if s.is_null() || format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, s as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vsscanf(s, format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `vfscanf` — scan formatted input from stream with va_list.
@@ -1986,13 +2079,34 @@ pub unsafe extern "C" fn vfscanf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    unsafe { libc_vfscanf(stream, format, ap) }
+    if format.is_null() {
+        return -1;
+    }
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vfscanf(stream, format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// POSIX `vscanf` — scan formatted input from stdin with va_list.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn vscanf(format: *const c_char, ap: *mut c_void) -> c_int {
-    unsafe { libc_vscanf(format, ap) }
+    if format.is_null() {
+        return -1;
+    }
+    let stdin_ptr = STDIN_SENTINEL as *mut c_void;
+    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stdin_ptr as usize, 0, false, false, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
+    let rc = unsafe { libc_vscanf(format, ap) };
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+    rc
 }
 
 /// glibc fortified `__printf_chk`.

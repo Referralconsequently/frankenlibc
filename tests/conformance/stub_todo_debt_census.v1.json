@@ -1,10 +1,13 @@
 {
   "schema_version": "v1",
   "bead": "bd-1pbw",
+  "uplift_bead": "bd-1x3.1",
   "description": "Unified stub/TODO debt census combining exported taxonomy status with critical non-exported source debt and deterministic risk ranking.",
   "source": {
     "support_matrix_path": "support_matrix.json",
     "support_matrix_sha256": "2d50a39dfd24ac4e79d5439bcd4a426ef82f5d5006f47342592ba7603aba91fe",
+    "replacement_profile_path": "tests/conformance/replacement_profile.json",
+    "replacement_profile_sha256": "c3e6cd96b1e6d03dbfaef86776145e4f9175abef0deccbf0c2a58ddbb1666837",
     "scan_roots": [
       "crates/frankenlibc-core/src",
       "crates/frankenlibc-abi/src"
@@ -719,6 +722,890 @@
       }
     ]
   },
+  "replacement_claim_view": {
+    "profiles": {
+      "interpose_call_through_allowed": true,
+      "replacement_call_through_allowed": false
+    },
+    "interpose_allowlist_modules": [
+      "None",
+      "dirent_abi",
+      "dlfcn_abi",
+      "inet_abi",
+      "io_abi",
+      "locale_abi",
+      "process_abi",
+      "pthread_abi",
+      "resource_abi",
+      "signal_abi",
+      "socket_abi",
+      "startup_abi",
+      "stdio_abi",
+      "stdlib_abi",
+      "string_abi",
+      "termios_abi",
+      "time_abi",
+      "unistd_abi",
+      "wchar_abi"
+    ],
+    "declared_callthrough_family_modules": [
+      "None",
+      "dlfcn_abi",
+      "inet_abi",
+      "locale_abi",
+      "process_abi",
+      "pthread_abi",
+      "stdio_abi",
+      "string_abi",
+      "time_abi",
+      "unistd_abi",
+      "wchar_abi"
+    ],
+    "actual_callthrough_modules": [
+      "",
+      "dlfcn_abi",
+      "inet_abi",
+      "locale_abi",
+      "process_abi",
+      "pthread_abi",
+      "stdio_abi",
+      "string_abi",
+      "time_abi",
+      "unistd_abi",
+      "wchar_abi"
+    ],
+    "declared_but_not_actual_callthrough_modules": [
+      "None"
+    ],
+    "actual_but_not_declared_callthrough_modules": [
+      ""
+    ],
+    "exported_replacement_blockers": [
+      {
+        "symbol": "glob64",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "globfree64",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "nftw64",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vasprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vdprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vfprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vsnprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vsprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "dl_iterate_phdr",
+        "status": "GlibcCallThrough",
+        "module": "dlfcn_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "dladdr",
+        "status": "GlibcCallThrough",
+        "module": "dlfcn_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "dlclose",
+        "status": "GlibcCallThrough",
+        "module": "dlfcn_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "dlerror",
+        "status": "GlibcCallThrough",
+        "module": "dlfcn_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "dlopen",
+        "status": "GlibcCallThrough",
+        "module": "dlfcn_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "dlsym",
+        "status": "GlibcCallThrough",
+        "module": "dlfcn_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "if_freenameindex",
+        "status": "GlibcCallThrough",
+        "module": "inet_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "if_nameindex",
+        "status": "GlibcCallThrough",
+        "module": "inet_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "nl_langinfo",
+        "status": "GlibcCallThrough",
+        "module": "locale_abi",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "posix_spawn",
+        "status": "GlibcCallThrough",
+        "module": "process_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "posix_spawn_file_actions_destroy",
+        "status": "GlibcCallThrough",
+        "module": "process_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "posix_spawn_file_actions_init",
+        "status": "GlibcCallThrough",
+        "module": "process_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "posix_spawnattr_destroy",
+        "status": "GlibcCallThrough",
+        "module": "process_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "posix_spawnattr_init",
+        "status": "GlibcCallThrough",
+        "module": "process_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "posix_spawnp",
+        "status": "GlibcCallThrough",
+        "module": "process_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "pthread_cancel",
+        "status": "GlibcCallThrough",
+        "module": "pthread_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "pthread_setcancelstate",
+        "status": "GlibcCallThrough",
+        "module": "pthread_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "pthread_setcanceltype",
+        "status": "GlibcCallThrough",
+        "module": "pthread_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "pthread_testcancel",
+        "status": "GlibcCallThrough",
+        "module": "pthread_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fmemopen",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fopencookie",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fscanf",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "open_memstream",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "scanf",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "sscanf",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vfscanf",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vscanf",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vsscanf",
+        "status": "GlibcCallThrough",
+        "module": "stdio_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fnmatch",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "glob",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "globfree",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "regcomp",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "regerror",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "regexec",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "regfree",
+        "status": "GlibcCallThrough",
+        "module": "string_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "strptime",
+        "status": "GlibcCallThrough",
+        "module": "time_abi",
+        "perf_class": "coldpath",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_cancel",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_error",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_fsync",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_read",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_return",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_suspend",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "aio_write",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "closelog",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "crypt",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "endmntent",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fgetgrent",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fgetpwent",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "forkpty",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "freeifaddrs",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "ftw",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "getgrent_r",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "getifaddrs",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "getmntent",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "getpwent_r",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "getutent",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "lio_listio",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "nftw",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "openlog",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "openpty",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "res_init",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "res_query",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "res_search",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "syscall",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "sem_close",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "sem_open",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "sem_unlink",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "setmntent",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "syslog",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "utmpname",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vsyslog",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "wordexp",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "wordfree",
+        "status": "GlibcCallThrough",
+        "module": "unistd_abi",
+        "perf_class": "default",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fwprintf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "fwscanf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "swprintf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "swscanf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vfwprintf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vfwscanf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vswprintf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vswscanf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vwprintf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "vwscanf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "wprintf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      },
+      {
+        "symbol": "wscanf",
+        "status": "GlibcCallThrough",
+        "module": "wchar_abi",
+        "perf_class": "fast",
+        "priority": 0,
+        "interpose_allowlisted": true
+      }
+    ],
+    "exported_interpose_unapproved_callthroughs": [
+      {
+        "symbol": "glob64",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "globfree64",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "nftw64",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vasprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vdprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vfprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vsnprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      },
+      {
+        "symbol": "vsprintf",
+        "status": "GlibcCallThrough",
+        "module": "",
+        "perf_class": "",
+        "priority": 0,
+        "interpose_allowlisted": false
+      }
+    ],
+    "summary": {
+      "replacement_blocker_count": 93,
+      "interpose_unapproved_callthrough_count": 9,
+      "claim_alignment_ok": false
+    }
+  },
   "critical_source_debt": {
     "occurrence_count": 4,
     "unique_symbol_count": 4,
@@ -819,7 +1706,11 @@
       "debt_scope": "exported_shadow_debt",
       "in_support_matrix": true,
       "support_status": "Implemented",
+      "support_module": "setjmp_abi",
       "occurrences": 1,
+      "replacement_blocker": false,
+      "interpose_allowlisted": null,
+      "interpose_policy_violation": false,
       "risk_score": 112,
       "risk_tier": "high",
       "rationale": [
@@ -840,7 +1731,11 @@
       "debt_scope": "exported_shadow_debt",
       "in_support_matrix": true,
       "support_status": "Implemented",
+      "support_module": "setjmp_abi",
       "occurrences": 1,
+      "replacement_blocker": false,
+      "interpose_allowlisted": null,
+      "interpose_policy_violation": false,
       "risk_score": 112,
       "risk_tier": "high",
       "rationale": [
@@ -861,7 +1756,11 @@
       "debt_scope": "exported_shadow_debt",
       "in_support_matrix": true,
       "support_status": "RawSyscall",
+      "support_module": "termios_abi",
       "occurrences": 1,
+      "replacement_blocker": false,
+      "interpose_allowlisted": null,
+      "interpose_policy_violation": false,
       "risk_score": 112,
       "risk_tier": "high",
       "rationale": [
@@ -882,7 +1781,11 @@
       "debt_scope": "exported_shadow_debt",
       "in_support_matrix": true,
       "support_status": "RawSyscall",
+      "support_module": "termios_abi",
       "occurrences": 1,
+      "replacement_blocker": false,
+      "interpose_allowlisted": null,
+      "interpose_policy_violation": false,
       "risk_score": 112,
       "risk_tier": "high",
       "rationale": [
@@ -896,11 +1799,2347 @@
         "crates/frankenlibc-core/src/termios/mod.rs:303"
       ],
       "rank": 4
+    },
+    {
+      "symbol": "glob64",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::glob64"
+      ],
+      "rank": 5
+    },
+    {
+      "symbol": "globfree64",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::globfree64"
+      ],
+      "rank": 6
+    },
+    {
+      "symbol": "nftw64",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::nftw64"
+      ],
+      "rank": 7
+    },
+    {
+      "symbol": "vasprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::vasprintf"
+      ],
+      "rank": 8
+    },
+    {
+      "symbol": "vdprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::vdprintf"
+      ],
+      "rank": 9
+    },
+    {
+      "symbol": "vfprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::vfprintf"
+      ],
+      "rank": 10
+    },
+    {
+      "symbol": "vprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::vprintf"
+      ],
+      "rank": 11
+    },
+    {
+      "symbol": "vsnprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::vsnprintf"
+      ],
+      "rank": 12
+    },
+    {
+      "symbol": "vsprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": false,
+      "interpose_policy_violation": true,
+      "risk_score": 74,
+      "risk_tier": "medium",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true",
+        "interpose_allowlist_violation=true"
+      ],
+      "locations": [
+        "support_matrix::::vsprintf"
+      ],
+      "rank": 13
+    },
+    {
+      "symbol": "nl_langinfo",
+      "family": "locale",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "locale_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=locale",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::locale_abi::nl_langinfo"
+      ],
+      "rank": 14
+    },
+    {
+      "symbol": "aio_cancel",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_cancel"
+      ],
+      "rank": 15
+    },
+    {
+      "symbol": "aio_error",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_error"
+      ],
+      "rank": 16
+    },
+    {
+      "symbol": "aio_fsync",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_fsync"
+      ],
+      "rank": 17
+    },
+    {
+      "symbol": "aio_read",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_read"
+      ],
+      "rank": 18
+    },
+    {
+      "symbol": "aio_return",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_return"
+      ],
+      "rank": 19
+    },
+    {
+      "symbol": "aio_suspend",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_suspend"
+      ],
+      "rank": 20
+    },
+    {
+      "symbol": "aio_write",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::aio_write"
+      ],
+      "rank": 21
+    },
+    {
+      "symbol": "closelog",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::closelog"
+      ],
+      "rank": 22
+    },
+    {
+      "symbol": "crypt",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::crypt"
+      ],
+      "rank": 23
+    },
+    {
+      "symbol": "dl_iterate_phdr",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "dlfcn_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::dlfcn_abi::dl_iterate_phdr"
+      ],
+      "rank": 24
+    },
+    {
+      "symbol": "dladdr",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "dlfcn_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::dlfcn_abi::dladdr"
+      ],
+      "rank": 25
+    },
+    {
+      "symbol": "dlclose",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "dlfcn_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::dlfcn_abi::dlclose"
+      ],
+      "rank": 26
+    },
+    {
+      "symbol": "dlerror",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "dlfcn_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::dlfcn_abi::dlerror"
+      ],
+      "rank": 27
+    },
+    {
+      "symbol": "dlopen",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "dlfcn_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::dlfcn_abi::dlopen"
+      ],
+      "rank": 28
+    },
+    {
+      "symbol": "dlsym",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "dlfcn_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::dlfcn_abi::dlsym"
+      ],
+      "rank": 29
+    },
+    {
+      "symbol": "endmntent",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::endmntent"
+      ],
+      "rank": 30
+    },
+    {
+      "symbol": "fgetgrent",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::fgetgrent"
+      ],
+      "rank": 31
+    },
+    {
+      "symbol": "fgetpwent",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::fgetpwent"
+      ],
+      "rank": 32
+    },
+    {
+      "symbol": "fmemopen",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::fmemopen"
+      ],
+      "rank": 33
+    },
+    {
+      "symbol": "fnmatch",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::fnmatch"
+      ],
+      "rank": 34
+    },
+    {
+      "symbol": "fopencookie",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::fopencookie"
+      ],
+      "rank": 35
+    },
+    {
+      "symbol": "forkpty",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::forkpty"
+      ],
+      "rank": 36
+    },
+    {
+      "symbol": "freeifaddrs",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::freeifaddrs"
+      ],
+      "rank": 37
+    },
+    {
+      "symbol": "fscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::fscanf"
+      ],
+      "rank": 38
+    },
+    {
+      "symbol": "ftw",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::ftw"
+      ],
+      "rank": 39
+    },
+    {
+      "symbol": "fwprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::fwprintf"
+      ],
+      "rank": 40
+    },
+    {
+      "symbol": "fwscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::fwscanf"
+      ],
+      "rank": 41
+    },
+    {
+      "symbol": "getgrent_r",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::getgrent_r"
+      ],
+      "rank": 42
+    },
+    {
+      "symbol": "getifaddrs",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::getifaddrs"
+      ],
+      "rank": 43
+    },
+    {
+      "symbol": "getmntent",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::getmntent"
+      ],
+      "rank": 44
+    },
+    {
+      "symbol": "getpwent_r",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::getpwent_r"
+      ],
+      "rank": 45
+    },
+    {
+      "symbol": "getutent",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::getutent"
+      ],
+      "rank": 46
+    },
+    {
+      "symbol": "glob",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::glob"
+      ],
+      "rank": 47
+    },
+    {
+      "symbol": "globfree",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::globfree"
+      ],
+      "rank": 48
+    },
+    {
+      "symbol": "if_freenameindex",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "inet_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::inet_abi::if_freenameindex"
+      ],
+      "rank": 49
+    },
+    {
+      "symbol": "if_nameindex",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "inet_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::inet_abi::if_nameindex"
+      ],
+      "rank": 50
+    },
+    {
+      "symbol": "lio_listio",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::lio_listio"
+      ],
+      "rank": 51
+    },
+    {
+      "symbol": "nftw",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::nftw"
+      ],
+      "rank": 52
+    },
+    {
+      "symbol": "open_memstream",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::open_memstream"
+      ],
+      "rank": 53
+    },
+    {
+      "symbol": "openlog",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::openlog"
+      ],
+      "rank": 54
+    },
+    {
+      "symbol": "openpty",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::openpty"
+      ],
+      "rank": 55
+    },
+    {
+      "symbol": "posix_spawn",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "process_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::process_abi::posix_spawn"
+      ],
+      "rank": 56
+    },
+    {
+      "symbol": "posix_spawn_file_actions_destroy",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "process_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::process_abi::posix_spawn_file_actions_destroy"
+      ],
+      "rank": 57
+    },
+    {
+      "symbol": "posix_spawn_file_actions_init",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "process_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::process_abi::posix_spawn_file_actions_init"
+      ],
+      "rank": 58
+    },
+    {
+      "symbol": "posix_spawnattr_destroy",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "process_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::process_abi::posix_spawnattr_destroy"
+      ],
+      "rank": 59
+    },
+    {
+      "symbol": "posix_spawnattr_init",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "process_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::process_abi::posix_spawnattr_init"
+      ],
+      "rank": 60
+    },
+    {
+      "symbol": "posix_spawnp",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "process_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::process_abi::posix_spawnp"
+      ],
+      "rank": 61
+    },
+    {
+      "symbol": "regcomp",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::regcomp"
+      ],
+      "rank": 62
+    },
+    {
+      "symbol": "regerror",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::regerror"
+      ],
+      "rank": 63
+    },
+    {
+      "symbol": "regexec",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::regexec"
+      ],
+      "rank": 64
+    },
+    {
+      "symbol": "regfree",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "string_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::string_abi::regfree"
+      ],
+      "rank": 65
+    },
+    {
+      "symbol": "res_init",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::res_init"
+      ],
+      "rank": 66
+    },
+    {
+      "symbol": "res_query",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::res_query"
+      ],
+      "rank": 67
+    },
+    {
+      "symbol": "res_search",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::res_search"
+      ],
+      "rank": 68
+    },
+    {
+      "symbol": "scanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::scanf"
+      ],
+      "rank": 69
+    },
+    {
+      "symbol": "sem_close",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::sem_close"
+      ],
+      "rank": 70
+    },
+    {
+      "symbol": "sem_open",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::sem_open"
+      ],
+      "rank": 71
+    },
+    {
+      "symbol": "sem_unlink",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::sem_unlink"
+      ],
+      "rank": 72
+    },
+    {
+      "symbol": "setmntent",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::setmntent"
+      ],
+      "rank": 73
+    },
+    {
+      "symbol": "sscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::sscanf"
+      ],
+      "rank": 74
+    },
+    {
+      "symbol": "strptime",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "time_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::time_abi::strptime"
+      ],
+      "rank": 75
+    },
+    {
+      "symbol": "swprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::swprintf"
+      ],
+      "rank": 76
+    },
+    {
+      "symbol": "swscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::swscanf"
+      ],
+      "rank": 77
+    },
+    {
+      "symbol": "syslog",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::syslog"
+      ],
+      "rank": 78
+    },
+    {
+      "symbol": "utmpname",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::utmpname"
+      ],
+      "rank": 79
+    },
+    {
+      "symbol": "vfscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::vfscanf"
+      ],
+      "rank": 80
+    },
+    {
+      "symbol": "vfwprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::vfwprintf"
+      ],
+      "rank": 81
+    },
+    {
+      "symbol": "vfwscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::vfwscanf"
+      ],
+      "rank": 82
+    },
+    {
+      "symbol": "vscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::vscanf"
+      ],
+      "rank": 83
+    },
+    {
+      "symbol": "vsscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "stdio_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::stdio_abi::vsscanf"
+      ],
+      "rank": 84
+    },
+    {
+      "symbol": "vswprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::vswprintf"
+      ],
+      "rank": 85
+    },
+    {
+      "symbol": "vswscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::vswscanf"
+      ],
+      "rank": 86
+    },
+    {
+      "symbol": "vsyslog",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::vsyslog"
+      ],
+      "rank": 87
+    },
+    {
+      "symbol": "vwprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::vwprintf"
+      ],
+      "rank": 88
+    },
+    {
+      "symbol": "vwscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::vwscanf"
+      ],
+      "rank": 89
+    },
+    {
+      "symbol": "wordexp",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::wordexp"
+      ],
+      "rank": 90
+    },
+    {
+      "symbol": "wordfree",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "unistd_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::unistd_abi::wordfree"
+      ],
+      "rank": 91
+    },
+    {
+      "symbol": "wprintf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::wprintf"
+      ],
+      "rank": 92
+    },
+    {
+      "symbol": "wscanf",
+      "family": "other",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "wchar_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=other",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::wchar_abi::wscanf"
+      ],
+      "rank": 93
+    },
+    {
+      "symbol": "pthread_cancel",
+      "family": "threading",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "pthread_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=threading",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::pthread_abi::pthread_cancel"
+      ],
+      "rank": 94
+    },
+    {
+      "symbol": "pthread_setcancelstate",
+      "family": "threading",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "pthread_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=threading",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::pthread_abi::pthread_setcancelstate"
+      ],
+      "rank": 95
+    },
+    {
+      "symbol": "pthread_setcanceltype",
+      "family": "threading",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "pthread_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=threading",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::pthread_abi::pthread_setcanceltype"
+      ],
+      "rank": 96
+    },
+    {
+      "symbol": "pthread_testcancel",
+      "family": "threading",
+      "debt_scope": "replacement_policy_gap",
+      "in_support_matrix": true,
+      "support_status": "GlibcCallThrough",
+      "support_module": "pthread_abi",
+      "occurrences": 0,
+      "replacement_blocker": true,
+      "interpose_allowlisted": true,
+      "interpose_policy_violation": false,
+      "risk_score": 56,
+      "risk_tier": "low",
+      "rationale": [
+        "family=threading",
+        "scope=replacement_policy_gap",
+        "support_status=GlibcCallThrough",
+        "occurrences=0",
+        "replacement_profile_blocker=true"
+      ],
+      "locations": [
+        "support_matrix::pthread_abi::pthread_testcancel"
+      ],
+      "rank": 97
     }
   ],
   "reconciliation": {
     "exported_stub_count": 0,
     "exported_non_implemented_count": 93,
+    "replacement_blocker_count": 93,
+    "interpose_unapproved_callthrough_count": 9,
     "critical_non_exported_todo_count": 0,
     "critical_exported_shadow_todo_count": 4,
     "critical_non_exported_symbols": [],
@@ -909,6 +4148,112 @@
       "setjmp",
       "tcgetattr",
       "tcsetattr"
+    ],
+    "replacement_blocker_symbols": [
+      "glob64",
+      "globfree64",
+      "nftw64",
+      "vasprintf",
+      "vdprintf",
+      "vfprintf",
+      "vprintf",
+      "vsnprintf",
+      "vsprintf",
+      "dl_iterate_phdr",
+      "dladdr",
+      "dlclose",
+      "dlerror",
+      "dlopen",
+      "dlsym",
+      "if_freenameindex",
+      "if_nameindex",
+      "nl_langinfo",
+      "posix_spawn",
+      "posix_spawn_file_actions_destroy",
+      "posix_spawn_file_actions_init",
+      "posix_spawnattr_destroy",
+      "posix_spawnattr_init",
+      "posix_spawnp",
+      "pthread_cancel",
+      "pthread_setcancelstate",
+      "pthread_setcanceltype",
+      "pthread_testcancel",
+      "fmemopen",
+      "fopencookie",
+      "fscanf",
+      "open_memstream",
+      "scanf",
+      "sscanf",
+      "vfscanf",
+      "vscanf",
+      "vsscanf",
+      "fnmatch",
+      "glob",
+      "globfree",
+      "regcomp",
+      "regerror",
+      "regexec",
+      "regfree",
+      "strptime",
+      "aio_cancel",
+      "aio_error",
+      "aio_fsync",
+      "aio_read",
+      "aio_return",
+      "aio_suspend",
+      "aio_write",
+      "closelog",
+      "crypt",
+      "endmntent",
+      "fgetgrent",
+      "fgetpwent",
+      "forkpty",
+      "freeifaddrs",
+      "ftw",
+      "getgrent_r",
+      "getifaddrs",
+      "getmntent",
+      "getpwent_r",
+      "getutent",
+      "lio_listio",
+      "nftw",
+      "openlog",
+      "openpty",
+      "res_init",
+      "res_query",
+      "res_search",
+      "sem_close",
+      "sem_open",
+      "sem_unlink",
+      "setmntent",
+      "syslog",
+      "utmpname",
+      "vsyslog",
+      "wordexp",
+      "wordfree",
+      "fwprintf",
+      "fwscanf",
+      "swprintf",
+      "swscanf",
+      "vfwprintf",
+      "vfwscanf",
+      "vswprintf",
+      "vswscanf",
+      "vwprintf",
+      "vwscanf",
+      "wprintf",
+      "wscanf"
+    ],
+    "interpose_unapproved_callthrough_symbols": [
+      "glob64",
+      "globfree64",
+      "nftw64",
+      "vasprintf",
+      "vdprintf",
+      "vfprintf",
+      "vprintf",
+      "vsnprintf",
+      "vsprintf"
     ],
     "matrix_summary_deltas": [
       {
@@ -933,13 +4278,16 @@
     "ambiguity_resolved": true,
     "notes": [
       "Exported status and source debt are reported in separate sections to avoid blind spots.",
-      "Non-exported critical TODO debt is explicitly ranked so hidden backlog cannot be mistaken for zero debt."
+      "Non-exported critical TODO debt is explicitly ranked so hidden backlog cannot be mistaken for zero debt.",
+      "Replacement/interpose claim alignment is included so policy drift is visible in the same ledger."
     ]
   },
   "summary": {
-    "priority_item_count": 4,
+    "priority_item_count": 97,
     "top_priority_symbol": "longjmp",
     "top_priority_risk_score": 112,
+    "replacement_blocker_count": 93,
+    "interpose_unapproved_callthrough_count": 9,
     "critical_non_exported_share_pct": 0.0,
     "nonzero_matrix_delta_count": 3
   }

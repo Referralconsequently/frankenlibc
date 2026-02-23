@@ -132,8 +132,8 @@ fn init_keys() -> (u64, u64) {
         #[cfg(target_os = "linux")]
         {
             let mut buf = [0u8; 16];
-            // SYS_getrandom = 318 on x86_64
-            let res = unsafe { libc::syscall(318, buf.as_mut_ptr(), buf.len(), 0) };
+            // Use libc::SYS_getrandom instead of hardcoded value for cross-arch support
+            let res = unsafe { libc::syscall(libc::SYS_getrandom, buf.as_mut_ptr(), buf.len(), 0) };
             if res == 16 {
                 r0 = u64::from_le_bytes(buf[0..8].try_into().unwrap());
                 r1 = u64::from_le_bytes(buf[8..16].try_into().unwrap());

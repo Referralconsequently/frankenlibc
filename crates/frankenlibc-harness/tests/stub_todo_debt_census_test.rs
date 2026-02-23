@@ -1,4 +1,5 @@
-//! Integration test: unified stub/TODO debt census guard (bd-1pbw).
+//! Integration test: unified stub/TODO debt census guard
+//! (bd-1pbw baseline, bd-1x3.1 replacement-claim uplift).
 //!
 //! Validates:
 //! 1) artifact exists and has required top-level sections.
@@ -44,6 +45,10 @@ fn artifact_exists_and_has_required_shape() {
     assert!(
         artifact["critical_source_debt"].is_object(),
         "critical_source_debt must be object"
+    );
+    assert!(
+        artifact["replacement_claim_view"].is_object(),
+        "replacement_claim_view must be object"
     );
     assert!(
         artifact["risk_policy"].is_object(),
@@ -157,10 +162,11 @@ fn gate_script_passes_and_emits_artifacts() {
 
     let report = load_json(&report_path);
     assert_eq!(report["schema_version"].as_str(), Some("v1"));
-    assert_eq!(report["bead"].as_str(), Some("bd-1pbw"));
+    assert_eq!(report["bead"].as_str(), Some("bd-1x3.1"));
     for check in [
         "artifact_reproducible",
         "exported_taxonomy_consistent",
+        "replacement_claim_alignment",
         "source_debt_consistent",
         "risk_ranking_consistent",
         "reconciliation_consistent",

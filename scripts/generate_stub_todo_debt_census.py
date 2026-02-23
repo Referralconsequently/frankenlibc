@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 BEAD_ID = "bd-1pbw"
+UPLIFT_BEAD_ID = "bd-1x3.1"
 SCHEMA_VERSION = "v1"
 
 TODO_RE = re.compile(r"\btodo!\s*\(")
@@ -210,50 +211,121 @@ def risk_tier(score: int) -> str:
     return "low"
 
 
-def build_risk_ranking(source_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_symbol: dict[str, list[dict[str, Any]]] = defaultdict(list)
+def build_risk_ranking(
+    source_rows: list[dict[str, Any]],
+    replacement_view: dict[str, Any],
+) -> list[dict[str, Any]]:
+    aggregates: dict[str, dict[str, Any]] = {}
+
+    def get_or_create(symbol: str) -> dict[str, Any]:
+        if symbol not in aggregates:
+            aggregates[symbol] = {
+                "symbol": symbol,
+                "family": classify_family(symbol),
+                "in_support_matrix": False,
+                "support_status": None,
+                "support_module": None,
+                "scopes": set(),
+                "occurrences": 0,
+                "max_occurrence_risk": 0,
+                "hidden_debt": False,
+                "shadow_debt": False,
+                "replacement_blocker": False,
+                "interpose_allowlisted": None,
+                "interpose_policy_violation": False,
+                "policy_risk": 0,
+                "locations": set(),
+            }
+        return aggregates[symbol]
+
     for row in source_rows:
-        by_symbol[row["symbol"]].append(row)
+        symbol = str(row["symbol"])
+        agg = get_or_create(symbol)
+        agg["family"] = str(row["family"])
+        agg["in_support_matrix"] = bool(row["in_support_matrix"])
+        agg["support_status"] = row.get("support_status")
+        agg["support_module"] = row.get("support_module")
+        agg["scopes"].add(str(row["debt_scope"]))
+        agg["occurrences"] += 1
+        agg["max_occurrence_risk"] = max(
+            int(agg["max_occurrence_risk"]),
+            int(row["occurrence_risk_score"]),
+        )
+        if not agg["in_support_matrix"]:
+            agg["hidden_debt"] = True
+        if agg["support_status"] in {"Implemented", "RawSyscall"}:
+            agg["shadow_debt"] = True
+        agg["locations"].add(f"{row['path']}:{row['line']}")
+
+    for blocker in replacement_view.get("exported_replacement_blockers", []):
+        symbol = str(blocker["symbol"])
+        agg = get_or_create(symbol)
+        status = str(blocker["status"])
+        module = str(blocker["module"])
+        agg["family"] = classify_family(symbol)
+        agg["in_support_matrix"] = True
+        agg["support_status"] = status
+        agg["support_module"] = module
+        agg["replacement_blocker"] = True
+        agg["interpose_allowlisted"] = bool(blocker["interpose_allowlisted"])
+        agg["interpose_policy_violation"] = not bool(blocker["interpose_allowlisted"])
+        policy_base = STATUS_WEIGHTS.get(status, STATUS_WEIGHTS[None])
+        replacement_blocking_bonus = 24 if status == "GlibcCallThrough" else 32
+        interpose_violation_bonus = 18 if agg["interpose_policy_violation"] else 0
+        agg["policy_risk"] = max(
+            int(agg["policy_risk"]),
+            int(policy_base + replacement_blocking_bonus + interpose_violation_bonus),
+        )
+        agg["locations"].add(f"support_matrix::{module}::{symbol}")
 
     ranking: list[dict[str, Any]] = []
-    for symbol, rows in by_symbol.items():
-        representative = rows[0]
-        support_status = representative.get("support_status")
-        in_support = bool(representative.get("in_support_matrix"))
-        family = str(representative["family"])
-        scope = str(representative["debt_scope"])
-        occurrences = len(rows)
-
-        max_occurrence_risk = max(int(row["occurrence_risk_score"]) for row in rows)
+    for symbol, agg in aggregates.items():
+        occurrences = int(agg["occurrences"])
+        max_occurrence_risk = int(agg["max_occurrence_risk"])
         occurrence_bonus = min(occurrences * 4, 16)
-        hidden_debt_bonus = 8 if not in_support else 0
-        score = max_occurrence_risk + occurrence_bonus + hidden_debt_bonus
+        hidden_debt_bonus = 8 if bool(agg["hidden_debt"]) else 0
+        policy_risk = int(agg["policy_risk"])
+        score = max_occurrence_risk + occurrence_bonus + hidden_debt_bonus + policy_risk
 
+        if bool(agg["replacement_blocker"]):
+            scope = "replacement_policy_gap"
+        elif agg["scopes"]:
+            scope = ",".join(sorted(str(s) for s in agg["scopes"]))
+        else:
+            scope = "critical_non_exported_debt"
+
+        support_status = agg["support_status"]
         rationale = [
-            f"family={family}",
+            f"family={agg['family']}",
             f"scope={scope}",
             f"support_status={support_status if support_status is not None else 'non_exported'}",
             f"occurrences={occurrences}",
         ]
-        if not in_support:
+        if bool(agg["hidden_debt"]):
             rationale.append("hidden_from_exported_taxonomy=true")
-        if support_status in {"Implemented", "RawSyscall"}:
+        if bool(agg["shadow_debt"]):
             rationale.append("shadow_debt_against_reported_status=true")
+        if bool(agg["replacement_blocker"]):
+            rationale.append("replacement_profile_blocker=true")
+        if bool(agg["interpose_policy_violation"]):
+            rationale.append("interpose_allowlist_violation=true")
 
         ranking.append(
             {
                 "symbol": symbol,
-                "family": family,
+                "family": str(agg["family"]),
                 "debt_scope": scope,
-                "in_support_matrix": in_support,
+                "in_support_matrix": bool(agg["in_support_matrix"]),
                 "support_status": support_status,
+                "support_module": agg["support_module"],
                 "occurrences": occurrences,
+                "replacement_blocker": bool(agg["replacement_blocker"]),
+                "interpose_allowlisted": agg["interpose_allowlisted"],
+                "interpose_policy_violation": bool(agg["interpose_policy_violation"]),
                 "risk_score": score,
                 "risk_tier": risk_tier(score),
                 "rationale": rationale,
-                "locations": sorted(
-                    {f"{row['path']}:{row['line']}" for row in rows}
-                ),
+                "locations": sorted(str(loc) for loc in agg["locations"]),
             }
         )
 
@@ -329,9 +401,96 @@ def build_exported_view(matrix: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_payload(support_matrix_path: Path, scan_roots: list[Path]) -> dict[str, Any]:
+def build_replacement_view(
+    matrix: dict[str, Any],
+    replacement_profile: dict[str, Any],
+) -> dict[str, Any]:
+    symbols = [row for row in matrix.get("symbols", []) if isinstance(row, dict)]
+    interpose_allowlist = set(
+        str(module)
+        for module in replacement_profile.get("interpose_allowlist", {}).get("modules", [])
+    )
+    declared_callthrough_modules = set(
+        str(module)
+        for module in replacement_profile.get("callthrough_families", {}).get("modules", [])
+    )
+
+    actual_callthrough_modules = set(
+        str(row.get("module", ""))
+        for row in symbols
+        if row.get("status") == "GlibcCallThrough"
+    )
+
+    replacement_blockers = []
+    interpose_unapproved_callthroughs = []
+    for row in symbols:
+        status = str(row.get("status", ""))
+        if status not in {"Stub", "GlibcCallThrough"}:
+            continue
+        symbol = str(row.get("symbol", ""))
+        module = str(row.get("module", ""))
+        blocker = {
+            "symbol": symbol,
+            "status": status,
+            "module": module,
+            "perf_class": str(row.get("perf_class", "")),
+            "priority": int(row.get("priority", 0)),
+            "interpose_allowlisted": module in interpose_allowlist,
+        }
+        replacement_blockers.append(blocker)
+        if status == "GlibcCallThrough" and module not in interpose_allowlist:
+            interpose_unapproved_callthroughs.append(blocker)
+
+    replacement_blockers.sort(key=lambda row: (row["status"], row["module"], row["symbol"]))
+    interpose_unapproved_callthroughs.sort(
+        key=lambda row: (row["module"], row["symbol"])
+    )
+
+    replacement_profile_data = replacement_profile.get("profiles", {})
+    interpose_profile = replacement_profile_data.get("interpose", {})
+    replacement_profile_row = replacement_profile_data.get("replacement", {})
+
+    return {
+        "profiles": {
+            "interpose_call_through_allowed": bool(
+                interpose_profile.get("call_through_allowed", False)
+            ),
+            "replacement_call_through_allowed": bool(
+                replacement_profile_row.get("call_through_allowed", True)
+            ),
+        },
+        "interpose_allowlist_modules": sorted(interpose_allowlist),
+        "declared_callthrough_family_modules": sorted(declared_callthrough_modules),
+        "actual_callthrough_modules": sorted(actual_callthrough_modules),
+        "declared_but_not_actual_callthrough_modules": sorted(
+            declared_callthrough_modules - actual_callthrough_modules
+        ),
+        "actual_but_not_declared_callthrough_modules": sorted(
+            actual_callthrough_modules - declared_callthrough_modules
+        ),
+        "exported_replacement_blockers": replacement_blockers,
+        "exported_interpose_unapproved_callthroughs": interpose_unapproved_callthroughs,
+        "summary": {
+            "replacement_blocker_count": len(replacement_blockers),
+            "interpose_unapproved_callthrough_count": len(
+                interpose_unapproved_callthroughs
+            ),
+            "claim_alignment_ok": not (
+                (declared_callthrough_modules - actual_callthrough_modules)
+                or (actual_callthrough_modules - declared_callthrough_modules)
+            ),
+        },
+    }
+
+
+def build_payload(
+    support_matrix_path: Path,
+    replacement_profile_path: Path,
+    scan_roots: list[Path],
+) -> dict[str, Any]:
     workspace_root = support_matrix_path.resolve().parent
     matrix = _load_json(support_matrix_path)
+    replacement_profile = _load_json(replacement_profile_path)
     support_symbols = {
         str(row.get("symbol", "")): row
         for row in matrix.get("symbols", [])
@@ -339,8 +498,9 @@ def build_payload(support_matrix_path: Path, scan_roots: list[Path]) -> dict[str
     }
 
     exported_view = build_exported_view(matrix)
+    replacement_view = build_replacement_view(matrix, replacement_profile)
     source_rows = scan_source_debt(workspace_root, scan_roots, support_symbols)
-    risk_rows = build_risk_ranking(source_rows)
+    risk_rows = build_risk_ranking(source_rows, replacement_view)
 
     unique_symbols = sorted({row["symbol"] for row in source_rows})
     by_scope = Counter(row["debt_scope"] for row in source_rows)
@@ -372,6 +532,7 @@ def build_payload(support_matrix_path: Path, scan_roots: list[Path]) -> dict[str
     payload = {
         "schema_version": SCHEMA_VERSION,
         "bead": BEAD_ID,
+        "uplift_bead": UPLIFT_BEAD_ID,
         "description": (
             "Unified stub/TODO debt census combining exported taxonomy status with "
             "critical non-exported source debt and deterministic risk ranking."
@@ -379,10 +540,15 @@ def build_payload(support_matrix_path: Path, scan_roots: list[Path]) -> dict[str
         "source": {
             "support_matrix_path": support_matrix_path.relative_to(workspace_root).as_posix(),
             "support_matrix_sha256": _sha256(support_matrix_path),
+            "replacement_profile_path": replacement_profile_path.relative_to(
+                workspace_root
+            ).as_posix(),
+            "replacement_profile_sha256": _sha256(replacement_profile_path),
             "scan_roots": [root.relative_to(workspace_root).as_posix() for root in scan_roots],
             "detection_macros": ["todo!", "unimplemented!", "panic!(pending-only)"],
         },
         "exported_taxonomy_view": exported_view,
+        "replacement_claim_view": replacement_view,
         "critical_source_debt": {
             "occurrence_count": len(source_rows),
             "unique_symbol_count": len(unique_symbols),
@@ -408,21 +574,41 @@ def build_payload(support_matrix_path: Path, scan_roots: list[Path]) -> dict[str
             "exported_non_implemented_count": len(
                 exported_view["non_implemented_exported_symbols"]
             ),
+            "replacement_blocker_count": int(
+                replacement_view["summary"]["replacement_blocker_count"]
+            ),
+            "interpose_unapproved_callthrough_count": int(
+                replacement_view["summary"]["interpose_unapproved_callthrough_count"]
+            ),
             "critical_non_exported_todo_count": len(critical_non_exported_symbols),
             "critical_exported_shadow_todo_count": len(critical_exported_shadow_symbols),
             "critical_non_exported_symbols": critical_non_exported_symbols,
             "critical_exported_shadow_symbols": critical_exported_shadow_symbols,
+            "replacement_blocker_symbols": [
+                row["symbol"] for row in replacement_view["exported_replacement_blockers"]
+            ],
+            "interpose_unapproved_callthrough_symbols": [
+                row["symbol"]
+                for row in replacement_view["exported_interpose_unapproved_callthroughs"]
+            ],
             "matrix_summary_deltas": matrix_deltas,
             "ambiguity_resolved": True,
             "notes": [
                 "Exported status and source debt are reported in separate sections to avoid blind spots.",
                 "Non-exported critical TODO debt is explicitly ranked so hidden backlog cannot be mistaken for zero debt.",
+                "Replacement/interpose claim alignment is included so policy drift is visible in the same ledger.",
             ],
         },
         "summary": {
             "priority_item_count": len(risk_rows),
             "top_priority_symbol": top_item["symbol"] if top_item else None,
             "top_priority_risk_score": top_item["risk_score"] if top_item else 0,
+            "replacement_blocker_count": int(
+                replacement_view["summary"]["replacement_blocker_count"]
+            ),
+            "interpose_unapproved_callthrough_count": int(
+                replacement_view["summary"]["interpose_unapproved_callthrough_count"]
+            ),
             "critical_non_exported_share_pct": (
                 round(
                     (len(critical_non_exported_symbols) / len(unique_symbols)) * 100.0,
@@ -452,6 +638,12 @@ def main() -> int:
         help="Output artifact path",
     )
     parser.add_argument(
+        "--replacement-profile",
+        type=Path,
+        default=Path("tests/conformance/replacement_profile.json"),
+        help="Path to replacement_profile.json",
+    )
+    parser.add_argument(
         "--scan-root",
         action="append",
         dest="scan_roots",
@@ -467,6 +659,7 @@ def main() -> int:
 
     support_matrix_path = args.support_matrix.resolve()
     workspace_root = support_matrix_path.parent
+    replacement_profile_path = (workspace_root / args.replacement_profile).resolve()
 
     if args.scan_roots:
         scan_roots = [(workspace_root / Path(root)).resolve() for root in args.scan_roots]
@@ -480,8 +673,11 @@ def main() -> int:
         if not scan_root.exists():
             print(f"FAIL: missing scan root {scan_root}")
             return 1
+    if not replacement_profile_path.exists():
+        print(f"FAIL: missing replacement profile {replacement_profile_path}")
+        return 1
 
-    payload = build_payload(support_matrix_path, scan_roots)
+    payload = build_payload(support_matrix_path, replacement_profile_path, scan_roots)
 
     if args.check:
         if not args.output.exists():

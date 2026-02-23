@@ -524,6 +524,7 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
     let total = match nmemb.checked_mul(size) {
         Some(t) => t.max(1),
         None => {
+            unsafe { set_abi_errno(ENOMEM as c_int) };
             let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, 0, 0, true, false, 0);
             runtime_policy::observe(ApiFamily::Allocator, decision.profile, 4, true);
             record_allocator_stage_outcome(
