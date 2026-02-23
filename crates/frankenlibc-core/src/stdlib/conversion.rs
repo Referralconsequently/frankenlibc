@@ -333,7 +333,15 @@ pub fn strtod_impl(s: &[u8]) -> (f64, usize) {
         if word.eq_ignore_ascii_case(b"nan") {
             i += 3;
             // Preserve sign bit: -NaN and +NaN are distinct per IEEE 754.
-            return (special_sign * f64::NAN, i);
+            // Cannot use `special_sign * NAN` — IEEE 754 §6.3 says the sign
+            // of a NaN result from arithmetic is undefined.  Use direct bit
+            // manipulation to set the sign bit reliably.
+            let nan = if special_sign < 0.0 {
+                f64::from_bits(f64::NAN.to_bits() | (1u64 << 63))
+            } else {
+                f64::NAN
+            };
+            return (nan, i);
         }
     }
 
@@ -630,6 +638,17 @@ mod tests {
     fn test_strtod_nan() {
         let (val, _) = strtod(b"nan\0");
         assert!(val.is_nan());
+        // Positive NaN: sign bit should be clear.
+        assert_eq!(val.to_bits() >> 63, 0, "plain nan should be positive");
+    }
+
+    #[test]
+    fn test_strtod_negative_nan() {
+        let (val, consumed) = strtod(b"-nan\0");
+        assert!(val.is_nan());
+        assert_eq!(consumed, 4);
+        // Negative NaN: sign bit must be set (IEEE 754 sign-bit semantics).
+        assert_eq!(val.to_bits() >> 63, 1, "-nan must have sign bit set");
     }
 
     #[test]
