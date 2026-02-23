@@ -1,4 +1,5 @@
-//! Integration test: workload-ranked top-N API wave planning gate (bd-3mam)
+//! Integration test: workload-ranked top-N API wave planning gate
+//! (bd-3mam baseline, bd-1x3.2 uplift).
 //!
 //! Validates:
 //! 1. workload_api_wave_plan artifact exists and has required sections.
@@ -41,6 +42,7 @@ fn artifact_exists_and_has_required_shape() {
     let artifact = load_json(&artifact_path);
     assert_eq!(artifact["schema_version"].as_str(), Some("v1"));
     assert_eq!(artifact["bead"].as_str(), Some("bd-3mam"));
+    assert_eq!(artifact["uplift_bead"].as_str(), Some("bd-1x3.2"));
 
     assert!(artifact["inputs"].is_object(), "inputs must be object");
     assert!(artifact["scoring"].is_object(), "scoring must be object");
@@ -51,6 +53,14 @@ fn artifact_exists_and_has_required_shape() {
     assert!(
         artifact["symbol_ranking_top_n"].is_array(),
         "symbol_ranking_top_n must be array"
+    );
+    assert!(
+        artifact["implementation_waves"].is_object(),
+        "implementation_waves must be object"
+    );
+    assert!(
+        artifact["downgrade_policy"].is_object(),
+        "downgrade_policy must be object"
     );
     assert!(artifact["wave_plan"].is_array(), "wave_plan must be array");
     assert!(
@@ -91,6 +101,28 @@ fn summary_counts_match_rows_and_hooks_present() {
         summary.get("wave_count").and_then(|v| v.as_u64()),
         Some(waves.len() as u64),
         "summary.wave_count mismatch"
+    );
+    let top50_size = summary.get("top50_size").and_then(|v| v.as_u64()).unwrap_or(0);
+    let top200_size = summary.get("top200_size").and_then(|v| v.as_u64()).unwrap_or(0);
+    let downgrade_count = summary
+        .get("downgrade_symbol_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let top50_symbols = artifact["implementation_waves"]["top50"]["symbols"]
+        .as_array()
+        .expect("implementation_waves.top50.symbols must be array");
+    let top200_symbols = artifact["implementation_waves"]["top200"]["symbols"]
+        .as_array()
+        .expect("implementation_waves.top200.symbols must be array");
+    let downgraded = artifact["downgrade_policy"]["waived_symbols"]
+        .as_array()
+        .expect("downgrade_policy.waived_symbols must be array");
+    assert_eq!(top50_size, top50_symbols.len() as u64, "summary.top50_size mismatch");
+    assert_eq!(top200_size, top200_symbols.len() as u64, "summary.top200_size mismatch");
+    assert_eq!(
+        downgrade_count,
+        downgraded.len() as u64,
+        "summary.downgrade_symbol_count mismatch"
     );
 
     let top_blocker = summary
@@ -150,12 +182,14 @@ fn gate_script_passes_and_emits_artifacts() {
 
     let report = load_json(&report_path);
     assert_eq!(report["schema_version"].as_str(), Some("v1"));
-    assert_eq!(report["bead"].as_str(), Some("bd-3mam"));
+    assert_eq!(report["bead"].as_str(), Some("bd-1x3.2"));
     for check in [
         "artifact_reproducible",
         "ranking_consistency",
         "wave_dependencies_acyclic",
         "integration_hooks_present",
+        "implementation_waves_consistent",
+        "downgrade_policy_consistent",
         "summary_consistency",
     ] {
         assert_eq!(

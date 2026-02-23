@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# check_workload_api_wave_plan.sh — CI gate for bd-3mam
+# check_workload_api_wave_plan.sh — CI gate for bd-3mam (uplifted by bd-1x3.2)
 #
 # Validates:
 # 1) workload-ranked top-N wave-plan artifact is reproducible from source inputs.
-# 2) ranking, wave dependencies, and summary fields are internally consistent.
-# 3) integration hooks (setjmp/tls/threading/hard_parts) are present.
+# 2) ranking, wave dependencies, summary fields, and Top50/Top200 wave selection are internally consistent.
+# 3) integration hooks (setjmp/tls/threading/hard_parts) and downgrade policy are present.
 # 4) deterministic report + structured log artifacts are emitted.
 set -euo pipefail
 
@@ -14,33 +14,51 @@ ARTIFACT="${ROOT}/tests/conformance/workload_api_wave_plan.v1.json"
 SUPPORT="${ROOT}/support_matrix.json"
 WORKLOAD="${ROOT}/tests/conformance/workload_matrix.json"
 CENSUS="${ROOT}/tests/conformance/callthrough_census.v1.json"
+STUB_DEBT="${ROOT}/tests/conformance/stub_todo_debt_census.v1.json"
+WAIVER="${ROOT}/tests/conformance/stub_regression_waiver_policy.v1.json"
+FIXTURES="${ROOT}/tests/conformance/fixtures"
 OUT_DIR="${ROOT}/target/conformance"
 REPORT="${OUT_DIR}/workload_api_wave_plan.report.json"
 LOG="${OUT_DIR}/workload_api_wave_plan.log.jsonl"
-TRACE_ID="bd-3mam-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+TRACE_ID="bd-1x3.2-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 
 mkdir -p "${OUT_DIR}"
 
-for path in "${GEN}" "${SUPPORT}" "${WORKLOAD}" "${CENSUS}"; do
+for path in "${GEN}" "${SUPPORT}" "${WORKLOAD}" "${CENSUS}" "${STUB_DEBT}" "${WAIVER}"; do
   if [[ ! -f "${path}" ]]; then
     echo "FAIL: missing required input ${path}" >&2
     exit 1
   fi
 done
+if [[ ! -d "${FIXTURES}" ]]; then
+  echo "FAIL: missing required fixtures directory ${FIXTURES}" >&2
+  exit 1
+fi
 
 if [[ ! -f "${ARTIFACT}" ]]; then
   (
     cd "${ROOT}"
-    python3 "scripts/generate_workload_api_wave_plan.py" --output "tests/conformance/workload_api_wave_plan.v1.json" --top-n 25
+    python3 "scripts/generate_workload_api_wave_plan.py" \
+      --output "tests/conformance/workload_api_wave_plan.v1.json" \
+      --top-n 200 \
+      --stub-debt-census "tests/conformance/stub_todo_debt_census.v1.json" \
+      --waiver-policy "tests/conformance/stub_regression_waiver_policy.v1.json" \
+      --fixtures-dir "tests/conformance/fixtures"
   )
 fi
 
 (
   cd "${ROOT}"
-  python3 "scripts/generate_workload_api_wave_plan.py" --output "tests/conformance/workload_api_wave_plan.v1.json" --top-n 25 --check
+  python3 "scripts/generate_workload_api_wave_plan.py" \
+    --output "tests/conformance/workload_api_wave_plan.v1.json" \
+    --top-n 200 \
+    --stub-debt-census "tests/conformance/stub_todo_debt_census.v1.json" \
+    --waiver-policy "tests/conformance/stub_regression_waiver_policy.v1.json" \
+    --fixtures-dir "tests/conformance/fixtures" \
+    --check
 )
 
-python3 - "${ARTIFACT}" "${SUPPORT}" "${WORKLOAD}" "${REPORT}" <<'PY'
+python3 - "${ARTIFACT}" "${SUPPORT}" "${WORKLOAD}" "${WAIVER}" "${REPORT}" <<'PY'
 import json
 import pathlib
 import sys
@@ -48,21 +66,33 @@ import sys
 artifact_path = pathlib.Path(sys.argv[1])
 support_path = pathlib.Path(sys.argv[2])
 workload_path = pathlib.Path(sys.argv[3])
-report_path = pathlib.Path(sys.argv[4])
+waiver_path = pathlib.Path(sys.argv[4])
+report_path = pathlib.Path(sys.argv[5])
 
 artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
 support = json.loads(support_path.read_text(encoding='utf-8'))
 workload = json.loads(workload_path.read_text(encoding='utf-8'))
+waiver = json.loads(waiver_path.read_text(encoding='utf-8'))
+
+def to_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 if artifact.get('schema_version') != 'v1':
     raise SystemExit('FAIL: schema_version must be v1')
 if artifact.get('bead') != 'bd-3mam':
     raise SystemExit('FAIL: bead must be bd-3mam')
+if artifact.get('uplift_bead') != 'bd-1x3.2':
+    raise SystemExit('FAIL: uplift_bead must be bd-1x3.2')
 
 summary = artifact.get('summary', {})
 module_rows = artifact.get('module_ranking', [])
 symbol_rows = artifact.get('symbol_ranking_top_n', [])
 wave_rows = artifact.get('wave_plan', [])
+implementation_waves = artifact.get('implementation_waves', {})
+downgrade_policy = artifact.get('downgrade_policy', {})
 
 if not module_rows:
     raise SystemExit('FAIL: module_ranking must be non-empty')
@@ -70,17 +100,22 @@ if not symbol_rows:
     raise SystemExit('FAIL: symbol_ranking_top_n must be non-empty')
 if not wave_rows:
     raise SystemExit('FAIL: wave_plan must be non-empty')
+if not isinstance(implementation_waves, dict):
+    raise SystemExit('FAIL: implementation_waves must be object')
+if not isinstance(downgrade_policy, dict):
+    raise SystemExit('FAIL: downgrade_policy must be object')
 
 candidate_statuses = {'GlibcCallThrough', 'Stub'}
 support_symbols = {
     str(row.get('symbol')): row
     for row in support.get('symbols', [])
-    if row.get('status') in candidate_statuses
+    if isinstance(row, dict) and row.get('status') in candidate_statuses
 }
 
 # Check symbol ranking order and schema.
 prev_score = None
 seen_symbols = set()
+ranked_symbol_to_wave = {}
 for idx, row in enumerate(symbol_rows, start=1):
     rank = row.get('rank')
     if rank != idx:
@@ -89,6 +124,12 @@ for idx, row in enumerate(symbol_rows, start=1):
     module = str(row.get('module'))
     status = str(row.get('status'))
     score = float(row.get('score'))
+    selected_wave = str(row.get('selected_wave', ''))
+    call_frequency = to_int(row.get('call_frequency', -1), -1)
+    fixture_call_frequency = to_int(row.get('fixture_call_frequency', -1), -1)
+    trace_weight = float(row.get('trace_weight', -1))
+    debt_risk_score = to_int(row.get('stub_debt_risk_score', -1), -1)
+    debt_risk_weight = float(row.get('debt_risk_weight', -1))
     if symbol in seen_symbols:
         raise SystemExit(f'FAIL: duplicate symbol in symbol_ranking_top_n: {symbol}')
     seen_symbols.add(symbol)
@@ -101,9 +142,18 @@ for idx, row in enumerate(symbol_rows, start=1):
         )
     if status not in candidate_statuses:
         raise SystemExit(f'FAIL: invalid status for {symbol}: {status!r}')
+    if selected_wave not in {'Top50', 'Top200', 'Backlog', 'downgrade-policy'}:
+        raise SystemExit(f'FAIL: invalid selected_wave for {symbol}: {selected_wave!r}')
+    if call_frequency < 0 or fixture_call_frequency < 0:
+        raise SystemExit(f'FAIL: invalid call_frequency fields for {symbol}')
+    if trace_weight < 0:
+        raise SystemExit(f'FAIL: trace_weight must be non-negative for {symbol}')
+    if debt_risk_score < 0 or debt_risk_weight < 0:
+        raise SystemExit(f'FAIL: invalid debt risk fields for {symbol}')
     if prev_score is not None and score > prev_score + 1e-9:
         raise SystemExit('FAIL: symbol ranking is not sorted by descending score')
     prev_score = score
+    ranked_symbol_to_wave[symbol] = selected_wave
 
 # Check module ranking order and uniqueness.
 prev_module_score = None
@@ -157,17 +207,101 @@ for key in ('setjmp', 'tls', 'threading', 'hard_parts'):
     if not isinstance(vals, list) or not vals:
         raise SystemExit(f'FAIL: integration_hooks.{key} must be a non-empty array')
 
+# Implementation wave and downgrade policy validation.
+top50 = implementation_waves.get('top50', {})
+top200 = implementation_waves.get('top200', {})
+if not isinstance(top50, dict) or not isinstance(top200, dict):
+    raise SystemExit('FAIL: implementation_waves.top50/top200 must be objects')
+
+top50_symbols = top50.get('symbols', [])
+top200_symbols = top200.get('symbols', [])
+if not isinstance(top50_symbols, list) or not isinstance(top200_symbols, list):
+    raise SystemExit('FAIL: implementation_waves top50/top200 symbols must be arrays')
+if to_int(top50.get('target_size', -1), -1) != 50:
+    raise SystemExit('FAIL: implementation_waves.top50.target_size must be 50')
+if to_int(top200.get('target_size', -1), -1) != 200:
+    raise SystemExit('FAIL: implementation_waves.top200.target_size must be 200')
+if to_int(top50.get('actual_size', -1), -1) != len(top50_symbols):
+    raise SystemExit('FAIL: implementation_waves.top50.actual_size mismatch')
+if to_int(top200.get('actual_size', -1), -1) != len(top200_symbols):
+    raise SystemExit('FAIL: implementation_waves.top200.actual_size mismatch')
+if not set(top50_symbols).issubset(set(top200_symbols)):
+    raise SystemExit('FAIL: top50 symbols must be subset of top200 symbols')
+if len(top50_symbols) != len(set(top50_symbols)):
+    raise SystemExit('FAIL: implementation_waves.top50.symbols contains duplicates')
+if len(top200_symbols) != len(set(top200_symbols)):
+    raise SystemExit('FAIL: implementation_waves.top200.symbols contains duplicates')
+
+waiver_symbols = {
+    str(row.get('symbol'))
+    for row in waiver.get('waivers', [])
+    if str(row.get('symbol', ''))
+}
+downgraded_rows = downgrade_policy.get('waived_symbols', [])
+if not isinstance(downgraded_rows, list):
+    raise SystemExit('FAIL: downgrade_policy.waived_symbols must be array')
+if to_int(downgrade_policy.get('waived_symbol_count', -1), -1) != len(downgraded_rows):
+    raise SystemExit('FAIL: downgrade_policy.waived_symbol_count mismatch')
+downgraded_symbols = {str(row.get('symbol', '')) for row in downgraded_rows}
+if not downgraded_symbols.issubset(waiver_symbols):
+    raise SystemExit('FAIL: downgrade_policy includes symbol absent from waiver policy')
+if '' in downgraded_symbols:
+    raise SystemExit('FAIL: downgrade_policy includes empty symbol')
+
+# selected_wave semantics must match rank/waiver policy.
+expected_top50 = []
+expected_top200 = []
+for idx, row in enumerate(symbol_rows, start=1):
+    symbol = str(row.get('symbol', ''))
+    selected_wave = ranked_symbol_to_wave.get(symbol)
+    if symbol in downgraded_symbols:
+        if selected_wave != 'downgrade-policy':
+            raise SystemExit(
+                f'FAIL: downgraded symbol {symbol} must use selected_wave=downgrade-policy'
+            )
+        continue
+
+    if idx <= 50:
+        expected = 'Top50'
+        expected_top50.append(symbol)
+        expected_top200.append(symbol)
+    elif idx <= 200:
+        expected = 'Top200'
+        expected_top200.append(symbol)
+    else:
+        expected = 'Backlog'
+
+    if selected_wave != expected:
+        raise SystemExit(
+            f'FAIL: selected_wave mismatch for {symbol} at rank {idx}: expected {expected}, got {selected_wave}'
+        )
+
+if set(top50_symbols) != set(expected_top50):
+    raise SystemExit('FAIL: implementation_waves.top50.symbols inconsistent with selected_wave/rank policy')
+if set(top200_symbols) != set(expected_top200):
+    raise SystemExit('FAIL: implementation_waves.top200.symbols inconsistent with selected_wave/rank policy')
+if set(top50_symbols) & downgraded_symbols:
+    raise SystemExit('FAIL: implementation_waves.top50.symbols must not include downgraded symbols')
+if set(top200_symbols) & downgraded_symbols:
+    raise SystemExit('FAIL: implementation_waves.top200.symbols must not include downgraded symbols')
+
 # Summary consistency.
-if int(summary.get('top_n', -1)) != len(symbol_rows):
+if to_int(summary.get('top_n', -1), -1) != len(symbol_rows):
     raise SystemExit('FAIL: summary.top_n must equal symbol_ranking_top_n length')
-if int(summary.get('module_count', -1)) != len(module_rows):
+if to_int(summary.get('module_count', -1), -1) != len(module_rows):
     raise SystemExit('FAIL: summary.module_count mismatch')
-if int(summary.get('wave_count', -1)) != len(wave_rows):
+if to_int(summary.get('wave_count', -1), -1) != len(wave_rows):
     raise SystemExit('FAIL: summary.wave_count mismatch')
-if int(summary.get('candidate_symbols', -1)) < len(symbol_rows):
+if to_int(summary.get('candidate_symbols', -1), -1) < len(symbol_rows):
     raise SystemExit('FAIL: summary.candidate_symbols cannot be smaller than top_n list length')
-if int(summary.get('remaining_after_top_n', -1)) < 0:
+if to_int(summary.get('remaining_after_top_n', -1), -1) < 0:
     raise SystemExit('FAIL: summary.remaining_after_top_n must be non-negative')
+if to_int(summary.get('top50_size', -1), -1) != len(top50_symbols):
+    raise SystemExit('FAIL: summary.top50_size mismatch')
+if to_int(summary.get('top200_size', -1), -1) != len(top200_symbols):
+    raise SystemExit('FAIL: summary.top200_size mismatch')
+if to_int(summary.get('downgrade_symbol_count', -1), -1) != len(downgraded_rows):
+    raise SystemExit('FAIL: summary.downgrade_symbol_count mismatch')
 
 # Cross-check top blocker appears in module ranking and workload subsystem impact.
 top_blocker = summary.get('top_blocker_module')
@@ -181,12 +315,14 @@ if top_blocker not in subsystem_impact:
 
 report = {
     'schema_version': 'v1',
-    'bead': 'bd-3mam',
+    'bead': 'bd-1x3.2',
     'checks': {
         'artifact_reproducible': 'pass',
         'ranking_consistency': 'pass',
         'wave_dependencies_acyclic': 'pass',
         'integration_hooks_present': 'pass',
+        'implementation_waves_consistent': 'pass',
+        'downgrade_policy_consistent': 'pass',
         'summary_consistency': 'pass',
     },
     'summary': {
@@ -194,6 +330,9 @@ report = {
         'candidate_symbols': int(summary.get('candidate_symbols', 0)),
         'module_count': len(module_rows),
         'wave_count': len(wave_rows),
+        'top50_size': len(top50_symbols),
+        'top200_size': len(top200_symbols),
+        'downgrade_symbol_count': len(downgraded_rows),
         'top_blocker_module': top_blocker,
     },
 }
@@ -217,7 +356,7 @@ event = {
     'trace_id': trace_id,
     'level': 'info',
     'event': 'workload_api_wave_plan_check',
-    'bead_id': 'bd-3mam',
+    'bead_id': 'bd-1x3.2',
     'stream': 'conformance',
     'gate': 'check_workload_api_wave_plan',
     'mode': 'analysis',
