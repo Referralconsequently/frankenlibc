@@ -24,6 +24,11 @@ fn set_dlerror(msg: &'static [u8]) {
     DLERROR_MSG.with(|cell| cell.set(msg.as_ptr() as *const c_char));
 }
 
+/// Set the thread-local dlerror message from a raw C string.
+fn set_dlerror_raw(msg: *const c_char) {
+    DLERROR_MSG.with(|cell| cell.set(msg));
+}
+
 /// Clear the thread-local dlerror message.
 fn clear_dlerror() {
     DLERROR_MSG.with(|cell| cell.set(std::ptr::null()));
@@ -33,6 +38,63 @@ fn clear_dlerror() {
 pub(crate) unsafe fn dlvsym_next(symbol: *const c_char, version: *const c_char) -> *mut c_void {
     unsafe { libc::dlvsym(libc::RTLD_NEXT, symbol, version) }
 }
+
+use std::sync::atomic::{AtomicPtr, Ordering};
+
+macro_rules! host_delegate {
+    ($name:ident, $sym:expr, $ty:ty) => {
+        #[inline(always)]
+        unsafe fn $name() -> Option<$ty> {
+            static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+            let mut ptr = PTR.load(Ordering::Relaxed);
+            if ptr.is_null() {
+                let sym_bytes = concat!($sym, "\0").as_bytes();
+                let v34 = b"GLIBC_2.34\0";
+                let v225 = b"GLIBC_2.2.5\0";
+                let v217 = b"GLIBC_2.17\0";
+                ptr = dlvsym_next(
+                    sym_bytes.as_ptr().cast::<c_char>(),
+                    v34.as_ptr().cast::<c_char>(),
+                );
+                if ptr.is_null() {
+                    ptr = dlvsym_next(
+                        sym_bytes.as_ptr().cast::<c_char>(),
+                        v225.as_ptr().cast::<c_char>(),
+                    );
+                }
+                if ptr.is_null() {
+                    ptr = dlvsym_next(
+                        sym_bytes.as_ptr().cast::<c_char>(),
+                        v217.as_ptr().cast::<c_char>(),
+                    );
+                }
+                if !ptr.is_null() {
+                    PTR.store(ptr, Ordering::Relaxed);
+                }
+            }
+            if ptr.is_null() {
+                None
+            } else {
+                Some(std::mem::transmute::<*mut c_void, $ty>(ptr))
+            }
+        }
+    };
+}
+
+type DlopenFn = unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void;
+host_delegate!(host_dlopen, "dlopen", DlopenFn);
+
+type DlsymFn = unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void;
+host_delegate!(host_dlsym, "dlsym", DlsymFn);
+
+type DlcloseFn = unsafe extern "C" fn(*mut c_void) -> c_int;
+host_delegate!(host_dlclose, "dlclose", DlcloseFn);
+
+type DlIteratePhdrFn = unsafe extern "C" fn(Option<unsafe extern "C" fn(*mut c_void, usize, *mut c_void) -> c_int>, *mut c_void) -> c_int;
+host_delegate!(host_dl_iterate_phdr, "dl_iterate_phdr", DlIteratePhdrFn);
+
+type DladdrFn = unsafe extern "C" fn(*const c_void, *mut c_void) -> c_int;
+host_delegate!(host_dladdr, "dladdr", DladdrFn);
 
 // ---------------------------------------------------------------------------
 // dlopen
@@ -59,10 +121,15 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
             // Hardened mode: default to RTLD_NOW | RTLD_LOCAL.
             let healed_flags = dlfcn_core::RTLD_NOW;
             clear_dlerror();
-            let handle = unsafe { libc::dlopen(filename, healed_flags) };
+            let handle = unsafe { host_dlopen().map_or(std::ptr::null_mut(), |f| f(filename, healed_flags)) };
             let adverse = handle.is_null();
             if adverse {
-                set_dlerror(dlfcn_core::ERR_NOT_FOUND);
+                let host_err = unsafe { libc::dlerror() };
+                if !host_err.is_null() {
+                    set_dlerror_raw(host_err);
+                } else {
+                    set_dlerror(dlfcn_core::ERR_NOT_FOUND);
+                }
             }
             runtime_policy::observe(ApiFamily::Loader, decision.profile, 12, adverse);
             return handle;
@@ -73,10 +140,15 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
     }
 
     clear_dlerror();
-    let handle = unsafe { libc::dlopen(filename, flags) };
+    let handle = unsafe { host_dlopen().map_or(std::ptr::null_mut(), |f| f(filename, flags)) };
     let adverse = handle.is_null();
     if adverse {
-        set_dlerror(dlfcn_core::ERR_NOT_FOUND);
+        let host_err = unsafe { libc::dlerror() };
+        if !host_err.is_null() {
+            set_dlerror_raw(host_err);
+        } else {
+            set_dlerror(dlfcn_core::ERR_NOT_FOUND);
+        }
     }
     runtime_policy::observe(ApiFamily::Loader, decision.profile, 12, adverse);
     handle
@@ -107,10 +179,15 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     }
 
     clear_dlerror();
-    let sym = unsafe { libc::dlsym(handle, symbol) };
+    let sym = unsafe { host_dlsym().map_or(std::ptr::null_mut(), |f| f(handle, symbol)) };
     let adverse = sym.is_null();
     if adverse {
-        set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+        let host_err = unsafe { libc::dlerror() };
+        if !host_err.is_null() {
+            set_dlerror_raw(host_err);
+        } else {
+            set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+        }
     }
     runtime_policy::observe(ApiFamily::Loader, decision.profile, 8, adverse);
     sym
@@ -144,10 +221,15 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> c_int {
     }
 
     clear_dlerror();
-    let rc = unsafe { libc::dlclose(handle) };
+    let rc = unsafe { host_dlclose().map_or(-1, |f| f(handle)) };
     let adverse = rc != 0;
     if adverse {
-        set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
+        let host_err = unsafe { libc::dlerror() };
+        if !host_err.is_null() {
+            set_dlerror_raw(host_err);
+        } else {
+            set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
+        }
     }
     runtime_policy::observe(ApiFamily::Loader, decision.profile, 8, adverse);
     rc
@@ -172,25 +254,15 @@ pub unsafe extern "C" fn dlerror() -> *const c_char {
 // dl_iterate_phdr / dladdr — GlibcCallThrough
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" {
-    #[link_name = "dl_iterate_phdr"]
-    fn libc_dl_iterate_phdr(
-        callback: Option<unsafe extern "C" fn(*mut c_void, usize, *mut c_void) -> c_int>,
-        data: *mut c_void,
-    ) -> c_int;
-    #[link_name = "dladdr"]
-    fn libc_dladdr(addr: *const c_void, info: *mut c_void) -> c_int;
-}
-
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dl_iterate_phdr(
     callback: Option<unsafe extern "C" fn(*mut c_void, usize, *mut c_void) -> c_int>,
     data: *mut c_void,
 ) -> c_int {
-    unsafe { libc_dl_iterate_phdr(callback, data) }
+    unsafe { host_dl_iterate_phdr().map_or(-1, |f| f(callback, data)) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dladdr(addr: *const c_void, info: *mut c_void) -> c_int {
-    unsafe { libc_dladdr(addr, info) }
+    unsafe { host_dladdr().map_or(0, |f| f(addr, info)) }
 }

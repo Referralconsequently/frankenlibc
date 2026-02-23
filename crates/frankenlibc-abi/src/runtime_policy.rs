@@ -100,21 +100,21 @@ unsafe fn cstr_eq_ignore_ascii_case(ptr: *const c_char, expected: &[u8]) -> bool
     unsafe { *ptr.add(expected.len()) as u8 == 0 }
 }
 
-fn parse_mode_from_environ() -> Option<SafetyLevel> {
+fn parse_mode_from_environ() -> Result<Option<SafetyLevel>, ()> {
     const KEY_EQ: &[u8] = b"FRANKENLIBC_MODE=";
     const MAX_SCAN: usize = 4096;
 
     // SAFETY: process-owned env pointer table, expected to be NUL-terminated.
     let mut envp = unsafe { environ };
     if envp.is_null() {
-        return None;
+        return Err(());
     }
 
     for _ in 0..MAX_SCAN {
         // SAFETY: envp points to a readable pointer slot in env vector.
         let entry = unsafe { *envp };
         if entry.is_null() {
-            return None;
+            return Ok(None);
         }
 
         let mut matched = true;
@@ -138,17 +138,17 @@ fn parse_mode_from_environ() -> Option<SafetyLevel> {
                     || cstr_eq_ignore_ascii_case(value, b"tsm")
                     || cstr_eq_ignore_ascii_case(value, b"full")
             } {
-                return Some(SafetyLevel::Hardened);
+                return Ok(Some(SafetyLevel::Hardened));
             }
             // Unrecognized values fall back to strict by contract.
-            return Some(SafetyLevel::Strict);
+            return Ok(Some(SafetyLevel::Strict));
         }
 
         // SAFETY: advance to next env vector slot.
         envp = unsafe { envp.add(1) };
     }
 
-    None
+    Ok(None)
 }
 
 #[must_use]
@@ -180,9 +180,20 @@ pub(crate) fn mode() -> SafetyLevel {
         };
     }
 
-    let resolved = parse_mode_from_environ().unwrap_or(SafetyLevel::Strict);
-    MODE_STATE.store(mode_to_u8(resolved), AtomicOrdering::Release);
-    resolved
+    match parse_mode_from_environ() {
+        Ok(Some(level)) => {
+            MODE_STATE.store(mode_to_u8(level), AtomicOrdering::Release);
+            level
+        }
+        Ok(None) => {
+            MODE_STATE.store(MODE_STRICT, AtomicOrdering::Release);
+            SafetyLevel::Strict
+        }
+        Err(_) => {
+            MODE_STATE.store(MODE_UNRESOLVED, AtomicOrdering::Release);
+            SafetyLevel::Strict
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -965,12 +976,12 @@ mod tests {
         let _lock = env_lock();
         let _env = EnvVarGuard::set(Some("RePaIr"));
 
-        assert_eq!(parse_mode_from_environ(), Some(SafetyLevel::Hardened));
+        assert_eq!(parse_mode_from_environ(), Ok(Some(SafetyLevel::Hardened)));
         // SAFETY: test-only env mutation is serialized by `env_lock`.
         unsafe {
             std::env::set_var("FRANKENLIBC_MODE", "bogus");
         }
-        assert_eq!(parse_mode_from_environ(), Some(SafetyLevel::Strict));
+        assert_eq!(parse_mode_from_environ(), Ok(Some(SafetyLevel::Strict)));
     }
 
     #[test]

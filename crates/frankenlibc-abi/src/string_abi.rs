@@ -52,6 +52,33 @@ fn enter_string_membrane_guard() -> Option<StringMembraneGuard> {
 
 #[inline(never)]
 unsafe fn raw_memcpy_bytes(dst: *mut u8, src: *const u8, n: usize) {
+    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+    static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+    static RESOLVING: AtomicBool = AtomicBool::new(false);
+    
+    let mut ptr = PTR.load(Ordering::Relaxed);
+    if ptr.is_null() {
+        if !RESOLVING.swap(true, Ordering::SeqCst) {
+            ptr = crate::dlfcn_abi::dlvsym_next(b"memcpy\0".as_ptr().cast(), b"GLIBC_2.14\0".as_ptr().cast());
+            if ptr.is_null() {
+                ptr = crate::dlfcn_abi::dlvsym_next(b"memcpy\0".as_ptr().cast(), b"GLIBC_2.2.5\0".as_ptr().cast());
+            }
+            if ptr.is_null() {
+                ptr = crate::dlfcn_abi::dlvsym_next(b"memcpy\0".as_ptr().cast(), b"GLIBC_2.17\0".as_ptr().cast());
+            }
+            if !ptr.is_null() {
+                PTR.store(ptr, Ordering::Relaxed);
+            }
+            RESOLVING.store(false, Ordering::SeqCst);
+        }
+    }
+    
+    if !ptr.is_null() {
+        let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void = std::mem::transmute(ptr);
+        f(dst as *mut c_void, src as *const c_void, n);
+        return;
+    }
+
     let mut i = 0usize;
     while i < n {
         // SAFETY: caller guarantees valid non-overlapping regions for `n` bytes.
@@ -65,6 +92,33 @@ unsafe fn raw_memcpy_bytes(dst: *mut u8, src: *const u8, n: usize) {
 
 #[inline(never)]
 unsafe fn raw_memmove_bytes(dst: *mut u8, src: *const u8, n: usize) {
+    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+    static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+    static RESOLVING: AtomicBool = AtomicBool::new(false);
+    
+    let mut ptr = PTR.load(Ordering::Relaxed);
+    if ptr.is_null() {
+        if !RESOLVING.swap(true, Ordering::SeqCst) {
+            ptr = crate::dlfcn_abi::dlvsym_next(b"memmove\0".as_ptr().cast(), b"GLIBC_2.2.5\0".as_ptr().cast());
+            if ptr.is_null() {
+                ptr = crate::dlfcn_abi::dlvsym_next(b"memmove\0".as_ptr().cast(), b"GLIBC_2.14\0".as_ptr().cast());
+            }
+            if ptr.is_null() {
+                ptr = crate::dlfcn_abi::dlvsym_next(b"memmove\0".as_ptr().cast(), b"GLIBC_2.17\0".as_ptr().cast());
+            }
+            if !ptr.is_null() {
+                PTR.store(ptr, Ordering::Relaxed);
+            }
+            RESOLVING.store(false, Ordering::SeqCst);
+        }
+    }
+    
+    if !ptr.is_null() {
+        let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void = std::mem::transmute(ptr);
+        f(dst as *mut c_void, src as *const c_void, n);
+        return;
+    }
+
     let dst_addr = dst as usize;
     let src_addr = src as usize;
     if dst_addr <= src_addr || dst_addr >= src_addr.saturating_add(n) {
@@ -86,6 +140,30 @@ unsafe fn raw_memmove_bytes(dst: *mut u8, src: *const u8, n: usize) {
 
 #[inline(never)]
 unsafe fn raw_memset_bytes(dst: *mut u8, value: u8, n: usize) {
+    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+    static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+    static RESOLVING: AtomicBool = AtomicBool::new(false);
+    
+    let mut ptr = PTR.load(Ordering::Relaxed);
+    if ptr.is_null() {
+        if !RESOLVING.swap(true, Ordering::SeqCst) {
+            ptr = crate::dlfcn_abi::dlvsym_next(b"memset\0".as_ptr().cast(), b"GLIBC_2.2.5\0".as_ptr().cast());
+            if ptr.is_null() {
+                ptr = crate::dlfcn_abi::dlvsym_next(b"memset\0".as_ptr().cast(), b"GLIBC_2.17\0".as_ptr().cast());
+            }
+            if !ptr.is_null() {
+                PTR.store(ptr, Ordering::Relaxed);
+            }
+            RESOLVING.store(false, Ordering::SeqCst);
+        }
+    }
+    
+    if !ptr.is_null() {
+        let f: unsafe extern "C" fn(*mut c_void, c_int, usize) -> *mut c_void = std::mem::transmute(ptr);
+        f(dst as *mut c_void, value as c_int, n);
+        return;
+    }
+
     let mut i = 0usize;
     while i < n {
         // SAFETY: caller guarantees `dst` valid for `n` bytes.

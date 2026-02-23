@@ -108,7 +108,7 @@ thread_local! {
 // Some bootstrap/reentrant paths intentionally allocate via native libc
 // instead of the membrane arena. These pointers must later use native
 // realloc/free semantics to preserve C behavior.
-const FALLBACK_ALLOC_TABLE_SLOTS: usize = 4096;
+const FALLBACK_ALLOC_TABLE_SLOTS: usize = 262144;
 const FALLBACK_SLOT_EMPTY: usize = 0;
 const FALLBACK_SLOT_TOMBSTONE: usize = 1;
 static FALLBACK_ALLOC_PTRS: [AtomicUsize; FALLBACK_ALLOC_TABLE_SLOTS] =

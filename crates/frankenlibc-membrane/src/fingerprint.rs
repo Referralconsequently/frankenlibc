@@ -114,39 +114,59 @@ impl Canary {
     }
 }
 
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 static SIP_KEY_0: AtomicU64 = AtomicU64::new(0);
 static SIP_KEY_1: AtomicU64 = AtomicU64::new(0);
+
+#[inline(always)]
+fn splitmix64(seed: &mut u64) -> u64 {
+    *seed = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *seed;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
 
 fn init_keys() -> (u64, u64) {
     let mut k0 = SIP_KEY_0.load(Ordering::Relaxed);
     let mut k1 = SIP_KEY_1.load(Ordering::Relaxed);
     if k0 == 0 || k1 == 0 {
-        // Fallback PRNG seeded by ASLR and time (or similar).
-        // Since we are in a libc interposition, avoid complex std::time calls if possible.
-        let aslr = init_keys as usize as u64;
-        let mut r0 = aslr ^ 0x0706_0504_0302_0100;
-        let mut r1 = aslr ^ 0x0F0E_0D0C_0B0A_0908;
-        
-        #[cfg(target_os = "linux")]
-        {
-            let mut buf = [0u8; 16];
-            // Use libc::SYS_getrandom instead of hardcoded value for cross-arch support
-            let res = unsafe { libc::syscall(libc::SYS_getrandom, buf.as_mut_ptr(), buf.len(), 0) };
-            if res == 16 {
-                r0 = u64::from_le_bytes(buf[0..8].try_into().unwrap());
-                r1 = u64::from_le_bytes(buf[8..16].try_into().unwrap());
-            }
-        }
-        
+        // Safe entropy mix from process/thread/time + ASLR address noise.
+        let aslr = init_keys as *const () as usize as u64;
+        let pid = u64::from(std::process::id());
+        let time_nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0u128, |d| d.as_nanos());
+        let time_lo = time_nanos as u64;
+        let time_hi = (time_nanos >> 64) as u64;
+        let mut tid_hasher = std::collections::hash_map::DefaultHasher::new();
+        std::thread::current().id().hash(&mut tid_hasher);
+        let tid = tid_hasher.finish();
+
+        let mut seed = aslr
+            ^ pid.rotate_left(11)
+            ^ tid.rotate_left(23)
+            ^ time_lo.rotate_left(7)
+            ^ time_hi.rotate_left(31)
+            ^ 0xA5A5_5A5A_D3C3_B4B4;
+
+        let mut r0 = splitmix64(&mut seed);
+        let mut r1 = splitmix64(&mut seed);
+
         // Ensure non-zero keys
-        if r0 == 0 { r0 = 1; }
-        if r1 == 0 { r1 = 1; }
-        
+        if r0 == 0 {
+            r0 = 1;
+        }
+        if r1 == 0 {
+            r1 = 1;
+        }
+
         let _ = SIP_KEY_0.compare_exchange(0, r0, Ordering::Relaxed, Ordering::Relaxed);
         let _ = SIP_KEY_1.compare_exchange(0, r1, Ordering::Relaxed, Ordering::Relaxed);
-        
+
         k0 = SIP_KEY_0.load(Ordering::Relaxed);
         k1 = SIP_KEY_1.load(Ordering::Relaxed);
     }
