@@ -2,7 +2,7 @@
   "version": 2,
   "generated_at_utc": "2026-02-18T04:49:26Z",
   "library": "/data/tmp/cargo-target/release/libfrankenlibc_abi.so",
-  "total_exported": 970,
+  "total_exported": 974,
   "taxonomy": {
     "Implemented": "Native Rust code owns the entire operation. No host libc dependency. Full test coverage required.",
     "RawSyscall": "ABI entrypoint marshals arguments directly to Linux syscall instruction. No glibc call-through.",
@@ -950,6 +950,12 @@
       "semantics": "Linux"
     },
     {
+      "symbol": "duplocale",
+      "status": "Implemented",
+      "module": "locale_abi",
+      "perf_class": "coldpath"
+    },
+    {
       "symbol": "endgrent",
       "status": "Implemented",
       "module": "grp_abi",
@@ -1798,6 +1804,12 @@
       "status": "GlibcCallThrough",
       "module": "unistd_abi",
       "perf_class": "fast"
+    },
+    {
+      "symbol": "freelocale",
+      "status": "Implemented",
+      "module": "locale_abi",
+      "perf_class": "coldpath"
     },
     {
       "symbol": "fremovexattr",
@@ -3181,6 +3193,114 @@
       "notes": ""
     },
     {
+      "symbol": "lgamma_r",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "coldpath",
+      "strict_semantics": "Reentrant lgamma; writes sign to *signgamp pointer; same ERANGE as lgamma",
+      "hardened_semantics": "Same as strict (pure computation with errno)",
+      "default_stub": false
+    },
+    {
+      "symbol": "lgammaf_r",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "coldpath",
+      "strict_semantics": "Reentrant lgammaf; writes sign to *signgamp pointer; same ERANGE/EDOM as lgammaf",
+      "hardened_semantics": "Same as strict (pure computation with errno)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__fpclassify",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: classify f64 as FP_NAN/FP_INFINITE/FP_ZERO/FP_SUBNORMAL/FP_NORMAL",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__fpclassifyf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: classify f32 as FP_NAN/FP_INFINITE/FP_ZERO/FP_SUBNORMAL/FP_NORMAL",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__signbit",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: return non-zero if f64 sign bit set",
+      "hardened_semantics": "Same as strict (pure bit check)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__signbitf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: return non-zero if f32 sign bit set",
+      "hardened_semantics": "Same as strict (pure bit check)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__isinf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: +1 for +Inf, -1 for -Inf, 0 otherwise (f64)",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__isinff",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: +1 for +Inf, -1 for -Inf, 0 otherwise (f32)",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__isnan",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: non-zero if f64 is NaN",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__isnanf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: non-zero if f32 is NaN",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__finite",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: non-zero if f64 is finite (not inf/nan)",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
+      "symbol": "__finitef",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "hotpath",
+      "strict_semantics": "glibc internal: non-zero if f32 is finite (not inf/nan)",
+      "hardened_semantics": "Same as strict (pure classification)",
+      "default_stub": false
+    },
+    {
       "symbol": "lgetxattr",
       "status": "RawSyscall",
       "module": "unistd_abi",
@@ -3977,6 +4097,12 @@
       "notes": ""
     },
     {
+      "symbol": "newlocale",
+      "status": "Implemented",
+      "module": "locale_abi",
+      "perf_class": "coldpath"
+    },
+    {
       "symbol": "nextafter",
       "status": "Implemented",
       "module": "math_abi",
@@ -4040,9 +4166,9 @@
     {
       "symbol": "nl_langinfo",
       "header": "langinfo.h",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "locale_abi",
-      "notes": ""
+      "perf_class": "coldpath"
     },
     {
       "symbol": "ntohl",
@@ -7240,6 +7366,12 @@
       "default_stub": false
     },
     {
+      "symbol": "uselocale",
+      "status": "Implemented",
+      "module": "locale_abi",
+      "perf_class": "coldpath"
+    },
+    {
       "symbol": "utmpname",
       "status": "GlibcCallThrough",
       "module": "unistd_abi",
@@ -8199,14 +8331,14 @@
     }
   ],
   "summary": {
-    "total_exported": 970,
-    "implemented": 569,
+    "total_exported": 974,
+    "implemented": 574,
     "raw_syscall": 297,
-    "glibc_call_through": 104,
+    "glibc_call_through": 103,
     "stub": 0
   },
-  "implemented": 569,
+  "implemented": 574,
   "raw_syscall": 297,
-  "glibc_call_through": 104,
+  "glibc_call_through": 103,
   "stub": 0
 }

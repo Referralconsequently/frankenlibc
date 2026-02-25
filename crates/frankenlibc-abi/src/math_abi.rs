@@ -427,6 +427,20 @@ pub unsafe extern "C" fn lgamma(x: f64) -> f64 {
     out
 }
 
+/// Reentrant lgamma: returns lgamma(x) and writes sign to `*signgamp`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn lgamma_r(x: f64, signgamp: *mut c_int) -> f64 {
+    let (val, sign) = frankenlibc_core::math::lgamma_r(x);
+    if !signgamp.is_null() {
+        // SAFETY: caller guarantees `signgamp` points to valid writable `int`.
+        unsafe { *signgamp = sign };
+    }
+    if x.is_finite() && (x == 0.0 || (x < 0.0 && is_integral_f64(x)) || val.is_infinite()) {
+        set_range_errno();
+    }
+    val
+}
+
 // ---------------------------------------------------------------------------
 // Complementary error function
 // ---------------------------------------------------------------------------
@@ -1144,6 +1158,24 @@ pub unsafe extern "C" fn lgammaf(x: f32) -> f32 {
     out
 }
 
+/// Reentrant lgammaf: returns lgammaf(x) and writes sign to `*signgamp`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn lgammaf_r(x: f32, signgamp: *mut c_int) -> f32 {
+    let (val, sign) = frankenlibc_core::math::lgammaf_r(x);
+    if !signgamp.is_null() {
+        // SAFETY: caller guarantees `signgamp` points to valid writable `int`.
+        unsafe { *signgamp = sign };
+    }
+    if x.is_finite() {
+        if x <= 0.0 && x == x.floor() {
+            set_domain_errno();
+        } else if val.is_infinite() {
+            set_range_errno();
+        }
+    }
+    val
+}
+
 // --- Float utilities f32 (extended) ---
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -1479,6 +1511,71 @@ pub unsafe extern "C" fn significandf(x: f32) -> f32 {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pow10f(x: f32) -> f32 {
     unsafe { exp10f(x) }
+}
+
+// ---------------------------------------------------------------------------
+// glibc internal classification functions (__fpclassify, __signbit, etc.)
+// These are used by glibc's <math.h> macro infrastructure.
+// ---------------------------------------------------------------------------
+
+/// glibc `__fpclassify`: classify f64 (FP_NAN=0, FP_INFINITE=1, FP_ZERO=2, FP_SUBNORMAL=3, FP_NORMAL=4).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fpclassify(x: f64) -> c_int {
+    frankenlibc_core::math::fpclassify(x)
+}
+
+/// glibc `__fpclassifyf`: classify f32.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fpclassifyf(x: f32) -> c_int {
+    frankenlibc_core::math::fpclassifyf(x)
+}
+
+/// glibc `__signbit`: return non-zero if sign bit set (f64).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __signbit(x: f64) -> c_int {
+    frankenlibc_core::math::signbit(x)
+}
+
+/// glibc `__signbitf`: return non-zero if sign bit set (f32).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __signbitf(x: f32) -> c_int {
+    frankenlibc_core::math::signbitf(x)
+}
+
+/// glibc `__isinf`: +1 for +Inf, -1 for -Inf, 0 otherwise (f64).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isinf(x: f64) -> c_int {
+    frankenlibc_core::math::isinf(x)
+}
+
+/// glibc `__isinff`: +1 for +Inf, -1 for -Inf, 0 otherwise (f32).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isinff(x: f32) -> c_int {
+    frankenlibc_core::math::isinff(x)
+}
+
+/// glibc `__isnan`: non-zero if NaN (f64).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isnan(x: f64) -> c_int {
+    frankenlibc_core::math::isnan(x)
+}
+
+/// glibc `__isnanf`: non-zero if NaN (f32).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isnanf(x: f32) -> c_int {
+    frankenlibc_core::math::isnanf(x)
+}
+
+/// glibc `__finite`: non-zero if neither infinite nor NaN (f64).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __finite(x: f64) -> c_int {
+    frankenlibc_core::math::finite(x)
+}
+
+/// glibc `__finitef`: non-zero if neither infinite nor NaN (f32).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __finitef(x: f32) -> c_int {
+    frankenlibc_core::math::finitef(x)
 }
 
 #[cfg(test)]

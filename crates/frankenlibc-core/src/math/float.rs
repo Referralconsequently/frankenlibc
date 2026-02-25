@@ -251,6 +251,60 @@ pub fn exp10(x: f64) -> f64 {
     libm::exp(x * core::f64::consts::LN_10)
 }
 
+// ---------------------------------------------------------------------------
+// IEEE 754 classification helpers (glibc __fpclassify, __signbit, etc.)
+// ---------------------------------------------------------------------------
+
+/// FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL constants
+/// matching glibc's <math.h> definitions.
+pub const FP_NAN: i32 = 0;
+pub const FP_INFINITE: i32 = 1;
+pub const FP_ZERO: i32 = 2;
+pub const FP_SUBNORMAL: i32 = 3;
+pub const FP_NORMAL: i32 = 4;
+
+/// Classify a double-precision float (glibc `__fpclassify`).
+#[inline]
+pub fn fpclassify(x: f64) -> i32 {
+    if x.is_nan() {
+        FP_NAN
+    } else if x.is_infinite() {
+        FP_INFINITE
+    } else if x == 0.0 {
+        FP_ZERO
+    } else if x.is_subnormal() {
+        FP_SUBNORMAL
+    } else {
+        FP_NORMAL
+    }
+}
+
+/// Return non-zero if sign bit is set (glibc `__signbit`).
+#[inline]
+pub fn signbit(x: f64) -> i32 {
+    if x.is_sign_negative() { 1 } else { 0 }
+}
+
+/// Return non-zero if `x` is infinite (glibc `__isinf`).
+///
+/// Returns +1 for +Inf, -1 for -Inf, 0 otherwise.
+#[inline]
+pub fn isinf(x: f64) -> i32 {
+    if x == f64::INFINITY {
+        1
+    } else if x == f64::NEG_INFINITY {
+        -1
+    } else {
+        0
+    }
+}
+
+/// Return non-zero if `x` is NaN (glibc `__isnan`).
+#[inline]
+pub fn isnan(x: f64) -> i32 {
+    if x.is_nan() { 1 } else { 0 }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -436,5 +490,43 @@ mod tests {
         assert!((exp10(1.0) - 10.0).abs() < 1e-10);
         assert!((exp10(2.0) - 100.0).abs() < 1e-8);
         assert!((exp10(3.0) - 1000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_fpclassify() {
+        assert_eq!(fpclassify(1.0), FP_NORMAL);
+        assert_eq!(fpclassify(0.0), FP_ZERO);
+        assert_eq!(fpclassify(-0.0), FP_ZERO);
+        assert_eq!(fpclassify(f64::INFINITY), FP_INFINITE);
+        assert_eq!(fpclassify(f64::NEG_INFINITY), FP_INFINITE);
+        assert_eq!(fpclassify(f64::NAN), FP_NAN);
+        assert_eq!(fpclassify(5e-324), FP_SUBNORMAL); // smallest positive subnormal
+    }
+
+    #[test]
+    fn test_signbit() {
+        assert_eq!(signbit(1.0), 0);
+        assert_eq!(signbit(-1.0), 1);
+        assert_eq!(signbit(0.0), 0);
+        assert_eq!(signbit(-0.0), 1);
+        assert_eq!(signbit(f64::INFINITY), 0);
+        assert_eq!(signbit(f64::NEG_INFINITY), 1);
+    }
+
+    #[test]
+    fn test_isinf() {
+        assert_eq!(isinf(f64::INFINITY), 1);
+        assert_eq!(isinf(f64::NEG_INFINITY), -1);
+        assert_eq!(isinf(0.0), 0);
+        assert_eq!(isinf(f64::NAN), 0);
+        assert_eq!(isinf(1.0), 0);
+    }
+
+    #[test]
+    fn test_isnan() {
+        assert_eq!(isnan(f64::NAN), 1);
+        assert_eq!(isnan(0.0), 0);
+        assert_eq!(isnan(f64::INFINITY), 0);
+        assert_eq!(isnan(1.0), 0);
     }
 }

@@ -404,6 +404,63 @@ pub fn gammaf(x: f32) -> f32 {
     libm::lgammaf(x)
 }
 
+/// Reentrant lgammaf: returns `(lgammaf(x), signgam)` (f32 variant).
+#[inline]
+pub fn lgammaf_r(x: f32) -> (f32, i32) {
+    libm::lgammaf_r(x)
+}
+
+// ---------------------------------------------------------------------------
+// IEEE 754 classification helpers (f32 variants)
+// ---------------------------------------------------------------------------
+
+/// FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL (same values as f64).
+pub const FP_NAN_F32: i32 = 0;
+pub const FP_INFINITE_F32: i32 = 1;
+pub const FP_ZERO_F32: i32 = 2;
+pub const FP_SUBNORMAL_F32: i32 = 3;
+pub const FP_NORMAL_F32: i32 = 4;
+
+/// Classify a single-precision float (glibc `__fpclassifyf`).
+#[inline]
+pub fn fpclassifyf(x: f32) -> i32 {
+    if x.is_nan() {
+        FP_NAN_F32
+    } else if x.is_infinite() {
+        FP_INFINITE_F32
+    } else if x == 0.0 {
+        FP_ZERO_F32
+    } else if x.is_subnormal() {
+        FP_SUBNORMAL_F32
+    } else {
+        FP_NORMAL_F32
+    }
+}
+
+/// Return non-zero if sign bit is set (f32 variant).
+#[inline]
+pub fn signbitf(x: f32) -> i32 {
+    if x.is_sign_negative() { 1 } else { 0 }
+}
+
+/// Return non-zero if `x` is infinite (f32 variant).
+#[inline]
+pub fn isinff(x: f32) -> i32 {
+    if x == f32::INFINITY {
+        1
+    } else if x == f32::NEG_INFINITY {
+        -1
+    } else {
+        0
+    }
+}
+
+/// Return non-zero if `x` is NaN (f32 variant).
+#[inline]
+pub fn isnanf(x: f32) -> i32 {
+    if x.is_nan() { 1 } else { 0 }
+}
+
 /// Extract the significand (mantissa) of `x` scaled to `[1, 2)` (f32 variant).
 #[inline]
 pub fn significandf(x: f32) -> f32 {
@@ -602,5 +659,39 @@ mod tests {
         assert_eq!(significandf(0.0), 0.0);
         assert!(significandf(f32::NAN).is_nan());
         assert!(significandf(f32::INFINITY).is_infinite());
+    }
+
+    #[test]
+    fn lgammaf_r_sanity() {
+        let (val, sign) = lgammaf_r(5.0);
+        assert!((val - (24.0_f32).ln()).abs() < 1e-3);
+        assert_eq!(sign, 1);
+        let (_, sign2) = lgammaf_r(-0.5);
+        assert_eq!(sign2, -1);
+    }
+
+    #[test]
+    fn fpclassifyf_sanity() {
+        assert_eq!(fpclassifyf(1.0), FP_NORMAL_F32);
+        assert_eq!(fpclassifyf(0.0), FP_ZERO_F32);
+        assert_eq!(fpclassifyf(f32::INFINITY), FP_INFINITE_F32);
+        assert_eq!(fpclassifyf(f32::NAN), FP_NAN_F32);
+        assert_eq!(fpclassifyf(1e-45), FP_SUBNORMAL_F32); // smallest positive subnormal f32
+    }
+
+    #[test]
+    fn signbitf_sanity() {
+        assert_eq!(signbitf(1.0), 0);
+        assert_eq!(signbitf(-1.0), 1);
+        assert_eq!(signbitf(-0.0), 1);
+    }
+
+    #[test]
+    fn isinff_isnanf_sanity() {
+        assert_eq!(isinff(f32::INFINITY), 1);
+        assert_eq!(isinff(f32::NEG_INFINITY), -1);
+        assert_eq!(isinff(1.0), 0);
+        assert_eq!(isnanf(f32::NAN), 1);
+        assert_eq!(isnanf(1.0), 0);
     }
 }

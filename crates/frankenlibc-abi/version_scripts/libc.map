@@ -376,6 +376,12 @@ GLIBC_2.2.5 {
         gamma;
         significand;
         exp10;
+        lgamma_r;
+        __fpclassify;
+        __signbit;
+        __isinf;
+        __isnan;
+        __finite;
 
         /* math operations — single precision */
         sinf;
@@ -447,6 +453,12 @@ GLIBC_2.2.5 {
         dremf;
         gammaf;
         significandf;
+        lgammaf_r;
+        __fpclassifyf;
+        __signbitf;
+        __isinff;
+        __isnanf;
+        __finitef;
         pow10;
         pow10f;
 
@@ -472,6 +484,10 @@ GLIBC_2.2.5 {
         setlocale;
         localeconv;
         nl_langinfo;
+        newlocale;
+        uselocale;
+        freelocale;
+        duplocale;
 
         /* pthread */
         pthread_self;
