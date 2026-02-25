@@ -40,6 +40,9 @@ struct HashSlot {
     occupied: bool,
 }
 
+// SAFETY: HashSlot raw pointers are C-owned and only accessed under Mutex.
+unsafe impl Send for HashSlot {}
+
 struct HashTable {
     slots: Vec<HashSlot>,
     capacity: usize,
