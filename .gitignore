@@ -80,3 +80,20 @@ target_*/
 
 # Claude local settings
 .claude/settings.local.json
+
+# Agent mail project identity
+.agent-mail-project-id
+
+# SQLite backup/corruption files
+*.sqlite3.bak
+*.sqlite3-wal.bak
+*.sqlite3.corrupt-*
+
+# Beads backup files (agent-generated recovery snapshots)
+.beads/*.bak.*
+
+# Remote compilation helper artifacts
+.rch-target/
+.rch-deploy-root/
+rch-bin/
+rch-install/
