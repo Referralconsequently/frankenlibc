@@ -44,6 +44,7 @@ pub mod wchar_abi;
 // Phase 2 ABI modules — pure Rust delegates (safe in test mode)
 pub mod ctype_abi;
 pub mod errno_abi;
+pub mod locale_abi;
 pub mod math_abi;
 pub mod startup_helpers;
 
@@ -53,6 +54,8 @@ pub mod dirent_abi;
 #[cfg(not(test))]
 pub mod dlfcn_abi;
 #[cfg(not(test))]
+pub mod fenv_abi;
+#[cfg(not(test))]
 pub mod grp_abi;
 #[cfg(not(test))]
 pub mod iconv_abi;
@@ -60,8 +63,6 @@ pub mod iconv_abi;
 pub mod inet_abi;
 #[cfg(not(test))]
 pub mod io_abi;
-#[cfg(not(test))]
-pub mod locale_abi;
 #[cfg(not(test))]
 pub mod mmap_abi;
 #[cfg(not(test))]

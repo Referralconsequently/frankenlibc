@@ -1,0 +1,159 @@
+#![cfg(target_os = "linux")]
+
+//! Integration tests for `<fenv.h>` ABI entrypoints.
+
+use std::ffi::c_void;
+
+use frankenlibc_abi::fenv_abi::{
+    feclearexcept, fegetenv, fegetexceptflag, fegetround, feholdexcept, feraiseexcept, fesetenv,
+    fesetexceptflag, fesetround, fetestexcept, feupdateenv,
+};
+
+// Linux x86_64 fenv constants from `<fenv.h>` (glibc ABI).
+const FE_INVALID: i32 = 0x01;
+const FE_DIVBYZERO: i32 = 0x04;
+const FE_ALL_EXCEPT: i32 = 0x3f;
+const FE_TONEAREST: i32 = 0x0000;
+const FE_DOWNWARD: i32 = 0x0400;
+const FE_UPWARD: i32 = 0x0800;
+const FE_TOWARDZERO: i32 = 0x0c00;
+
+struct RoundingGuard {
+    saved_mode: i32,
+}
+
+impl RoundingGuard {
+    fn new() -> Self {
+        // SAFETY: reads process FPU rounding mode and does not mutate memory.
+        let saved_mode = unsafe { fegetround() };
+        assert_ne!(saved_mode, -1, "fegetround should be available");
+        Self { saved_mode }
+    }
+}
+
+impl Drop for RoundingGuard {
+    fn drop(&mut self) {
+        // SAFETY: restores previously observed mode.
+        let _ = unsafe { fesetround(self.saved_mode) };
+    }
+}
+
+#[test]
+fn fesetround_round_trips_supported_modes() {
+    let _guard = RoundingGuard::new();
+    let mut switched_modes = 0;
+
+    for mode in [FE_TONEAREST, FE_UPWARD, FE_DOWNWARD, FE_TOWARDZERO] {
+        // SAFETY: setting process rounding mode is defined by fenv API.
+        let rc = unsafe { fesetround(mode) };
+        if rc == 0 {
+            switched_modes += 1;
+            // SAFETY: reads process FPU rounding mode.
+            let current = unsafe { fegetround() };
+            assert_eq!(current, mode);
+        }
+    }
+
+    assert!(
+        switched_modes > 0,
+        "expected at least one supported rounding mode transition"
+    );
+}
+
+#[test]
+fn fesetround_rejects_invalid_mode() {
+    let _guard = RoundingGuard::new();
+    // SAFETY: invalid mode should be rejected by host implementation.
+    assert_ne!(unsafe { fesetround(i32::MAX) }, 0);
+}
+
+#[test]
+fn exception_flags_raise_and_clear() {
+    // SAFETY: clearing/testing/raising exception flags is defined by fenv API.
+    unsafe {
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+        assert_eq!(fetestexcept(FE_ALL_EXCEPT), 0);
+
+        assert_eq!(feraiseexcept(FE_DIVBYZERO), 0);
+        let raised = fetestexcept(FE_DIVBYZERO);
+        assert_ne!(raised & FE_DIVBYZERO, 0);
+
+        assert_eq!(feclearexcept(FE_DIVBYZERO), 0);
+        assert_eq!(fetestexcept(FE_DIVBYZERO), 0);
+    }
+}
+
+#[test]
+fn exceptflag_round_trip_restores_flag_bits() {
+    // SAFETY: byte buffers are large enough for `fexcept_t` payload on glibc targets.
+    unsafe {
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+        assert_eq!(feraiseexcept(FE_INVALID), 0);
+
+        let mut saved = [0_u8; 16];
+        assert_eq!(
+            fegetexceptflag(saved.as_mut_ptr().cast::<c_void>(), FE_INVALID),
+            0
+        );
+
+        assert_eq!(feclearexcept(FE_INVALID), 0);
+        assert_eq!(fetestexcept(FE_INVALID), 0);
+
+        assert_eq!(
+            fesetexceptflag(saved.as_ptr().cast::<c_void>(), FE_INVALID),
+            0
+        );
+        let restored = fetestexcept(FE_INVALID);
+        assert_ne!(restored & FE_INVALID, 0);
+
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+    }
+}
+
+#[test]
+fn null_pointer_contracts_are_enforced_for_pointer_outputs() {
+    // SAFETY: null pointers should be rejected by ABI guard code.
+    unsafe {
+        assert_eq!(fegetexceptflag(std::ptr::null_mut(), FE_ALL_EXCEPT), -1);
+        assert_eq!(fesetexceptflag(std::ptr::null(), FE_ALL_EXCEPT), -1);
+        assert_eq!(fegetenv(std::ptr::null_mut()), -1);
+        assert_eq!(feholdexcept(std::ptr::null_mut()), -1);
+    }
+}
+
+#[test]
+fn fegetenv_and_fesetenv_restore_rounding_state() {
+    let _guard = RoundingGuard::new();
+
+    // SAFETY: `env` buffer is large enough for glibc `fenv_t`; pointer is valid for read/write.
+    unsafe {
+        let original = fegetround();
+        let mut env = [0_u8; 256];
+        assert_eq!(fegetenv(env.as_mut_ptr().cast::<c_void>()), 0);
+
+        if fesetround(FE_UPWARD) == 0 {
+            assert_eq!(fegetround(), FE_UPWARD);
+            assert_eq!(fesetenv(env.as_ptr().cast::<c_void>()), 0);
+            assert_eq!(fegetround(), original);
+        }
+    }
+}
+
+#[test]
+fn feholdexcept_and_feupdateenv_round_trip_saved_exceptions() {
+    // SAFETY: `env` buffer is large enough for glibc `fenv_t`; pointer is valid for read/write.
+    unsafe {
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+        assert_eq!(feraiseexcept(FE_DIVBYZERO), 0);
+        assert_ne!(fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO, 0);
+
+        let mut env = [0_u8; 256];
+        assert_eq!(feholdexcept(env.as_mut_ptr().cast::<c_void>()), 0);
+        assert_eq!(fetestexcept(FE_ALL_EXCEPT), 0);
+
+        assert_eq!(feupdateenv(env.as_ptr().cast::<c_void>()), 0);
+        assert_ne!(fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO, 0);
+
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+    }
+}

@@ -248,3 +248,156 @@ pub unsafe extern "C" fn bindtextdomain(
         dirname as *mut c_char
     }
 }
+
+// ---------------------------------------------------------------------------
+// POSIX 2008 thread-local locale — native C-locale implementation
+// ---------------------------------------------------------------------------
+//
+// FrankenLibC only supports the C/POSIX locale. These functions provide
+// the POSIX.1-2008 thread-safe locale API with deterministic C-locale
+// semantics. locale_t is an opaque pointer; we use a sentinel value
+// for the C locale handle.
+
+/// Opaque locale handle type (matches glibc `locale_t` = `__locale_t`).
+pub type LocaleT = *mut std::ffi::c_void;
+
+/// Sentinel value for the C locale handle.
+static C_LOCALE_HANDLE: u8 = 0;
+
+/// Return a pointer to use as the C-locale handle.
+#[inline]
+fn c_locale_handle() -> LocaleT {
+    std::ptr::addr_of!(C_LOCALE_HANDLE) as LocaleT
+}
+
+/// POSIX `newlocale` — create a new locale object.
+///
+/// C-locale only: accepts C/POSIX/"" and returns a handle. All other
+/// locale names return null (or the C locale handle in hardened mode).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn newlocale(
+    category_mask: c_int,
+    locale: *const c_char,
+    base: LocaleT,
+) -> LocaleT {
+    let (mode, decision) =
+        runtime_policy::decide(ApiFamily::Locale, category_mask as usize, 0, false, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Locale, decision.profile, 6, true);
+        return std::ptr::null_mut();
+    }
+
+    let accept = if locale.is_null() {
+        true
+    } else {
+        let name = unsafe { CStr::from_ptr(locale) }.to_bytes();
+        locale_core::is_c_locale(name)
+    };
+
+    if accept || !base.is_null() {
+        runtime_policy::observe(ApiFamily::Locale, decision.profile, 6, false);
+        c_locale_handle()
+    } else if mode.heals_enabled() {
+        runtime_policy::observe(ApiFamily::Locale, decision.profile, 6, true);
+        c_locale_handle()
+    } else {
+        runtime_policy::observe(ApiFamily::Locale, decision.profile, 6, true);
+        std::ptr::null_mut()
+    }
+}
+
+/// POSIX `uselocale` — set thread-local locale.
+///
+/// C-locale only: always returns the C locale handle. If `newloc` is
+/// non-null and non-`LC_GLOBAL_LOCALE`, it is accepted (C locale only).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn uselocale(newloc: LocaleT) -> LocaleT {
+    let _ = newloc;
+    c_locale_handle()
+}
+
+/// POSIX `freelocale` — free a locale object.
+///
+/// C-locale only: no-op since our locale handles are static.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn freelocale(_locale: LocaleT) {
+    // No-op: C locale handle is static.
+}
+
+/// POSIX `duplocale` — duplicate a locale object.
+///
+/// C-locale only: returns the same C locale handle.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn duplocale(_locale: LocaleT) -> LocaleT {
+    c_locale_handle()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setlocale_query_returns_c() {
+        // SAFETY: Null locale means query mode.
+        let result = unsafe { setlocale(locale_core::LC_ALL, std::ptr::null()) };
+        assert!(!result.is_null());
+        let name = unsafe { CStr::from_ptr(result) }.to_bytes();
+        assert_eq!(name, b"C");
+    }
+
+    #[test]
+    fn localeconv_returns_c_locale() {
+        // SAFETY: No arguments.
+        let conv = unsafe { localeconv() };
+        assert!(!conv.is_null());
+        let dp = unsafe { CStr::from_ptr((*conv).decimal_point) };
+        assert_eq!(dp.to_bytes(), b".");
+    }
+
+    #[test]
+    fn nl_langinfo_codeset_returns_ansi() {
+        // SAFETY: CODESET is a valid item.
+        let result = unsafe { nl_langinfo(libc::CODESET) };
+        assert!(!result.is_null());
+        let val = unsafe { CStr::from_ptr(result) };
+        assert_eq!(val.to_bytes(), b"ANSI_X3.4-1968");
+    }
+
+    #[test]
+    fn newlocale_c_locale_succeeds() {
+        let c_name = b"C\0";
+        // SAFETY: Valid C-locale name.
+        let loc = unsafe {
+            newlocale(
+                libc::LC_ALL_MASK,
+                c_name.as_ptr() as *const c_char,
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(!loc.is_null());
+    }
+
+    #[test]
+    fn uselocale_returns_handle() {
+        // SAFETY: Null means query only.
+        let loc = unsafe { uselocale(std::ptr::null_mut()) };
+        assert!(!loc.is_null());
+    }
+
+    #[test]
+    fn duplocale_returns_handle() {
+        let handle = c_locale_handle();
+        // SAFETY: Valid locale handle.
+        let dup = unsafe { duplocale(handle) };
+        assert!(!dup.is_null());
+        assert_eq!(dup, handle);
+    }
+
+    #[test]
+    fn freelocale_is_noop() {
+        let handle = c_locale_handle();
+        // SAFETY: Valid locale handle.
+        unsafe { freelocale(handle) };
+        // No crash, no-op verified.
+    }
+}
