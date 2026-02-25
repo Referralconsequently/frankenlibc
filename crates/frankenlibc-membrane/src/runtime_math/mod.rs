@@ -150,6 +150,7 @@ use self::doob_decomposition::{DoobDecompositionMonitor, DoobState};
 use self::entropy_rate::{EntropyRateMonitor, EntropyRateState};
 use self::eprocess::{AnytimeEProcessMonitor, SequentialState};
 use self::equivariant::{EquivariantState, EquivariantTransportController};
+use self::evidence::DecisionCardV1;
 use self::fano_bound::{FanoBoundMonitor, FanoState};
 use self::fusion::KernelFusionController;
 use self::grobner_normalizer::{GrobnerNormalizerController, GrobnerState};
@@ -202,6 +203,9 @@ fn observe_feedback_enabled() -> bool {
 
 const FAST_PATH_BUDGET_NS: u64 = 20;
 const FULL_PATH_BUDGET_NS: u64 = 200;
+const REVERSE_ROUND_DIVERSITY_WARN_THRESHOLD_PPM: u64 = 350_000;
+const REVERSE_ROUND_DIVERSITY_ERROR_THRESHOLD_PPM: u64 = 400_000;
+const REVERSE_ROUND_COVERAGE_MILESTONE_TARGET: usize = 3;
 
 /// Number of base severity signals fed from hot-path cached atomics.
 const BASE_SEVERITY_LEN: usize = 25;
@@ -327,6 +331,39 @@ pub struct RuntimeEvidenceContractSnapshot {
     pub evidence_max_epoch: u64,
 }
 
+/// Reverse-round branch-diversity state derived from decision-card exports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeReverseRoundDiversityState {
+    Healthy,
+    NearViolation,
+    Violation,
+}
+
+impl RuntimeReverseRoundDiversityState {
+    #[must_use]
+    const fn event_and_level(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Healthy => None,
+            Self::NearViolation => Some(("runtime_reverse_round_diversity_near_violation", "warn")),
+            Self::Violation => Some(("runtime_reverse_round_diversity_violation", "error")),
+        }
+    }
+}
+
+/// Reverse-round diversity contract snapshot for branch-diversity enforcement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeReverseRoundDiversitySnapshot {
+    pub total_decisions: u64,
+    pub active_family_count: usize,
+    pub dominant_family: ApiFamily,
+    pub dominant_family_share_ppm: u64,
+    pub warn_threshold_ppm: u64,
+    pub error_threshold_ppm: u64,
+    pub coverage_milestone_target: usize,
+    pub coverage_milestone_reached: bool,
+    pub state: RuntimeReverseRoundDiversityState,
+}
+
 /// Common runtime-kernel framework contract.
 ///
 /// This provides a shared `evaluate -> calibrate -> snapshot` surface for
@@ -353,8 +390,19 @@ pub trait RuntimeKernelFramework {
     /// Capture evidence-export counters for traceability and audit checks.
     fn evidence_contract_snapshot(&self) -> RuntimeEvidenceContractSnapshot;
 
+    /// Capture reverse-round branch-diversity state for runtime enforcement checks.
+    fn reverse_round_diversity_snapshot(&self) -> RuntimeReverseRoundDiversitySnapshot;
+
     /// Export structured JSON decision-card evidence for deterministic tooling ingestion.
     fn export_decision_cards_json(&self) -> String;
+
+    /// Export deterministic runtime-math JSONL logs for harness and CI ingestion.
+    fn export_runtime_math_log_jsonl(
+        &self,
+        mode: SafetyLevel,
+        bead_id: &str,
+        run_id: &str,
+    ) -> String;
 }
 
 /// Stable schema version for [`RuntimeKernelSnapshot`].
@@ -3070,7 +3118,8 @@ impl RuntimeMathKernel {
             }
 
             // Feed SOS barrier certificate evaluator (cadence-gated).
-            // Evaluates provenance + quarantine + fragmentation barriers using cached signals.
+            // Evaluates provenance + quarantine + fragmentation + thread-safety
+            // barriers using cached runtime signals.
             {
                 let barrier_code = {
                     let mut barrier = self.sos_barrier.lock();
@@ -3098,6 +3147,28 @@ impl RuntimeMathKernel {
                             u32::from(self.cached_sparse_state.load(Ordering::Relaxed)).min(4);
                         let size_dispersion_ppm = sparse_state.saturating_mul(250_000);
                         barrier.evaluate_fragmentation(size_dispersion_ppm, arena_utilization_ppm);
+                    }
+                    if matches!(family, ApiFamily::Allocator | ApiFamily::Threading) {
+                        let sparse_state =
+                            u32::from(self.cached_sparse_state.load(Ordering::Relaxed)).min(4);
+                        let mfg_state =
+                            u32::from(self.cached_mfg_state.load(Ordering::Relaxed)).min(3);
+                        let thread_count = 32u32.saturating_add(mfg_state.saturating_mul(128));
+                        let concurrent_writers = 1u32
+                            .saturating_add(u32::from(adverse))
+                            .saturating_add(mfg_state / 2);
+                        let owner_conflict =
+                            adverse && !profile.requires_full() && risk_ppm > 300_000;
+                        let free_list_skew_ppm =
+                            sparse_state.saturating_mul(200_000).min(1_000_000);
+                        let allocation_epoch_lag_ppm = risk_ppm.min(1_000_000);
+                        barrier.evaluate_thread_safety(
+                            thread_count,
+                            concurrent_writers,
+                            owner_conflict,
+                            free_list_skew_ppm,
+                            allocation_epoch_lag_ppm,
+                        );
                     }
                     match barrier.state() {
                         SosBarrierState::Calibrating => 0u8,
@@ -4035,7 +4106,13 @@ impl RuntimeMathKernel {
             sos_barrier_violations: sos_barrier_summary.provenance_violations
                 + sos_barrier_summary.quarantine_violations
                 + sos_barrier_summary.fragmentation_violations
+                + sos_barrier_summary.thread_safety_violations
                 + if sos_barrier_summary.fragmentation_hash_valid {
+                    0
+                } else {
+                    1
+                }
+                + if sos_barrier_summary.thread_safety_hash_valid {
                     0
                 } else {
                     1
@@ -4169,6 +4246,13 @@ impl RuntimeMathKernel {
         }
     }
 
+    /// Snapshot reverse-round branch-diversity state for runtime enforcement.
+    #[must_use]
+    pub fn reverse_round_diversity_snapshot(&self) -> RuntimeReverseRoundDiversitySnapshot {
+        let cards = self.evidence_log.decision_cards_snapshot_sorted();
+        reverse_round_diversity_snapshot_from_cards(&cards)
+    }
+
     /// Export structured decision-card JSON from the runtime evidence log.
     #[must_use]
     pub fn export_decision_cards_json(&self) -> String {
@@ -4191,9 +4275,15 @@ impl RuntimeMathKernel {
         run_id: &str,
     ) -> String {
         let cards = self.evidence_log.decision_cards_snapshot_sorted();
+        let snapshot_capture_started = std::time::Instant::now();
         let snapshot = self.snapshot(mode);
+        let snapshot_capture_latency_ns =
+            u64::try_from(snapshot_capture_started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        let snapshot_violations = snapshot_range_violations(&snapshot);
+        let snapshot_validated_field_count = snapshot_validation_field_count();
         let policy_hash_prefix = self.cached_policy_hash.load(Ordering::Relaxed);
         let policy_load_state = self.cached_policy_load_state.load(Ordering::Relaxed);
+        let diversity = reverse_round_diversity_snapshot_from_cards(&cards);
         let bead = sanitize_trace_component(bead_id);
         let run = sanitize_trace_component(run_id);
         let timestamp = now_utc_iso_like();
@@ -4207,6 +4297,15 @@ impl RuntimeMathKernel {
             let decision_name = decision_name(card.decision.action);
             let decision_path = decision_path(card.decision.action);
             let healing_action = healing_action_json(card.decision.action);
+            let profile_name = profile_name(card.decision.profile);
+            let _ = writeln!(
+                &mut out,
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:06}::dispatch\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"level\":\"trace\",\"event\":\"runtime_mode_dispatch\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision\":\"{decision_name}\",\"decision_action\":\"{action_name}\",\"decision_path\":\"mode->runtime_math_kernel->decision\",\"validation_profile\":\"{profile_name}\",\"mode\":\"{mode_label}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::dispatch\",\"healing_action\":{healing_action},\"errno\":0,\"latency_ns\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                card.decision_id,
+                card.decision_id,
+                card.estimated_cost_ns,
+                card.decision.evidence_seqno,
+            );
             let _ = writeln!(
                 &mut out,
                 "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:06}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{level}\",\"event\":\"runtime_decision\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision\":\"{decision_name}\",\"decision_action\":\"{action_name}\",\"decision_path\":\"{decision_path}\",\"healing_action\":{healing_action},\"decision_id\":{},\"mode\":\"{}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::{family_name}\",\"errno\":0,\"latency_ns\":{},\"policy_id\":{},\"risk_upper_bound_ppm\":{},\"evidence_seqno\":{},\"risk_inputs\":{{\"requested_bytes\":{},\"bloom_negative\":{},\"is_write\":{},\"contention_hint\":{},\"addr_hint\":{}}},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
@@ -4223,11 +4322,46 @@ impl RuntimeMathKernel {
                 card.context.contention_hint,
                 card.context.addr_hint,
             );
+            if card.decision.evidence_seqno > 0 {
+                let _ = writeln!(
+                    &mut out,
+                    "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:06}::evidence\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"level\":\"info\",\"event\":\"runtime_evidence_emitted\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision_path\":\"evidence->record_decision\",\"mode\":\"{mode_label}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::evidence\",\"healing_action\":{healing_action},\"errno\":0,\"latency_ns\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                    card.decision_id,
+                    card.decision_id,
+                    card.estimated_cost_ns,
+                    card.decision.evidence_seqno,
+                );
+            }
+        }
+
+        let dominant_family_name = family_name(diversity.dominant_family);
+        let _ = writeln!(
+            &mut out,
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::reverse_round::selection\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"debug\",\"event\":\"runtime_reverse_round_math_selection\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::math_family_selection\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"active_family_count\":{},\"total_decisions\":{},\"dominant_family\":\"{dominant_family_name}\",\"dominant_family_share_ppm\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            diversity.active_family_count,
+            diversity.total_decisions,
+            diversity.dominant_family_share_ppm,
+        );
+        let _ = writeln!(
+            &mut out,
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::reverse_round::coverage\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"info\",\"event\":\"runtime_reverse_round_coverage_milestone\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::coverage_milestone\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"active_family_count\":{},\"milestone_target\":{},\"milestone_reached\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            diversity.active_family_count,
+            diversity.coverage_milestone_target,
+            diversity.coverage_milestone_reached,
+        );
+        if let Some((event, level)) = diversity.state.event_and_level() {
+            let _ = writeln!(
+                &mut out,
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::reverse_round::diversity\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"{level}\",\"event\":\"{event}\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::diversity_constraints\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"dominant_family\":\"{dominant_family_name}\",\"dominant_family_share_ppm\":{},\"warn_threshold_ppm\":{},\"error_threshold_ppm\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                diversity.dominant_family_share_ppm,
+                diversity.warn_threshold_ppm,
+                diversity.error_threshold_ppm,
+            );
         }
 
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::calibration\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"debug\",\"event\":\"runtime_calibration\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::calibration\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"full_validation_trigger_ppm\":{},\"repair_trigger_ppm\":{},\"design_selected_probes\":{},\"design_budget_ns\":{},\"sampled_risk_bonus_ppm\":{},\"policy_hash_prefix\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::calibration\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"debug\",\"event\":\"runtime_calibration\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::calibration\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{snapshot_capture_latency_ns},\"snapshot_capture_latency_ns\":{snapshot_capture_latency_ns},\"snapshot_validated_field_count\":{snapshot_validated_field_count},\"full_validation_trigger_ppm\":{},\"repair_trigger_ppm\":{},\"design_selected_probes\":{},\"design_budget_ns\":{},\"sampled_risk_bonus_ppm\":{},\"policy_hash_prefix\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
             snapshot.full_validation_trigger_ppm,
             snapshot.repair_trigger_ppm,
             snapshot.design_selected_probes,
@@ -4238,7 +4372,7 @@ impl RuntimeMathKernel {
 
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"info\",\"event\":\"runtime_snapshot\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::state\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"decisions\":{},\"consistency_faults\":{},\"pareto_cumulative_regret_milli\":{},\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"info\",\"event\":\"runtime_snapshot\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::state\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"decisions\":{},\"consistency_faults\":{},\"pareto_cumulative_regret_milli\":{},\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
             snapshot.decisions,
             snapshot.consistency_faults,
             snapshot.pareto_cumulative_regret_milli,
@@ -4247,16 +4381,23 @@ impl RuntimeMathKernel {
             snapshot.evidence_seqno,
         );
 
+        for (field, observed, min_allowed, max_allowed) in snapshot_violations {
+            let _ = writeln!(
+                &mut out,
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot::range\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"warn\",\"event\":\"runtime_snapshot_field_out_of_range\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::validate_fields\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"field\":\"{field}\",\"observed\":{observed},\"min_allowed\":{min_allowed},\"max_allowed\":{max_allowed},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            );
+        }
+
         if policy_load_state == POLICY_LOAD_STATE_LOADED {
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::certificate\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"info\",\"event\":\"runtime_certificate_loaded\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"pass\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::certificate\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"info\",\"event\":\"runtime_certificate_loaded\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"pass\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
                 policy_hash_prefix,
             );
         } else if policy_load_state == POLICY_LOAD_STATE_VERIFY_FAILED {
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::certificate\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"error\",\"event\":\"runtime_certificate_verification_failed\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"fail\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::certificate\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"error\",\"event\":\"runtime_certificate_verification_failed\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"fail\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
                 policy_hash_prefix,
             );
         }
@@ -4264,7 +4405,7 @@ impl RuntimeMathKernel {
         if snapshot.pareto_cap_enforcements > 0 || snapshot.pareto_exhausted_families > 0 {
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::regret\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"warn\",\"event\":\"runtime_regret_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"pareto::regret\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::regret\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"warn\",\"event\":\"runtime_regret_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"pareto::regret\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
                 snapshot.pareto_cap_enforcements, snapshot.pareto_exhausted_families,
             );
         }
@@ -4276,7 +4417,7 @@ impl RuntimeMathKernel {
         {
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::drift\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"warn\",\"event\":\"runtime_drift_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"drift::monitor\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"padic_drift_count\":{},\"equivariant_drift_count\":{},\"doob_max_drift\":{},\"wasserstein_aggregate_distance\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::drift\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"level\":\"warn\",\"event\":\"runtime_drift_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"drift::monitor\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"padic_drift_count\":{},\"equivariant_drift_count\":{},\"doob_max_drift\":{},\"wasserstein_aggregate_distance\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
                 snapshot.padic_drift_count,
                 snapshot.equivariant_drift_count,
                 snapshot.doob_max_drift,
@@ -4357,14 +4498,76 @@ impl RuntimeKernelFramework for RuntimeMathKernel {
         RuntimeMathKernel::evidence_contract_snapshot(self)
     }
 
+    fn reverse_round_diversity_snapshot(&self) -> RuntimeReverseRoundDiversitySnapshot {
+        RuntimeMathKernel::reverse_round_diversity_snapshot(self)
+    }
+
     fn export_decision_cards_json(&self) -> String {
         RuntimeMathKernel::export_decision_cards_json(self)
+    }
+
+    fn export_runtime_math_log_jsonl(
+        &self,
+        mode: SafetyLevel,
+        bead_id: &str,
+        run_id: &str,
+    ) -> String {
+        RuntimeMathKernel::export_runtime_math_log_jsonl(self, mode, bead_id, run_id)
     }
 }
 
 impl Default for RuntimeMathKernel {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn reverse_round_diversity_snapshot_from_cards(
+    cards: &[DecisionCardV1],
+) -> RuntimeReverseRoundDiversitySnapshot {
+    let mut family_counts = [0_u64; ApiFamily::COUNT];
+    for card in cards {
+        family_counts[card.context.family as usize] =
+            family_counts[card.context.family as usize].saturating_add(1);
+    }
+
+    let total_decisions = u64::try_from(cards.len()).unwrap_or(u64::MAX);
+    let active_family_count = family_counts.iter().filter(|&&count| count > 0).count();
+    let mut dominant_family = ApiFamily::PointerValidation;
+    let mut dominant_family_count = 0_u64;
+    for card in cards {
+        let count = family_counts[card.context.family as usize];
+        if count > dominant_family_count {
+            dominant_family = card.context.family;
+            dominant_family_count = count;
+        }
+    }
+
+    let dominant_family_share_ppm = if total_decisions == 0 {
+        0
+    } else {
+        dominant_family_count
+            .saturating_mul(1_000_000)
+            .saturating_div(total_decisions)
+    };
+    let state = if dominant_family_share_ppm >= REVERSE_ROUND_DIVERSITY_ERROR_THRESHOLD_PPM {
+        RuntimeReverseRoundDiversityState::Violation
+    } else if dominant_family_share_ppm >= REVERSE_ROUND_DIVERSITY_WARN_THRESHOLD_PPM {
+        RuntimeReverseRoundDiversityState::NearViolation
+    } else {
+        RuntimeReverseRoundDiversityState::Healthy
+    };
+
+    RuntimeReverseRoundDiversitySnapshot {
+        total_decisions,
+        active_family_count,
+        dominant_family,
+        dominant_family_share_ppm,
+        warn_threshold_ppm: REVERSE_ROUND_DIVERSITY_WARN_THRESHOLD_PPM,
+        error_threshold_ppm: REVERSE_ROUND_DIVERSITY_ERROR_THRESHOLD_PPM,
+        coverage_milestone_target: REVERSE_ROUND_COVERAGE_MILESTONE_TARGET,
+        coverage_milestone_reached: active_family_count >= REVERSE_ROUND_COVERAGE_MILESTONE_TARGET,
+        state,
     }
 }
 
@@ -4460,6 +4663,99 @@ fn mode_name(mode: SafetyLevel) -> &'static str {
         SafetyLevel::Hardened => "hardened",
         SafetyLevel::Off => "off",
     }
+}
+
+fn profile_name(profile: ValidationProfile) -> &'static str {
+    match profile {
+        ValidationProfile::Fast => "fast",
+        ValidationProfile::Full => "full",
+    }
+}
+
+fn snapshot_validation_field_count() -> usize {
+    9
+}
+
+fn snapshot_range_violations(
+    snapshot: &RuntimeKernelSnapshot,
+) -> Vec<(&'static str, f64, f64, f64)> {
+    let mut violations = Vec::new();
+
+    let ppm_limit = 1_000_000.0;
+    if f64::from(snapshot.full_validation_trigger_ppm) > ppm_limit {
+        violations.push((
+            "full_validation_trigger_ppm",
+            f64::from(snapshot.full_validation_trigger_ppm),
+            0.0,
+            ppm_limit,
+        ));
+    }
+    if f64::from(snapshot.repair_trigger_ppm) > ppm_limit {
+        violations.push((
+            "repair_trigger_ppm",
+            f64::from(snapshot.repair_trigger_ppm),
+            0.0,
+            ppm_limit,
+        ));
+    }
+    if f64::from(snapshot.sampled_risk_bonus_ppm) > ppm_limit {
+        violations.push((
+            "sampled_risk_bonus_ppm",
+            f64::from(snapshot.sampled_risk_bonus_ppm),
+            0.0,
+            ppm_limit,
+        ));
+    }
+    if f64::from(snapshot.loss_posterior_adverse_ppm) > ppm_limit {
+        violations.push((
+            "loss_posterior_adverse_ppm",
+            f64::from(snapshot.loss_posterior_adverse_ppm),
+            0.0,
+            ppm_limit,
+        ));
+    }
+
+    let unit_interval = 1.0;
+    if !(0.0..=unit_interval).contains(&snapshot.conformal_empirical_coverage) {
+        violations.push((
+            "conformal_empirical_coverage",
+            snapshot.conformal_empirical_coverage,
+            0.0,
+            unit_interval,
+        ));
+    }
+    if !(0.0..=unit_interval).contains(&snapshot.alpha_investing_empirical_fdr) {
+        violations.push((
+            "alpha_investing_empirical_fdr",
+            snapshot.alpha_investing_empirical_fdr,
+            0.0,
+            unit_interval,
+        ));
+    }
+
+    if !snapshot.spectral_edge_ratio.is_finite() || snapshot.spectral_edge_ratio < 0.0 {
+        violations.push((
+            "spectral_edge_ratio",
+            snapshot.spectral_edge_ratio,
+            0.0,
+            f64::MAX,
+        ));
+    }
+    if !snapshot.doob_max_drift.is_finite() || snapshot.doob_max_drift < 0.0 {
+        violations.push(("doob_max_drift", snapshot.doob_max_drift, 0.0, f64::MAX));
+    }
+    if !snapshot.wasserstein_aggregate_distance.is_finite()
+        || snapshot.wasserstein_aggregate_distance < 0.0
+    {
+        violations.push((
+            "wasserstein_aggregate_distance",
+            snapshot.wasserstein_aggregate_distance,
+            0.0,
+            f64::MAX,
+        ));
+    }
+
+    violations
 }
 
 fn sanitize_trace_component(raw: &str) -> String {
@@ -4797,6 +5093,25 @@ mod tests {
     }
 
     #[test]
+    fn runtime_kernel_framework_exposes_reverse_round_diversity_snapshot() {
+        let kernel = RuntimeMathKernel::new();
+        let ctx = RuntimeContext::pointer_validation(0x1000, false);
+        for _ in 0..16385 {
+            let _ = RuntimeKernelFramework::evaluate(&kernel, SafetyLevel::Hardened, ctx);
+        }
+
+        let diversity = RuntimeKernelFramework::reverse_round_diversity_snapshot(&kernel);
+        assert!(diversity.total_decisions >= 1);
+        assert_eq!(diversity.active_family_count, 1);
+        assert_eq!(diversity.dominant_family, ApiFamily::PointerValidation);
+        assert_eq!(
+            diversity.state,
+            RuntimeReverseRoundDiversityState::Violation
+        );
+        assert!(!diversity.coverage_milestone_reached);
+    }
+
+    #[test]
     fn runtime_kernel_framework_exports_structured_decision_card_json() {
         let kernel = RuntimeMathKernel::new();
         let ctx = RuntimeContext::pointer_validation(0x1000, false);
@@ -4841,6 +5156,157 @@ mod tests {
     }
 
     #[test]
+    fn runtime_kernel_framework_exports_runtime_math_jsonl_logs() {
+        let kernel = RuntimeMathKernel::new();
+        let ctx = RuntimeContext {
+            family: ApiFamily::Allocator,
+            addr_hint: 0x1000,
+            requested_bytes: 4096,
+            is_write: true,
+            contention_hint: 16,
+            bloom_negative: false,
+        };
+        for _ in 0..16385 {
+            let _ = RuntimeKernelFramework::evaluate(&kernel, SafetyLevel::Hardened, ctx);
+        }
+
+        let export = RuntimeKernelFramework::export_runtime_math_log_jsonl(
+            &kernel,
+            SafetyLevel::Hardened,
+            "bd-5vr.1",
+            "framework-log",
+        );
+        assert!(
+            export.contains("\"event\":\"runtime_decision\""),
+            "framework export must include runtime_decision rows"
+        );
+        assert!(
+            export.contains("\"event\":\"runtime_reverse_round_math_selection\""),
+            "framework export must include reverse-round selection rows"
+        );
+        assert!(
+            export.contains("\"bead_id\":\"bd-5vr.1\""),
+            "framework export must preserve bead id for traceability"
+        );
+    }
+
+    #[test]
+    fn reverse_round_diversity_snapshot_reaches_coverage_milestone_with_multi_family_evidence() {
+        let kernel = RuntimeMathKernel::new();
+        let scenarios = [
+            RuntimeContext::pointer_validation(0x1000, false),
+            RuntimeContext {
+                family: ApiFamily::Allocator,
+                addr_hint: 0x2200,
+                requested_bytes: 2048,
+                is_write: true,
+                contention_hint: 8,
+                bloom_negative: false,
+            },
+            RuntimeContext {
+                family: ApiFamily::StringMemory,
+                addr_hint: 0x3300,
+                requested_bytes: 128,
+                is_write: false,
+                contention_hint: 1,
+                bloom_negative: true,
+            },
+        ];
+        for ctx in scenarios {
+            for _ in 0..16385 {
+                let _ = RuntimeKernelFramework::evaluate(&kernel, SafetyLevel::Hardened, ctx);
+            }
+        }
+
+        let diversity = RuntimeKernelFramework::reverse_round_diversity_snapshot(&kernel);
+        assert!(
+            diversity.active_family_count >= 3,
+            "expected at least 3 active families, got {}",
+            diversity.active_family_count
+        );
+        assert!(
+            diversity.coverage_milestone_reached,
+            "coverage milestone should be reached once multiple families emit evidence"
+        );
+        assert!(
+            diversity.total_decisions >= 3,
+            "diversity snapshot should aggregate multi-family evidence decisions"
+        );
+    }
+
+    #[test]
+    fn reverse_round_diversity_snapshot_matches_jsonl_contract_rows() {
+        let kernel = RuntimeMathKernel::new();
+        let ctx = RuntimeContext::pointer_validation(0x1000, false);
+        for _ in 0..16385 {
+            let _ = RuntimeKernelFramework::evaluate(&kernel, SafetyLevel::Hardened, ctx);
+        }
+
+        let diversity = RuntimeKernelFramework::reverse_round_diversity_snapshot(&kernel);
+        let jsonl = RuntimeKernelFramework::export_runtime_math_log_jsonl(
+            &kernel,
+            SafetyLevel::Hardened,
+            "bd-5vr.6",
+            "diversity-contract",
+        );
+
+        let mut saw_selection = false;
+        let mut saw_coverage = false;
+        for line in jsonl.lines().filter(|line| !line.trim().is_empty()) {
+            let parsed: Value =
+                serde_json::from_str(line).expect("each runtime log line must be valid JSON");
+            match parsed.get("event").and_then(Value::as_str) {
+                Some("runtime_reverse_round_math_selection") => {
+                    saw_selection = true;
+                    assert_eq!(
+                        parsed.get("active_family_count").and_then(Value::as_u64),
+                        Some(u64::try_from(diversity.active_family_count).unwrap_or(u64::MAX))
+                    );
+                    assert_eq!(
+                        parsed.get("total_decisions").and_then(Value::as_u64),
+                        Some(diversity.total_decisions)
+                    );
+                    assert_eq!(
+                        parsed
+                            .get("dominant_family_share_ppm")
+                            .and_then(Value::as_u64),
+                        Some(diversity.dominant_family_share_ppm)
+                    );
+                }
+                Some("runtime_reverse_round_coverage_milestone") => {
+                    saw_coverage = true;
+                    assert_eq!(
+                        parsed.get("milestone_target").and_then(Value::as_u64),
+                        Some(
+                            u64::try_from(diversity.coverage_milestone_target).unwrap_or(u64::MAX)
+                        )
+                    );
+                    assert_eq!(
+                        parsed.get("milestone_reached").and_then(Value::as_bool),
+                        Some(diversity.coverage_milestone_reached)
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        assert!(saw_selection, "selection contract row must be present");
+        assert!(saw_coverage, "coverage milestone row must be present");
+        if let Some((event, _)) = diversity.state.event_and_level() {
+            assert!(
+                jsonl.contains(&format!("\"event\":\"{event}\"")),
+                "jsonl export must include diversity state event `{event}`"
+            );
+        } else {
+            assert!(
+                !jsonl.contains("\"event\":\"runtime_reverse_round_diversity_near_violation\"")
+                    && !jsonl.contains("\"event\":\"runtime_reverse_round_diversity_violation\""),
+                "healthy diversity state must not emit violation events"
+            );
+        }
+    }
+
+    #[test]
     fn runtime_math_log_jsonl_export_contains_required_runtime_decision_fields() {
         let kernel = RuntimeMathKernel::new();
         let ctx = RuntimeContext {
@@ -4875,6 +5341,7 @@ mod tests {
                 "trace_id",
                 "bead_id",
                 "scenario_id",
+                "decision_id",
                 "level",
                 "event",
                 "controller_id",
@@ -4965,6 +5432,30 @@ mod tests {
             saw_runtime_decision,
             "jsonl export must include runtime_decision rows"
         );
+        assert!(
+            jsonl.contains("\"event\":\"runtime_mode_dispatch\""),
+            "jsonl export must include per-decision runtime_mode_dispatch trace rows"
+        );
+        assert!(
+            jsonl.contains("\"event\":\"runtime_evidence_emitted\""),
+            "jsonl export must include runtime_evidence_emitted info rows"
+        );
+        assert!(
+            jsonl.contains("\"snapshot_capture_latency_ns\""),
+            "runtime_calibration row must include snapshot capture timing"
+        );
+        assert!(
+            jsonl.contains("\"event\":\"runtime_reverse_round_math_selection\""),
+            "jsonl export must include reverse-round math selection debug rows"
+        );
+        assert!(
+            jsonl.contains("\"event\":\"runtime_reverse_round_coverage_milestone\""),
+            "jsonl export must include reverse-round coverage milestone info rows"
+        );
+        assert!(
+            jsonl.contains("\"event\":\"runtime_reverse_round_diversity_violation\""),
+            "single-family exports should trigger reverse-round diversity violation errors"
+        );
     }
 
     #[test]
@@ -4997,6 +5488,30 @@ mod tests {
         assert!(
             failure_jsonl.contains("\"level\":\"error\""),
             "failed certificate verification should be error-level"
+        );
+    }
+
+    #[test]
+    fn snapshot_range_violations_identify_out_of_contract_fields() {
+        let kernel = RuntimeMathKernel::new();
+        let mut snapshot = kernel.snapshot(SafetyLevel::Strict);
+        snapshot.full_validation_trigger_ppm = 1_200_000;
+        snapshot.conformal_empirical_coverage = 1.2;
+        snapshot.spectral_edge_ratio = -1.0;
+
+        let violations = snapshot_range_violations(&snapshot);
+        let fields: Vec<&str> = violations.iter().map(|(field, ..)| *field).collect();
+        assert!(
+            fields.contains(&"full_validation_trigger_ppm"),
+            "must flag out-of-range full_validation_trigger_ppm"
+        );
+        assert!(
+            fields.contains(&"conformal_empirical_coverage"),
+            "must flag out-of-range conformal coverage"
+        );
+        assert!(
+            fields.contains(&"spectral_edge_ratio"),
+            "must flag negative spectral edge ratio"
         );
     }
 

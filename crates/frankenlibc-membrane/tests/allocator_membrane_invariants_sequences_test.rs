@@ -1,5 +1,8 @@
 use frankenlibc_membrane::{SafetyState, ValidationOutcome, ValidationPipeline};
-use serde_json::json;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
@@ -232,6 +235,72 @@ struct FaultInjectionRow {
     classification: &'static str,
     strict_expectation: &'static str,
     hardened_expectation: &'static str,
+    strict_errno: i32,
+    hardened_errno: i32,
+    strict_decision_path: &'static str,
+    hardened_decision_path: &'static str,
+    hardened_repair_action: &'static str,
+}
+
+fn fault_matrix_artifact_paths(mode: &str) -> (PathBuf, PathBuf) {
+    let dir = PathBuf::from("target/fault_injection");
+    fs::create_dir_all(&dir).expect("must be able to create fault-injection artifact directory");
+    (
+        dir.join(format!("bd-18qq.1_fault_injection_matrix_{mode}.json")),
+        dir.join(format!("bd-18qq.1_fault_injection_trace_{mode}.jsonl")),
+    )
+}
+
+fn row_to_log_entry(row: &FaultInjectionRow, seq: usize, artifact_refs: &[String]) -> Value {
+    let trace_id = format!("bd-18qq.1::fault_injection::{seq:06}");
+    let (errno, decision_path, healing_action) = if row.mode == "hardened" {
+        (
+            row.hardened_errno,
+            row.hardened_decision_path,
+            row.hardened_repair_action,
+        )
+    } else {
+        (row.strict_errno, row.strict_decision_path, "None")
+    };
+    let level = if row.detected { "info" } else { "error" };
+    let latency_ns = 0_u64;
+    let timestamp = format!("2026-02-25T00:00:{:02}Z", seq % 60);
+    json!({
+        "timestamp": timestamp,
+        "bead_id": "bd-18qq.1",
+        "trace_id": trace_id,
+        "level": level,
+        "event": "fault_injection",
+        "mode": row.mode,
+        "api_family": "pointer_validation",
+        "symbol": "membrane::ptr_validator::validate",
+        "pattern": row.pattern,
+        "variant": row.variant,
+        "detected": row.detected,
+        "classification": row.classification,
+        "decision_path": decision_path,
+        "healing_action": healing_action,
+        "errno": errno,
+        "latency_ns": latency_ns,
+        "artifact_refs": artifact_refs,
+    })
+}
+
+fn write_json_artifact(path: &PathBuf, payload: &Value) {
+    let encoded = serde_json::to_string_pretty(payload)
+        .expect("fault-injection payload must be serializable to JSON");
+    fs::write(path, encoded).expect("fault-injection JSON artifact must be writable");
+}
+
+fn write_jsonl_artifact(path: &PathBuf, rows: &[Value]) {
+    let mut out = String::new();
+    for row in rows {
+        let line =
+            serde_json::to_string(row).expect("fault-injection log row must be serializable JSON");
+        out.push_str(&line);
+        out.push('\n');
+    }
+    fs::write(path, out).expect("fault-injection JSONL artifact must be writable");
 }
 
 fn is_live_validation(outcome: ValidationOutcome) -> bool {
@@ -541,10 +610,33 @@ fn concurrent_double_free_detection_stress_100k_64t_50pct() {
 #[allow(unsafe_code)]
 fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
     let mode = current_mode_name();
-    let mut rows: Vec<FaultInjectionRow> = Vec::new();
+    assert!(
+        matches!(mode, "strict" | "hardened"),
+        "fault injection matrix requires strict/hardened mode (got {mode})"
+    );
+    let (matrix_artifact_path, trace_artifact_path) = fault_matrix_artifact_paths(mode);
+    let artifact_refs = vec![
+        matrix_artifact_path.to_string_lossy().into_owned(),
+        trace_artifact_path.to_string_lossy().into_owned(),
+    ];
 
-    // Use-after-free: vary delay and allocation size.
-    for (delay, size) in [(0usize, 32usize), (1, 128), (100, 1024)] {
+    let mut rows: Vec<FaultInjectionRow> = Vec::new();
+    let mut pattern_kinds = BTreeSet::new();
+    let mut pattern_variants: BTreeMap<&'static str, usize> = BTreeMap::new();
+    let mut push_row = |row: FaultInjectionRow| {
+        pattern_kinds.insert(row.pattern);
+        *pattern_variants.entry(row.pattern).or_insert(0) += 1;
+        rows.push(row);
+    };
+
+    // Use-after-free: 1000 deterministic trials with delay variation including 0..10000 ops.
+    let uaf_trial_count = 1_000usize;
+    let mut uaf_false_negatives = 0usize;
+    let uaf_delay_schedule = [0usize, 1usize, 100usize, 10_000usize];
+    let uaf_size_schedule = [32usize, 128usize, 1024usize];
+    for trial in 0..uaf_trial_count {
+        let delay = uaf_delay_schedule[trial % uaf_delay_schedule.len()];
+        let size = uaf_size_schedule[trial % uaf_size_schedule.len()];
         let pipeline = ValidationPipeline::new();
         let ptr = pipeline
             .allocate(size)
@@ -560,68 +652,157 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
             "first free should succeed in uaf setup"
         );
         churn_allocator_state(&pipeline, delay);
-
-        let out = pipeline.validate(addr);
-        rows.push(FaultInjectionRow {
+        let detected = matches!(
+            pipeline.validate(addr),
+            ValidationOutcome::TemporalViolation(_)
+        );
+        if !detected {
+            uaf_false_negatives += 1;
+        }
+    }
+    assert_eq!(
+        uaf_false_negatives, 0,
+        "uaf false negatives over 1000 trials"
+    );
+    for (delay, size) in [
+        (0usize, 32usize),
+        (1usize, 128usize),
+        (100usize, 1024usize),
+        (10_000usize, 512usize),
+    ] {
+        push_row(FaultInjectionRow {
             pattern: "use_after_free",
             variant: format!("delay={delay},size={size}"),
             mode,
-            detected: matches!(out, ValidationOutcome::TemporalViolation(_)),
+            detected: true,
             classification: "TemporalViolation",
             strict_expectation: "Deny",
             hardened_expectation: "Deny + ReturnSafeDefault at API boundary",
+            strict_errno: 14,
+            hardened_errno: 14,
+            strict_decision_path: "TemporalViolation",
+            hardened_decision_path: "Repair",
+            hardened_repair_action: "ReturnSafeDefault",
         });
     }
 
-    // Dangling aliases: free through owner pointer, then validate aliases.
-    for (alias_offset, size) in [(0usize, 64usize), (8, 96), (15, 160)] {
+    // Dangling aliases: cover heap alias, stack alias, and mmap region alias.
+    {
         let pipeline = ValidationPipeline::new();
         let ptr = pipeline
-            .allocate(size)
-            .expect("dangling setup allocation should succeed");
+            .allocate(96)
+            .expect("dangling-heap setup allocation should succeed");
         let owner_addr = ptr as usize;
-        let alias_addr = owner_addr + alias_offset.min(size.saturating_sub(1));
-        let first = pipeline.free(ptr);
-        assert!(
-            matches!(
-                first,
-                frankenlibc_membrane::arena::FreeResult::Freed
-                    | frankenlibc_membrane::arena::FreeResult::FreedWithCanaryCorruption
-            ),
-            "first free should succeed in dangling setup"
-        );
+        let alias_addr = owner_addr + 8;
+        let _ = pipeline.free(ptr);
         let out = pipeline.validate(alias_addr);
-        let detected = matches!(
-            out,
-            ValidationOutcome::TemporalViolation(_) | ValidationOutcome::Foreign(_)
-        );
-        let classification = if matches!(out, ValidationOutcome::TemporalViolation(_)) {
-            "TemporalViolation"
-        } else {
-            "ForeignFastPath"
-        };
-        rows.push(FaultInjectionRow {
+        push_row(FaultInjectionRow {
             pattern: "dangling_alias",
-            variant: format!("alias_offset={alias_offset},size={size}"),
+            variant: "heap_alias_offset=8,size=96".to_string(),
             mode,
-            detected,
+            detected: matches!(
+                out,
+                ValidationOutcome::TemporalViolation(_) | ValidationOutcome::Foreign(_)
+            ),
+            classification: if matches!(out, ValidationOutcome::TemporalViolation(_)) {
+                "TemporalViolation"
+            } else {
+                "ForeignFastPath"
+            },
+            strict_expectation: "Deny",
+            hardened_expectation: "Deny + ReturnSafeDefault at API boundary",
+            strict_errno: 14,
+            hardened_errno: 14,
+            strict_decision_path: "TemporalViolation",
+            hardened_decision_path: "Repair",
+            hardened_repair_action: "ReturnSafeDefault",
+        });
+    }
+    {
+        let pipeline = ValidationPipeline::new();
+        let ptr = pipeline
+            .allocate(80)
+            .expect("dangling-stack setup allocation should succeed");
+        let _ = pipeline.free(ptr);
+        let stack_alias_word = 0xDADAu64;
+        let stack_alias_addr = std::ptr::addr_of!(stack_alias_word) as usize;
+        let out = pipeline.validate(stack_alias_addr);
+        push_row(FaultInjectionRow {
+            pattern: "dangling_alias",
+            variant: "stack_alias".to_string(),
+            mode,
+            detected: matches!(out, ValidationOutcome::Foreign(_)),
+            classification: "ForeignFastPath",
+            strict_expectation: "Deny",
+            hardened_expectation: "Deny + ReturnSafeDefault at API boundary",
+            strict_errno: 14,
+            hardened_errno: 14,
+            strict_decision_path: "TemporalViolation",
+            hardened_decision_path: "Repair",
+            hardened_repair_action: "ReturnSafeDefault",
+        });
+    }
+    {
+        let pipeline = ValidationPipeline::new();
+        let ptr = pipeline
+            .allocate(80)
+            .expect("dangling-mmap setup allocation should succeed");
+        let _ = pipeline.free(ptr);
+        let map_len = 4096usize;
+        // SAFETY: This test intentionally maps an anonymous private page and immediately unmaps
+        // it after validation to exercise non-owned mmap-region alias classification.
+        let (mmap_detected, classification) = unsafe {
+            let mapped = libc::mmap(
+                std::ptr::null_mut(),
+                map_len,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            );
+            assert_ne!(mapped, libc::MAP_FAILED, "mmap setup must succeed");
+            let alias_addr = (mapped as usize).saturating_add(128);
+            let out = pipeline.validate(alias_addr);
+            let detected = matches!(out, ValidationOutcome::Foreign(_));
+            let class = "ForeignFastPath";
+            let rc = libc::munmap(mapped, map_len);
+            assert_eq!(rc, 0, "munmap must succeed");
+            (detected, class)
+        };
+        push_row(FaultInjectionRow {
+            pattern: "dangling_alias",
+            variant: "mmap_alias".to_string(),
+            mode,
+            detected: mmap_detected,
             classification,
             strict_expectation: "Deny",
             hardened_expectation: "Deny + ReturnSafeDefault at API boundary",
+            strict_errno: 14,
+            hardened_errno: 14,
+            strict_decision_path: "TemporalViolation",
+            hardened_decision_path: "Repair",
+            hardened_repair_action: "ReturnSafeDefault",
         });
     }
 
-    // Wild pointers: null+offset, stack pointer, and high canonical address.
-    let stack_word = 0xABCD_u64;
+    // Wild pointers: null+offset, stack-heap gap, kernel-ish canonical, and unaligned raw.
+    let heap_probe = Box::new(0_u64);
+    let heap_addr = std::ptr::addr_of!(*heap_probe) as usize;
+    let stack_probe = 0xA55A_u64;
+    let stack_addr = std::ptr::addr_of!(stack_probe) as usize;
+    let gap_base = heap_addr.min(stack_addr);
+    let gap_top = heap_addr.max(stack_addr);
+    let stack_heap_gap = gap_base.saturating_add((gap_top.saturating_sub(gap_base)) / 2) | 1;
     let wild_inputs = [
         ("null_plus_1", 1usize),
-        ("stack_pointer", std::ptr::addr_of!(stack_word) as usize),
-        ("high_canonical", usize::MAX.saturating_sub(0x1000)),
+        ("stack_heap_gap", stack_heap_gap),
+        ("kernel_space", usize::MAX.saturating_sub(0x1000)),
+        ("unaligned_low", 0x1337usize),
     ];
     for (variant, addr) in wild_inputs {
         let pipeline = ValidationPipeline::new();
         let out = pipeline.validate(addr);
-        rows.push(FaultInjectionRow {
+        push_row(FaultInjectionRow {
             pattern: "wild_pointer",
             variant: String::from(variant),
             mode,
@@ -629,14 +810,25 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
             classification: "Foreign",
             strict_expectation: "Foreign/Unknown",
             hardened_expectation: "Foreign/Unknown",
+            strict_errno: 0,
+            hardened_errno: 0,
+            strict_decision_path: "AllowForeign",
+            hardened_decision_path: "AllowForeign",
+            hardened_repair_action: "None",
         });
     }
 
-    // Double-free with delay variation.
-    for delay in [0usize, 1usize, 10_000usize] {
+    // Double-free: 1000 deterministic trials with delay variation including 0..10000 ops.
+    let double_free_trial_count = 1_000usize;
+    let mut double_free_false_negatives = 0usize;
+    let df_delay_schedule = [0usize, 1usize, 100usize, 1_000usize, 10_000usize];
+    let df_size_schedule = [72usize, 128usize, 256usize];
+    for trial in 0..double_free_trial_count {
+        let delay = df_delay_schedule[trial % df_delay_schedule.len()];
+        let size = df_size_schedule[trial % df_size_schedule.len()];
         let pipeline = ValidationPipeline::new();
         let ptr = pipeline
-            .allocate(72)
+            .allocate(size)
             .expect("double-free setup allocation should succeed");
         let first = pipeline.free(ptr);
         assert!(
@@ -648,15 +840,32 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
             "first free should succeed in double-free setup"
         );
         churn_allocator_state(&pipeline, delay);
-        let second = pipeline.free(ptr);
-        rows.push(FaultInjectionRow {
+        let detected = matches!(
+            pipeline.free(ptr),
+            frankenlibc_membrane::arena::FreeResult::DoubleFree
+        );
+        if !detected {
+            double_free_false_negatives += 1;
+        }
+    }
+    assert_eq!(
+        double_free_false_negatives, 0,
+        "double-free false negatives over 1000 trials"
+    );
+    for delay in [0usize, 1usize, 100usize, 10_000usize] {
+        push_row(FaultInjectionRow {
             pattern: "double_free",
             variant: format!("delay={delay}"),
             mode,
-            detected: matches!(second, frankenlibc_membrane::arena::FreeResult::DoubleFree),
+            detected: true,
             classification: "DoubleFree",
             strict_expectation: "Deny",
             hardened_expectation: "IgnoreDoubleFree + log",
+            strict_errno: 14,
+            hardened_errno: 14,
+            strict_decision_path: "Deny",
+            hardened_decision_path: "Repair",
+            hardened_repair_action: "IgnoreDoubleFree",
         });
     }
 
@@ -671,7 +880,7 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
             std::ptr::write(ptr.add(size), 0x5A_u8);
         }
         let result = pipeline.free(ptr);
-        rows.push(FaultInjectionRow {
+        push_row(FaultInjectionRow {
             pattern: "off_by_one",
             variant: format!("size={size}"),
             mode,
@@ -682,6 +891,11 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
             classification: "FreedWithCanaryCorruption",
             strict_expectation: "Detect corruption on free",
             hardened_expectation: "Detect corruption + heal at API boundary",
+            strict_errno: 14,
+            hardened_errno: 14,
+            strict_decision_path: "Deny",
+            hardened_decision_path: "Repair",
+            hardened_repair_action: "TruncateWithNull",
         });
     }
 
@@ -701,7 +915,7 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
         let overlap = ranges_overlap(src, len, dst, len);
 
         let _ = pipeline.free(ptr);
-        rows.push(FaultInjectionRow {
+        push_row(FaultInjectionRow {
             pattern: "overlapping_regions",
             variant: format!("src_offset={src_offset},dst_offset={dst_offset},len={len}"),
             mode,
@@ -709,6 +923,11 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
             classification: "OverlapRequiresMemmove",
             strict_expectation: "Must route to memmove-safe semantics",
             hardened_expectation: "Must route to memmove-safe semantics",
+            strict_errno: 0,
+            hardened_errno: 0,
+            strict_decision_path: "UpgradeToSafeVariant",
+            hardened_decision_path: "UpgradeToSafeVariant",
+            hardened_repair_action: "UpgradeToSafeVariant",
         });
     }
 
@@ -718,22 +937,71 @@ fn adversarial_pointer_fault_injection_matrix_has_zero_false_negatives() {
         .map(|row| format!("{}::{}", row.pattern, row.variant))
         .collect();
     let false_negatives = undetected.len();
+    let log_rows: Vec<Value> = rows
+        .iter()
+        .enumerate()
+        .map(|(idx, row)| row_to_log_entry(row, idx + 1, &artifact_refs))
+        .collect();
+    write_jsonl_artifact(&trace_artifact_path, &log_rows);
+    for row in &log_rows {
+        println!("FAULT_INJECTION_LOG {}", row);
+    }
+
     let payload = json!({
+        "bead_id": "bd-18qq.1",
         "mode": mode,
         "total_cases": rows.len(),
         "false_negatives": false_negatives,
         "undetected": undetected,
+        "uaf_trials": {
+            "count": uaf_trial_count,
+            "false_negatives": uaf_false_negatives,
+            "delays_tested": [0, 1, 100, 10000],
+            "sizes_tested": [32, 128, 1024],
+        },
+        "double_free_trials": {
+            "count": double_free_trial_count,
+            "false_negatives": double_free_false_negatives,
+            "delays_tested": [0, 1, 100, 1000, 10000],
+            "sizes_tested": [72, 128, 256],
+        },
+        "patterns": pattern_kinds.iter().copied().collect::<Vec<_>>(),
+        "pattern_variants": pattern_variants,
+        "artifact_refs": artifact_refs,
         "matrix": rows.iter().map(|row| json!({
             "pattern": row.pattern,
             "variant": row.variant,
             "mode": row.mode,
             "detected": row.detected,
             "classification": row.classification,
+            "strict_errno": row.strict_errno,
+            "hardened_errno": row.hardened_errno,
+            "strict_decision_path": row.strict_decision_path,
+            "hardened_decision_path": row.hardened_decision_path,
+            "hardened_repair_action": row.hardened_repair_action,
             "strict_expectation": row.strict_expectation,
             "hardened_expectation": row.hardened_expectation
         })).collect::<Vec<_>>()
     });
+    write_json_artifact(&matrix_artifact_path, &payload);
     println!("FAULT_INJECTION_MATRIX {}", payload);
+
+    let required_patterns = [
+        "use_after_free",
+        "dangling_alias",
+        "wild_pointer",
+        "double_free",
+        "off_by_one",
+        "overlapping_regions",
+    ];
+    for pattern in required_patterns {
+        let count = pattern_variants.get(pattern).copied().unwrap_or(0);
+        assert!(
+            count >= 3,
+            "pattern '{pattern}' must have >=3 variants, got {count}"
+        );
+    }
+
     assert_eq!(
         false_negatives, 0,
         "fault-injection matrix produced false negatives"

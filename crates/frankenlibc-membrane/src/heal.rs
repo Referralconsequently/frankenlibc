@@ -4,7 +4,10 @@
 //! invoking undefined behavior, it applies a deterministic healing action.
 //! Every libc function has defined healing for every class of invalid input.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use parking_lot::Mutex;
+use std::collections::VecDeque;
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Actions the membrane can take to heal an unsafe operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,6 +39,9 @@ impl HealingAction {
     }
 }
 
+const HEALING_LOG_CAPACITY: usize = 1024;
+const HEALING_BEAD_ID: &str = "bd-32e.4";
+
 /// Policy engine that decides which healing action to apply.
 pub struct HealingPolicy {
     /// Total heals applied.
@@ -54,12 +60,19 @@ pub struct HealingPolicy {
     pub safe_defaults: AtomicU64,
     /// Safe variant upgrades.
     pub variant_upgrades: AtomicU64,
+    /// Whether structured healing logging is enabled.
+    healing_logging_enabled: AtomicBool,
+    /// Monotone decision id for healing evidence rows.
+    healing_log_decision_seq: AtomicU64,
+    /// Bounded JSONL healing evidence ring buffer.
+    healing_logs: Mutex<VecDeque<String>>,
 }
 
 impl HealingPolicy {
     /// Create a new policy with zeroed counters.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
+        let logging_enabled = heal_logging_enabled_by_default();
         Self {
             total_heals: AtomicU64::new(0),
             size_clamps: AtomicU64::new(0),
@@ -69,7 +82,32 @@ impl HealingPolicy {
             realloc_as_mallocs: AtomicU64::new(0),
             safe_defaults: AtomicU64::new(0),
             variant_upgrades: AtomicU64::new(0),
+            healing_logging_enabled: AtomicBool::new(logging_enabled),
+            healing_log_decision_seq: AtomicU64::new(0),
+            healing_logs: Mutex::new(VecDeque::with_capacity(HEALING_LOG_CAPACITY)),
         }
+    }
+
+    /// Enable or disable structured healing evidence logging.
+    pub fn set_healing_logging_enabled(&self, enabled: bool) {
+        self.healing_logging_enabled
+            .store(enabled, Ordering::Relaxed);
+    }
+
+    /// Clear buffered healing evidence rows.
+    pub fn clear_healing_logs(&self) {
+        self.healing_logs.lock().clear();
+    }
+
+    /// Export buffered healing evidence as deterministic JSONL.
+    #[must_use]
+    pub fn export_healing_log_jsonl(&self) -> String {
+        self.healing_logs
+            .lock()
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Record a healing action.
@@ -108,6 +146,8 @@ impl HealingPolicy {
             }
             HealingAction::None => {}
         }
+
+        self.emit_healing_log(action);
     }
 
     /// Decide healing for a copy/memory operation with bounds.
@@ -154,11 +194,108 @@ impl HealingPolicy {
             _ => HealingAction::None,
         }
     }
+
+    fn emit_healing_log(&self, action: &HealingAction) {
+        if !action.is_heal() || !self.healing_logging_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+
+        let decision_id = self
+            .healing_log_decision_seq
+            .fetch_add(1, Ordering::Relaxed)
+            + 1;
+        let level = healing_log_level(action);
+        let escalated = healing_action_escalated(action);
+        let line = format!(
+            "{{\"trace_id\":\"heal-{decision_id}\",\"decision_id\":{decision_id},\
+\"bead_id\":\"{HEALING_BEAD_ID}\",\"runtime_mode\":\"{}\",\"level\":\"{level}\",\
+\"api_family\":\"membrane-heal\",\"decision_path\":\"record\",\"outcome\":\"repair\",\
+\"healing_action\":\"{}\",\"escalated\":{escalated},\"details\":{}}}",
+            runtime_mode_label(),
+            healing_action_name(action),
+            healing_action_details_json(action)
+        );
+        self.push_healing_log_line(line);
+    }
+
+    fn push_healing_log_line(&self, line: String) {
+        let mut logs = self.healing_logs.lock();
+        while logs.len() >= HEALING_LOG_CAPACITY {
+            let _ = logs.pop_front();
+        }
+        logs.push_back(line);
+    }
 }
 
 impl Default for HealingPolicy {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn heal_logging_enabled_by_default() -> bool {
+    match std::env::var("FRANKENLIBC_HEAL_LOG") {
+        Ok(value) => !matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "off" | "no"
+        ),
+        Err(_) => true,
+    }
+}
+
+fn healing_log_level(action: &HealingAction) -> &'static str {
+    if healing_action_escalated(action) {
+        "warn"
+    } else {
+        "info"
+    }
+}
+
+fn healing_action_escalated(action: &HealingAction) -> bool {
+    matches!(
+        action,
+        HealingAction::ReturnSafeDefault | HealingAction::UpgradeToSafeVariant
+    )
+}
+
+fn runtime_mode_label() -> &'static str {
+    match crate::config::safety_level() {
+        crate::config::SafetyLevel::Strict => "strict",
+        crate::config::SafetyLevel::Hardened => "hardened",
+        crate::config::SafetyLevel::Off => "off",
+    }
+}
+
+fn healing_action_name(action: &HealingAction) -> &'static str {
+    match action {
+        HealingAction::ClampSize { .. } => "ClampSize",
+        HealingAction::TruncateWithNull { .. } => "TruncateWithNull",
+        HealingAction::IgnoreDoubleFree => "IgnoreDoubleFree",
+        HealingAction::IgnoreForeignFree => "IgnoreForeignFree",
+        HealingAction::ReallocAsMalloc { .. } => "ReallocAsMalloc",
+        HealingAction::ReturnSafeDefault => "ReturnSafeDefault",
+        HealingAction::UpgradeToSafeVariant => "UpgradeToSafeVariant",
+        HealingAction::None => "None",
+    }
+}
+
+fn healing_action_details_json(action: &HealingAction) -> String {
+    match action {
+        HealingAction::ClampSize { requested, clamped } => {
+            format!("{{\"requested\":{requested},\"clamped\":{clamped}}}")
+        }
+        HealingAction::TruncateWithNull {
+            requested,
+            truncated,
+        } => {
+            format!("{{\"requested\":{requested},\"truncated\":{truncated}}}")
+        }
+        HealingAction::ReallocAsMalloc { size } => format!("{{\"size\":{size}}}"),
+        HealingAction::IgnoreDoubleFree
+        | HealingAction::IgnoreForeignFree
+        | HealingAction::ReturnSafeDefault
+        | HealingAction::UpgradeToSafeVariant
+        | HealingAction::None => "{}".to_string(),
     }
 }
 
@@ -197,7 +334,7 @@ pub fn recommended_healing_for_canonical_class(class_id: u8) -> HealingAction {
 }
 
 /// Global healing policy instance.
-static GLOBAL_POLICY: HealingPolicy = HealingPolicy::new();
+static GLOBAL_POLICY: LazyLock<HealingPolicy> = LazyLock::new(HealingPolicy::new);
 
 /// Access the global healing policy.
 #[must_use]
@@ -208,6 +345,7 @@ pub fn global_healing_policy() -> &'static HealingPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn clamp_size_when_exceeding_bounds() {
@@ -299,5 +437,126 @@ mod tests {
     fn canonical_class_out_of_range_returns_safe_default() {
         let action = recommended_healing_for_canonical_class(255);
         assert_eq!(action, HealingAction::ReturnSafeDefault);
+    }
+
+    #[test]
+    fn healing_log_export_contains_required_fields() {
+        let policy = HealingPolicy::new();
+        policy.set_healing_logging_enabled(true);
+        policy.clear_healing_logs();
+
+        policy.record(&HealingAction::ClampSize {
+            requested: 32,
+            clamped: 8,
+        });
+
+        let jsonl = policy.export_healing_log_jsonl();
+        let row: Value = serde_json::from_str(jsonl.trim()).expect("row must be valid JSON");
+        assert_eq!(row["bead_id"], HEALING_BEAD_ID);
+        assert_eq!(row["api_family"], "membrane-heal");
+        assert_eq!(row["decision_path"], "record");
+        assert_eq!(row["outcome"], "repair");
+        assert_eq!(row["healing_action"], "ClampSize");
+        assert_eq!(row["level"], "info");
+        assert_eq!(row["details"]["requested"], 32);
+        assert_eq!(row["details"]["clamped"], 8);
+        assert!(
+            row["trace_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("heal-"))
+        );
+        assert!(row["decision_id"].as_u64().is_some_and(|id| id > 0));
+    }
+
+    #[test]
+    fn escalated_healing_actions_emit_warn_level() {
+        let policy = HealingPolicy::new();
+        policy.set_healing_logging_enabled(true);
+        policy.clear_healing_logs();
+
+        policy.record(&HealingAction::ReturnSafeDefault);
+
+        let jsonl = policy.export_healing_log_jsonl();
+        let row: Value = serde_json::from_str(jsonl.trim()).expect("row must be valid JSON");
+        assert_eq!(row["healing_action"], "ReturnSafeDefault");
+        assert_eq!(row["level"], "warn");
+        assert_eq!(row["escalated"], true);
+    }
+
+    #[test]
+    fn none_action_does_not_emit_healing_log_row() {
+        let policy = HealingPolicy::new();
+        policy.set_healing_logging_enabled(true);
+        policy.clear_healing_logs();
+
+        policy.record(&HealingAction::None);
+
+        assert!(
+            policy.export_healing_log_jsonl().trim().is_empty(),
+            "HealingAction::None should not produce evidence rows"
+        );
+    }
+
+    #[test]
+    fn healing_log_capacity_is_bounded() {
+        let policy = HealingPolicy::new();
+        policy.set_healing_logging_enabled(true);
+        policy.clear_healing_logs();
+
+        for i in 0..(HEALING_LOG_CAPACITY + 32) {
+            policy.record(&HealingAction::ReallocAsMalloc { size: i });
+        }
+
+        let row_count = policy
+            .export_healing_log_jsonl()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count();
+        assert_eq!(row_count, HEALING_LOG_CAPACITY);
+    }
+
+    #[test]
+    fn every_healing_action_variant_emits_dispatch_evidence() {
+        let policy = HealingPolicy::new();
+        policy.set_healing_logging_enabled(true);
+        policy.clear_healing_logs();
+
+        let actions = [
+            HealingAction::ClampSize {
+                requested: 7,
+                clamped: 3,
+            },
+            HealingAction::TruncateWithNull {
+                requested: 16,
+                truncated: 15,
+            },
+            HealingAction::IgnoreDoubleFree,
+            HealingAction::IgnoreForeignFree,
+            HealingAction::ReallocAsMalloc { size: 64 },
+            HealingAction::ReturnSafeDefault,
+            HealingAction::UpgradeToSafeVariant,
+        ];
+
+        for action in &actions {
+            policy.record(action);
+        }
+
+        let rows = policy
+            .export_healing_log_jsonl()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<Value>(line).expect("row must be valid JSON"))
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), actions.len());
+        for row in rows {
+            assert_eq!(row["outcome"], "repair");
+            assert_eq!(row["api_family"], "membrane-heal");
+            assert!(
+                row["healing_action"]
+                    .as_str()
+                    .is_some_and(|name| !name.is_empty())
+            );
+            assert!(matches!(row["level"].as_str(), Some("info" | "warn")));
+        }
     }
 }

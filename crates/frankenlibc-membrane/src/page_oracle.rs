@@ -64,7 +64,7 @@ impl L2Bitmap {
             Ordering::Relaxed,
             |x| {
                 match x {
-                    0 => Some(0),     // Should not happen if balanced
+                    0 => Some(0),               // Should not happen if balanced
                     u32::MAX => Some(u32::MAX), // Saturated, sticky
                     _ => Some(x - 1),
                 }

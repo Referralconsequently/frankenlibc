@@ -23,6 +23,56 @@ use crate::metrics::{MembraneMetrics, global_metrics};
 use crate::page_oracle::PageOracle;
 use crate::runtime_math::{ApiFamily, RuntimeContext, RuntimeMathKernel, ValidationProfile};
 use crate::tls_cache::{CachedValidation, with_tls_cache};
+use parking_lot::Mutex;
+use std::collections::VecDeque;
+use std::fmt::Write;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+const VALIDATION_LOG_CAPACITY: usize = 2048;
+const STRICT_VALIDATION_BUDGET_NS: u64 = 20;
+const HARDENED_VALIDATION_BUDGET_NS: u64 = 200;
+#[cfg(test)]
+const MAX_LEVEL_LABEL_CARDINALITY: usize = 5;
+#[cfg(test)]
+const MAX_STAGE_LABEL_CARDINALITY: usize = 16;
+
+#[derive(Debug, Clone)]
+struct ValidationTraceContext {
+    decision_id: u64,
+    trace_id: String,
+    span_id: String,
+    parent_span_id: String,
+}
+
+impl ValidationTraceContext {
+    #[must_use]
+    fn disabled() -> Self {
+        Self {
+            decision_id: 0,
+            trace_id: String::new(),
+            span_id: String::new(),
+            parent_span_id: String::new(),
+        }
+    }
+
+    #[must_use]
+    fn enabled(decision_id: u64) -> Self {
+        let trace_id = format!("tsm::pointer_validation::{decision_id:016x}");
+        let span_id = format!("tsm::pointer_validation::decision::{decision_id:016x}");
+        let parent_span_id = format!("tsm::pointer_validation::entry::{decision_id:016x}");
+        Self {
+            decision_id,
+            trace_id,
+            span_id,
+            parent_span_id,
+        }
+    }
+
+    #[must_use]
+    const fn is_enabled(&self) -> bool {
+        self.decision_id != 0
+    }
+}
 
 /// Result of running a pointer through the validation pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +87,8 @@ pub enum ValidationOutcome {
     Foreign(PointerAbstraction),
     /// Pointer belongs to a freed/quarantined allocation.
     TemporalViolation(PointerAbstraction),
+    /// Pointer belongs to our allocation metadata but fails bounds admissibility.
+    Invalid(PointerAbstraction),
     /// Validation skipped (SafetyLevel::Off).
     Bypassed,
 }
@@ -49,7 +101,8 @@ impl ValidationOutcome {
             Self::CachedValid(a)
             | Self::Validated(a)
             | Self::Foreign(a)
-            | Self::TemporalViolation(a) => Some(*a),
+            | Self::TemporalViolation(a)
+            | Self::Invalid(a) => Some(*a),
             Self::Null => Some(PointerAbstraction::null()),
             Self::Bypassed => None,
         }
@@ -62,7 +115,7 @@ impl ValidationOutcome {
             Self::CachedValid(a) | Self::Validated(a) => a.state.can_read(),
             Self::Foreign(_) => true, // Allow foreign pointers (Galois property)
             Self::Bypassed => true,
-            Self::Null | Self::TemporalViolation(_) => false,
+            Self::Null | Self::TemporalViolation(_) | Self::Invalid(_) => false,
         }
     }
 
@@ -73,7 +126,7 @@ impl ValidationOutcome {
             Self::CachedValid(a) | Self::Validated(a) => a.state.can_write(),
             Self::Foreign(_) => true,
             Self::Bypassed => true,
-            Self::Null | Self::TemporalViolation(_) => false,
+            Self::Null | Self::TemporalViolation(_) | Self::Invalid(_) => false,
         }
     }
 }
@@ -88,18 +141,284 @@ pub struct ValidationPipeline {
     pub page_oracle: PageOracle,
     /// Runtime math kernel for online validation-depth/risk decisions.
     pub runtime_math: RuntimeMathKernel,
+    /// Whether structured validation logging is enabled.
+    validation_logging_enabled: AtomicBool,
+    /// Monotone decision id for validation logs.
+    validation_log_decision_seq: AtomicU64,
+    /// Bounded in-memory JSONL buffer for validation traces.
+    validation_logs: Mutex<VecDeque<String>>,
 }
 
 impl ValidationPipeline {
     /// Create a new validation pipeline.
     #[must_use]
     pub fn new() -> Self {
+        let logging_enabled = std::env::var_os("FRANKENLIBC_LOG").is_some();
         Self {
             arena: AllocationArena::new(),
             bloom: PointerBloomFilter::new(),
             page_oracle: PageOracle::new(),
             runtime_math: RuntimeMathKernel::new(),
+            validation_logging_enabled: AtomicBool::new(logging_enabled),
+            validation_log_decision_seq: AtomicU64::new(0),
+            validation_logs: Mutex::new(VecDeque::with_capacity(VALIDATION_LOG_CAPACITY)),
         }
+    }
+
+    /// Enable or disable structured validation logging.
+    pub fn set_validation_logging_enabled(&self, enabled: bool) {
+        self.validation_logging_enabled
+            .store(enabled, Ordering::Relaxed);
+    }
+
+    /// Clear buffered validation log rows.
+    pub fn clear_validation_logs(&self) {
+        self.validation_logs.lock().clear();
+    }
+
+    /// Export buffered validation logs as deterministic JSONL.
+    #[must_use]
+    pub fn export_validation_log_jsonl(&self) -> String {
+        self.validation_logs
+            .lock()
+            .iter()
+            .fold(String::new(), |mut out, line| {
+                out.push_str(line);
+                out.push('\n');
+                out
+            })
+    }
+
+    #[must_use]
+    fn begin_validation_trace(&self) -> ValidationTraceContext {
+        if !self.validation_logging_enabled.load(Ordering::Relaxed) {
+            return ValidationTraceContext::disabled();
+        }
+
+        let decision_id = self
+            .validation_log_decision_seq
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        ValidationTraceContext::enabled(decision_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_validation_log(
+        &self,
+        trace: &ValidationTraceContext,
+        mode: crate::config::SafetyLevel,
+        level: &'static str,
+        event: &'static str,
+        stage: &'static str,
+        decision_path: &'static str,
+        decision_action: &'static str,
+        outcome: &'static str,
+        latency_ns: u64,
+        aligned: bool,
+        recent_page: bool,
+        bloom_negative: bool,
+        cache_hit: bool,
+        policy_id: u32,
+        risk_upper_bound_ppm: u32,
+        evidence_seqno: u64,
+    ) {
+        if !trace.is_enabled() {
+            return;
+        }
+        debug_assert!(matches!(
+            level,
+            "trace" | "debug" | "info" | "warn" | "error"
+        ));
+        debug_assert!(matches!(
+            stage,
+            "safety_level"
+                | "stage_ordering"
+                | "null_check"
+                | "tls_cache"
+                | "bloom"
+                | "arena_lookup"
+                | "fingerprint"
+                | "canary"
+                | "bounds"
+                | "post_pipeline"
+        ));
+
+        let timestamp = Self::now_utc_iso_like();
+        let mode_label = Self::mode_name(mode);
+        let mut line = String::with_capacity(512);
+        let _ = write!(
+            &mut line,
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"span_id\":\"{}\",\"parent_span_id\":\"{}\",\"decision_id\":{},\"level\":\"{level}\",\"event\":\"{event}\",\"controller_id\":\"tsm_validation_pipeline.v1\",\"decision_path\":\"{decision_path}\",\"decision_action\":\"{decision_action}\",\"outcome\":\"{outcome}\",\"mode\":\"{mode_label}\",\"api_family\":\"pointer_validation\",\"symbol\":\"membrane::ptr_validator::validate\",\"stage\":\"{stage}\",\"latency_ns\":{latency_ns},\"policy_id\":{policy_id},\"risk_upper_bound_ppm\":{risk_upper_bound_ppm},\"evidence_seqno\":{evidence_seqno},\"stage_inputs\":{{\"aligned\":{aligned},\"recent_page\":{recent_page},\"bloom_negative\":{bloom_negative},\"cache_hit\":{cache_hit}}},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/ptr_validator.rs\"]}}",
+            trace.trace_id, trace.span_id, trace.parent_span_id, trace.decision_id,
+        );
+        self.push_validation_log_line(line);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_terminal_transition(
+        &self,
+        trace: &ValidationTraceContext,
+        mode: crate::config::SafetyLevel,
+        stage: &'static str,
+        decision_path: &'static str,
+        decision_action: &'static str,
+        outcome: &'static str,
+        latency_ns: u64,
+        aligned: bool,
+        recent_page: bool,
+        bloom_negative: bool,
+        cache_hit: bool,
+        policy_id: u32,
+        risk_upper_bound_ppm: u32,
+        evidence_seqno: u64,
+        invariant_violation: bool,
+    ) {
+        let level = if invariant_violation { "error" } else { "info" };
+        self.emit_validation_log(
+            trace,
+            mode,
+            level,
+            "validation_transition",
+            stage,
+            decision_path,
+            decision_action,
+            outcome,
+            latency_ns,
+            aligned,
+            recent_page,
+            bloom_negative,
+            cache_hit,
+            policy_id,
+            risk_upper_bound_ppm,
+            evidence_seqno,
+        );
+        self.emit_budget_warning_if_needed(
+            trace,
+            mode,
+            stage,
+            decision_path,
+            decision_action,
+            latency_ns,
+            aligned,
+            recent_page,
+            bloom_negative,
+            cache_hit,
+            policy_id,
+            risk_upper_bound_ppm,
+            evidence_seqno,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_budget_warning_if_needed(
+        &self,
+        trace: &ValidationTraceContext,
+        mode: crate::config::SafetyLevel,
+        stage: &'static str,
+        decision_path: &'static str,
+        decision_action: &'static str,
+        latency_ns: u64,
+        aligned: bool,
+        recent_page: bool,
+        bloom_negative: bool,
+        cache_hit: bool,
+        policy_id: u32,
+        risk_upper_bound_ppm: u32,
+        evidence_seqno: u64,
+    ) {
+        let budget = match mode {
+            crate::config::SafetyLevel::Strict => STRICT_VALIDATION_BUDGET_NS,
+            crate::config::SafetyLevel::Hardened => HARDENED_VALIDATION_BUDGET_NS,
+            crate::config::SafetyLevel::Off => return,
+        };
+
+        if latency_ns <= budget {
+            return;
+        }
+
+        self.emit_validation_log(
+            trace,
+            mode,
+            "warn",
+            "validation_budget_overrun",
+            stage,
+            decision_path,
+            decision_action,
+            "BudgetExceeded",
+            latency_ns,
+            aligned,
+            recent_page,
+            bloom_negative,
+            cache_hit,
+            policy_id,
+            risk_upper_bound_ppm,
+            evidence_seqno,
+        );
+    }
+
+    fn push_validation_log_line(&self, line: String) {
+        if !self.validation_logging_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut logs = self.validation_logs.lock();
+        while logs.len() >= VALIDATION_LOG_CAPACITY {
+            let _ = logs.pop_front();
+        }
+        logs.push_back(line);
+    }
+
+    #[must_use]
+    fn mode_name(mode: crate::config::SafetyLevel) -> &'static str {
+        match mode {
+            crate::config::SafetyLevel::Strict => "strict",
+            crate::config::SafetyLevel::Hardened => "hardened",
+            crate::config::SafetyLevel::Off => "off",
+        }
+    }
+
+    #[must_use]
+    fn stage_label(stage: CheckStage) -> &'static str {
+        match stage {
+            CheckStage::Null => "null_check",
+            CheckStage::TlsCache => "tls_cache",
+            CheckStage::Bloom => "bloom",
+            CheckStage::Arena => "arena_lookup",
+            CheckStage::Fingerprint => "fingerprint",
+            CheckStage::Canary => "canary",
+            CheckStage::Bounds => "bounds",
+        }
+    }
+
+    #[must_use]
+    fn stage_path(stage: CheckStage) -> &'static str {
+        match stage {
+            CheckStage::Null => "pipeline::stage1::null_check",
+            CheckStage::TlsCache => "pipeline::stage2::tls_cache",
+            CheckStage::Bloom => "pipeline::stage3::bloom",
+            CheckStage::Arena => "pipeline::stage4::arena",
+            CheckStage::Fingerprint => "pipeline::stage5::fingerprint",
+            CheckStage::Canary => "pipeline::stage6::canary",
+            CheckStage::Bounds => "pipeline::stage7::bounds",
+        }
+    }
+
+    #[must_use]
+    fn now_utc_iso_like() -> String {
+        let duration = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let secs = duration.as_secs();
+        let millis = duration.subsec_millis();
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+            1970 + secs / 31_557_600,
+            (secs % 31_557_600) / 2_629_800 + 1,
+            (secs % 2_629_800) / 86_400 + 1,
+            (secs % 86_400) / 3_600,
+            (secs % 3_600) / 60,
+            secs % 60,
+            millis,
+        )
     }
 
     /// Run a pointer through the validation pipeline.
@@ -113,9 +432,27 @@ impl ValidationPipeline {
         let metrics = global_metrics();
         MembraneMetrics::inc(&metrics.validations);
         let mode = safety_level();
+        let trace = self.begin_validation_trace();
 
         // Stage 0: Safety level check
         if !mode.validation_enabled() {
+            self.emit_terminal_transition(
+                &trace,
+                mode,
+                "safety_level",
+                "pipeline::stage0::safety_level",
+                "Allow",
+                "Bypassed",
+                0,
+                false,
+                false,
+                false,
+                false,
+                0,
+                0,
+                0,
+                false,
+            );
             return ValidationOutcome::Bypassed;
         }
 
@@ -126,12 +463,47 @@ impl ValidationPipeline {
         let validation_epoch = crate::tls_cache::current_epoch();
 
         // Stage 1: Null check (~1ns)
+        self.emit_validation_log(
+            &trace,
+            mode,
+            "trace",
+            "validation_stage",
+            "null_check",
+            "pipeline::stage1::null_check",
+            "Observe",
+            "Continue",
+            1,
+            false,
+            false,
+            false,
+            false,
+            0,
+            0,
+            0,
+        );
         if addr == 0 {
             self.runtime_math.observe_validation_result(
                 mode,
                 ApiFamily::PointerValidation,
                 ValidationProfile::Fast,
                 1,
+                false,
+            );
+            self.emit_terminal_transition(
+                &trace,
+                mode,
+                "null_check",
+                "pipeline::stage1::null_check",
+                "Deny",
+                "Null",
+                1,
+                false,
+                false,
+                false,
+                false,
+                0,
+                0,
+                0,
                 false,
             );
             return ValidationOutcome::Null;
@@ -142,6 +514,26 @@ impl ValidationPipeline {
             self.runtime_math
                 .check_ordering(ApiFamily::PointerValidation, aligned, recent_page);
         let ordering = Self::dependency_safe_order(raw_order);
+        if raw_order != ordering {
+            self.emit_validation_log(
+                &trace,
+                mode,
+                "warn",
+                "validation_order_rewrite",
+                "stage_ordering",
+                "pipeline::order::dependency_safe_rewrite",
+                "Observe",
+                "OrderRewritten",
+                1,
+                aligned,
+                recent_page,
+                false,
+                false,
+                0,
+                0,
+                0,
+            );
+        }
 
         let mut elapsed_ns = 1_u64;
         let mut slot: Option<ArenaSlot> = None;
@@ -150,6 +542,24 @@ impl ValidationPipeline {
         let mut saw_canary = false;
 
         for (idx, stage) in ordering.iter().enumerate() {
+            self.emit_validation_log(
+                &trace,
+                mode,
+                "trace",
+                "validation_stage",
+                Self::stage_label(*stage),
+                Self::stage_path(*stage),
+                "Observe",
+                "Continue",
+                elapsed_ns,
+                aligned,
+                recent_page,
+                bloom_negative,
+                false,
+                0,
+                0,
+                0,
+            );
             match *stage {
                 CheckStage::Null => {}
                 CheckStage::TlsCache => {
@@ -158,17 +568,36 @@ impl ValidationPipeline {
                     let cached = with_tls_cache(|cache| cache.lookup(addr));
                     if let Some(cv) = cached {
                         MembraneMetrics::inc(&metrics.tls_cache_hits);
-                        let (remaining, state) =
-                            if addr >= cv.user_base && addr < cv.user_base.saturating_add(cv.user_size) {
-                                (
-                                    cv.user_base
-                                        .saturating_add(cv.user_size)
-                                        .saturating_sub(addr),
-                                    cv.state,
-                                )
-                            } else {
-                                (0, crate::lattice::SafetyState::Invalid)
-                            };
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "debug",
+                            "validation_cache_hit",
+                            "tls_cache",
+                            "pipeline::stage2::tls_cache",
+                            "Allow",
+                            "CacheHit",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            true,
+                            0,
+                            0,
+                            0,
+                        );
+                        let (remaining, state) = if addr >= cv.user_base
+                            && addr < cv.user_base.saturating_add(cv.user_size)
+                        {
+                            (
+                                cv.user_base
+                                    .saturating_add(cv.user_size)
+                                    .saturating_sub(addr),
+                                cv.state,
+                            )
+                        } else {
+                            (0, crate::lattice::SafetyState::Invalid)
+                        };
                         let abs = PointerAbstraction::validated(
                             addr,
                             state,
@@ -191,9 +620,44 @@ impl ValidationPipeline {
                             elapsed_ns,
                             false,
                         );
+                        self.emit_terminal_transition(
+                            &trace,
+                            mode,
+                            "tls_cache",
+                            "pipeline::stage2::tls_cache",
+                            "Allow",
+                            "CachedValid",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            true,
+                            0,
+                            0,
+                            0,
+                            false,
+                        );
                         return ValidationOutcome::CachedValid(abs);
                     }
                     MembraneMetrics::inc(&metrics.tls_cache_misses);
+                    self.emit_validation_log(
+                        &trace,
+                        mode,
+                        "debug",
+                        "validation_cache_miss",
+                        "tls_cache",
+                        "pipeline::stage2::tls_cache",
+                        "Observe",
+                        "CacheMiss",
+                        elapsed_ns,
+                        aligned,
+                        recent_page,
+                        bloom_negative,
+                        false,
+                        0,
+                        0,
+                        0,
+                    );
                 }
                 CheckStage::Bloom => {
                     if slot.is_some() {
@@ -203,10 +667,77 @@ impl ValidationPipeline {
                     if !self.bloom.might_contain(addr) {
                         bloom_negative = true;
                         MembraneMetrics::inc(&metrics.bloom_misses);
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "debug",
+                            "validation_bloom_miss",
+                            "bloom",
+                            "pipeline::stage3::bloom",
+                            "Observe",
+                            "BloomMiss",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
+                        );
+                        // Bloom membership is keyed on allocation bases. Interior pointers can
+                        // legitimately miss here, so page-oracle ownership must arbitrate before
+                        // we classify this address as foreign.
+                        let page_hit = self.page_oracle.query(addr);
+                        elapsed_ns = elapsed_ns.saturating_add(6);
+                        if page_hit {
+                            self.emit_validation_log(
+                                &trace,
+                                mode,
+                                "debug",
+                                "validation_bloom_page_override",
+                                "bloom",
+                                "pipeline::stage3::bloom",
+                                "Observe",
+                                "PageOwned",
+                                elapsed_ns,
+                                aligned,
+                                recent_page,
+                                bloom_negative,
+                                false,
+                                0,
+                                0,
+                                0,
+                            );
+                            continue;
+                        }
 
                         let pre_decision = self
                             .runtime_math
                             .decide(mode, RuntimeContext::pointer_validation(addr, true));
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "trace",
+                            "validation_runtime_decision",
+                            "bloom",
+                            "pipeline::stage3::bloom::runtime_decide",
+                            match pre_decision.action {
+                                crate::runtime_math::MembraneAction::Allow => "Allow",
+                                crate::runtime_math::MembraneAction::FullValidate => "FullValidate",
+                                crate::runtime_math::MembraneAction::Repair(_) => "Repair",
+                                crate::runtime_math::MembraneAction::Deny => "Deny",
+                            },
+                            "RuntimeDecision",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            pre_decision.policy_id,
+                            pre_decision.risk_upper_bound_ppm,
+                            pre_decision.evidence_seqno,
+                        );
 
                         // Runtime-math selected fast path for foreign pointers.
                         if !pre_decision.requires_full_validation() && !mode.heals_enabled() {
@@ -225,31 +756,80 @@ impl ValidationPipeline {
                                 elapsed_ns,
                                 false,
                             );
-                            return ValidationOutcome::Foreign(PointerAbstraction::unknown(addr));
-                        }
-
-                        // Runtime-math full profile (or hardened) requires page-oracle cross-check.
-                        if !self.page_oracle.query(addr) {
-                            elapsed_ns = elapsed_ns.saturating_add(6);
-                            self.runtime_math.note_check_order_outcome(
+                            self.emit_terminal_transition(
+                                &trace,
                                 mode,
-                                ApiFamily::PointerValidation,
+                                "bloom",
+                                "pipeline::stage3::bloom",
+                                "Allow",
+                                "Foreign",
+                                elapsed_ns,
                                 aligned,
                                 recent_page,
-                                &ordering,
-                                Some(idx),
-                            );
-                            self.runtime_math.observe_validation_result(
-                                mode,
-                                ApiFamily::PointerValidation,
-                                pre_decision.profile,
-                                elapsed_ns,
+                                bloom_negative,
+                                false,
+                                pre_decision.policy_id,
+                                pre_decision.risk_upper_bound_ppm,
+                                pre_decision.evidence_seqno,
                                 false,
                             );
                             return ValidationOutcome::Foreign(PointerAbstraction::unknown(addr));
                         }
+
+                        // No page ownership evidence: classify as foreign regardless of profile.
+                        self.runtime_math.note_check_order_outcome(
+                            mode,
+                            ApiFamily::PointerValidation,
+                            aligned,
+                            recent_page,
+                            &ordering,
+                            Some(idx),
+                        );
+                        self.runtime_math.observe_validation_result(
+                            mode,
+                            ApiFamily::PointerValidation,
+                            pre_decision.profile,
+                            elapsed_ns,
+                            false,
+                        );
+                        self.emit_terminal_transition(
+                            &trace,
+                            mode,
+                            "bloom",
+                            "pipeline::stage3::bloom",
+                            "Allow",
+                            "Foreign",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            pre_decision.policy_id,
+                            pre_decision.risk_upper_bound_ppm,
+                            pre_decision.evidence_seqno,
+                            false,
+                        );
+                        return ValidationOutcome::Foreign(PointerAbstraction::unknown(addr));
                     } else {
                         MembraneMetrics::inc(&metrics.bloom_hits);
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "debug",
+                            "validation_bloom_hit",
+                            "bloom",
+                            "pipeline::stage3::bloom",
+                            "Observe",
+                            "BloomHit",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
+                        );
                     }
                 }
                 CheckStage::Arena => {
@@ -274,6 +854,23 @@ impl ValidationPipeline {
                             elapsed_ns,
                             false,
                         );
+                        self.emit_terminal_transition(
+                            &trace,
+                            mode,
+                            "arena_lookup",
+                            "pipeline::stage4::arena",
+                            "Allow",
+                            "Foreign",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
+                            false,
+                        );
                         return ValidationOutcome::Foreign(PointerAbstraction::unknown(addr));
                     };
                     if !found.state.is_live() {
@@ -291,6 +888,23 @@ impl ValidationPipeline {
                             ApiFamily::PointerValidation,
                             ValidationProfile::Full,
                             elapsed_ns,
+                            true,
+                        );
+                        self.emit_terminal_transition(
+                            &trace,
+                            mode,
+                            "arena_lookup",
+                            "pipeline::stage4::arena",
+                            "Deny",
+                            "TemporalViolation",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
                             true,
                         );
                         return ValidationOutcome::TemporalViolation(abs);
@@ -331,9 +945,44 @@ impl ValidationPipeline {
                                 elapsed_ns,
                                 true,
                             );
+                            self.emit_terminal_transition(
+                                &trace,
+                                mode,
+                                "fingerprint",
+                                "pipeline::stage5::fingerprint",
+                                "Deny",
+                                "TemporalViolation",
+                                elapsed_ns,
+                                aligned,
+                                recent_page,
+                                bloom_negative,
+                                false,
+                                0,
+                                0,
+                                0,
+                                true,
+                            );
                             return ValidationOutcome::TemporalViolation(abs);
                         }
                         MembraneMetrics::inc(&metrics.fingerprint_passes);
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "trace",
+                            "validation_fingerprint_pass",
+                            "fingerprint",
+                            "pipeline::stage5::fingerprint",
+                            "Observe",
+                            "FingerprintPass",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
+                        );
                         saw_fingerprint = true;
                     }
                 }
@@ -374,16 +1023,106 @@ impl ValidationPipeline {
                                 elapsed_ns,
                                 true,
                             );
+                            self.emit_terminal_transition(
+                                &trace,
+                                mode,
+                                "canary",
+                                "pipeline::stage6::canary",
+                                "Deny",
+                                "TemporalViolation",
+                                elapsed_ns,
+                                aligned,
+                                recent_page,
+                                bloom_negative,
+                                false,
+                                0,
+                                0,
+                                0,
+                                true,
+                            );
                             return ValidationOutcome::TemporalViolation(abs);
                         }
                         MembraneMetrics::inc(&metrics.canary_passes);
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "trace",
+                            "validation_canary_pass",
+                            "canary",
+                            "pipeline::stage6::canary",
+                            "Observe",
+                            "CanaryPass",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
+                        );
                         saw_canary = true;
                     }
                 }
                 CheckStage::Bounds => {
-                    if slot.is_some() {
+                    if let Some(s) = slot {
                         elapsed_ns =
                             elapsed_ns.saturating_add(u64::from(CheckStage::Bounds.cost_ns()));
+                        let end = s.user_base.saturating_add(s.user_size);
+                        if addr < s.user_base || addr >= end {
+                            let abs = self.abstraction_from_slot(addr, &s);
+                            self.runtime_math.note_check_order_outcome(
+                                mode,
+                                ApiFamily::PointerValidation,
+                                aligned,
+                                recent_page,
+                                &ordering,
+                                Some(idx),
+                            );
+                            self.runtime_math.observe_validation_result(
+                                mode,
+                                ApiFamily::PointerValidation,
+                                ValidationProfile::Full,
+                                elapsed_ns,
+                                true,
+                            );
+                            self.emit_terminal_transition(
+                                &trace,
+                                mode,
+                                "bounds",
+                                "pipeline::stage7::bounds",
+                                "Deny",
+                                "Invalid",
+                                elapsed_ns,
+                                aligned,
+                                recent_page,
+                                bloom_negative,
+                                false,
+                                0,
+                                0,
+                                0,
+                                false,
+                            );
+                            return ValidationOutcome::Invalid(abs);
+                        }
+                        self.emit_validation_log(
+                            &trace,
+                            mode,
+                            "trace",
+                            "validation_bounds_accounted",
+                            "bounds",
+                            "pipeline::stage7::bounds",
+                            "Observe",
+                            "BoundsAccounted",
+                            elapsed_ns,
+                            aligned,
+                            recent_page,
+                            bloom_negative,
+                            false,
+                            0,
+                            0,
+                            0,
+                        );
                     }
                 }
             }
@@ -405,12 +1144,53 @@ impl ValidationPipeline {
                 elapsed_ns,
                 false,
             );
+            self.emit_terminal_transition(
+                &trace,
+                mode,
+                "post_pipeline",
+                "pipeline::post::no_slot",
+                "Allow",
+                "Foreign",
+                elapsed_ns,
+                aligned,
+                recent_page,
+                bloom_negative,
+                false,
+                0,
+                0,
+                0,
+                false,
+            );
             return ValidationOutcome::Foreign(PointerAbstraction::unknown(addr));
         };
 
         let deep_decision = self.runtime_math.decide(
             mode,
             RuntimeContext::pointer_validation(addr, bloom_negative),
+        );
+        let deep_action = match deep_decision.action {
+            crate::runtime_math::MembraneAction::Allow => "Allow",
+            crate::runtime_math::MembraneAction::FullValidate => "FullValidate",
+            crate::runtime_math::MembraneAction::Repair(_) => "Repair",
+            crate::runtime_math::MembraneAction::Deny => "Deny",
+        };
+        self.emit_validation_log(
+            &trace,
+            mode,
+            "trace",
+            "validation_runtime_decision",
+            "post_pipeline",
+            "pipeline::post::runtime_decide",
+            deep_action,
+            "RuntimeDecision",
+            elapsed_ns,
+            aligned,
+            recent_page,
+            bloom_negative,
+            false,
+            deep_decision.policy_id,
+            deep_decision.risk_upper_bound_ppm,
+            deep_decision.evidence_seqno,
         );
 
         // Runtime-math fast profile in strict mode skips deep integrity checks.
@@ -430,6 +1210,23 @@ impl ValidationPipeline {
                 ApiFamily::PointerValidation,
                 deep_decision.profile,
                 elapsed_ns,
+                false,
+            );
+            self.emit_terminal_transition(
+                &trace,
+                mode,
+                "post_pipeline",
+                "pipeline::post::fast_accept",
+                "Allow",
+                "Validated",
+                elapsed_ns,
+                aligned,
+                recent_page,
+                bloom_negative,
+                false,
+                deep_decision.policy_id,
+                deep_decision.risk_upper_bound_ppm,
+                deep_decision.evidence_seqno,
                 false,
             );
             return ValidationOutcome::Validated(abs);
@@ -469,9 +1266,44 @@ impl ValidationPipeline {
                     elapsed_ns,
                     true,
                 );
+                self.emit_terminal_transition(
+                    &trace,
+                    mode,
+                    "fingerprint",
+                    "pipeline::post::fingerprint_forced",
+                    "Deny",
+                    "TemporalViolation",
+                    elapsed_ns,
+                    aligned,
+                    recent_page,
+                    bloom_negative,
+                    false,
+                    deep_decision.policy_id,
+                    deep_decision.risk_upper_bound_ppm,
+                    deep_decision.evidence_seqno,
+                    true,
+                );
                 return ValidationOutcome::TemporalViolation(abs);
             }
             MembraneMetrics::inc(&metrics.fingerprint_passes);
+            self.emit_validation_log(
+                &trace,
+                mode,
+                "trace",
+                "validation_fingerprint_pass",
+                "fingerprint",
+                "pipeline::post::fingerprint_forced",
+                "Observe",
+                "FingerprintPass",
+                elapsed_ns,
+                aligned,
+                recent_page,
+                bloom_negative,
+                false,
+                deep_decision.policy_id,
+                deep_decision.risk_upper_bound_ppm,
+                deep_decision.evidence_seqno,
+            );
         }
         if !saw_canary {
             elapsed_ns = elapsed_ns.saturating_add(u64::from(CheckStage::Canary.cost_ns()));
@@ -508,9 +1340,44 @@ impl ValidationPipeline {
                     elapsed_ns,
                     true,
                 );
+                self.emit_terminal_transition(
+                    &trace,
+                    mode,
+                    "canary",
+                    "pipeline::post::canary_forced",
+                    "Deny",
+                    "TemporalViolation",
+                    elapsed_ns,
+                    aligned,
+                    recent_page,
+                    bloom_negative,
+                    false,
+                    deep_decision.policy_id,
+                    deep_decision.risk_upper_bound_ppm,
+                    deep_decision.evidence_seqno,
+                    true,
+                );
                 return ValidationOutcome::TemporalViolation(abs);
             }
             MembraneMetrics::inc(&metrics.canary_passes);
+            self.emit_validation_log(
+                &trace,
+                mode,
+                "trace",
+                "validation_canary_pass",
+                "canary",
+                "pipeline::post::canary_forced",
+                "Observe",
+                "CanaryPass",
+                elapsed_ns,
+                aligned,
+                recent_page,
+                bloom_negative,
+                false,
+                deep_decision.policy_id,
+                deep_decision.risk_upper_bound_ppm,
+                deep_decision.evidence_seqno,
+            );
         }
 
         let abs = self.abstraction_from_slot(addr, &slot);
@@ -528,6 +1395,23 @@ impl ValidationPipeline {
             ApiFamily::PointerValidation,
             deep_decision.profile,
             elapsed_ns,
+            false,
+        );
+        self.emit_terminal_transition(
+            &trace,
+            mode,
+            "post_pipeline",
+            "pipeline::post::validated",
+            deep_action,
+            "Validated",
+            elapsed_ns,
+            aligned,
+            recent_page,
+            bloom_negative,
+            false,
+            deep_decision.policy_id,
+            deep_decision.risk_upper_bound_ppm,
+            deep_decision.evidence_seqno,
             false,
         );
         ValidationOutcome::Validated(abs)
@@ -655,6 +1539,20 @@ mod tests {
     use crate::check_oracle::CheckStage;
     use crate::lattice::SafetyState;
     use crate::tls_cache::lock_tls_cache_epoch_for_tests;
+    use proptest::prelude::*;
+    use serde_json::Value;
+    use std::collections::HashSet;
+
+    fn collected_stage_labels(jsonl: &str) -> HashSet<String> {
+        let mut stages = HashSet::new();
+        for line in jsonl.lines().filter(|line| !line.trim().is_empty()) {
+            let row: Value = serde_json::from_str(line).expect("row must be valid JSON");
+            if let Some(stage) = row.get("stage").and_then(Value::as_str) {
+                stages.insert(stage.to_string());
+            }
+        }
+        stages
+    }
 
     #[test]
     fn null_pointer_detected() {
@@ -696,6 +1594,36 @@ mod tests {
         } else {
             panic!("expected abstraction");
         }
+
+        let result = pipeline.free(ptr);
+        assert_eq!(result, FreeResult::Freed);
+    }
+
+    #[test]
+    fn interior_pointer_on_owned_page_is_not_misclassified_as_foreign() {
+        let pipeline = ValidationPipeline::new();
+        let ptr = pipeline.allocate(256).expect("alloc");
+        let base = ptr as usize;
+        let interior = base + 17;
+        let metrics = global_metrics();
+        let before_miss = MembraneMetrics::get(&metrics.bloom_misses);
+
+        let outcome = pipeline.validate(interior);
+        assert!(
+            !matches!(outcome, ValidationOutcome::Foreign(_)),
+            "interior pointer on an owned page must not be classified as foreign"
+        );
+        assert!(outcome.can_read());
+        assert!(outcome.can_write());
+        let abs = outcome.abstraction().expect("validated abstraction");
+        assert_eq!(abs.alloc_base, Some(base));
+        assert_eq!(abs.remaining, Some(256 - 17));
+
+        let after_miss = MembraneMetrics::get(&metrics.bloom_misses);
+        assert!(
+            after_miss > before_miss,
+            "expected bloom miss accounting for interior pointer validation"
+        );
 
         let result = pipeline.free(ptr);
         assert_eq!(result, FreeResult::Freed);
@@ -815,6 +1743,215 @@ mod tests {
     }
 
     #[test]
+    fn one_past_end_pointer_is_denied_as_invalid() {
+        let pipeline = ValidationPipeline::new();
+        let size = 64_usize;
+        let ptr = pipeline.allocate(size).expect("alloc");
+        let base = ptr as usize;
+        let one_past_end = base + size;
+
+        let outcome = pipeline.validate(one_past_end);
+        assert!(matches!(outcome, ValidationOutcome::Invalid(_)));
+        assert!(!outcome.can_read());
+        assert!(!outcome.can_write());
+        let abs = outcome.abstraction().expect("invalid abstraction");
+        assert_eq!(abs.alloc_base, Some(base));
+        assert_eq!(abs.state, SafetyState::Invalid);
+        assert_eq!(abs.remaining, Some(0));
+
+        let result = pipeline.free(ptr);
+        assert_eq!(result, FreeResult::Freed);
+    }
+
+    #[test]
+    fn header_pointer_is_denied_as_invalid() {
+        let pipeline = ValidationPipeline::new();
+        let ptr = pipeline.allocate(64).expect("alloc");
+        let base = ptr as usize;
+        let header_addr = base.saturating_sub(1);
+
+        let outcome = pipeline.validate(header_addr);
+        assert!(matches!(outcome, ValidationOutcome::Invalid(_)));
+        assert!(!outcome.can_read());
+        assert!(!outcome.can_write());
+        let abs = outcome.abstraction().expect("invalid abstraction");
+        assert_eq!(abs.alloc_base, Some(base));
+        assert_eq!(abs.state, SafetyState::Invalid);
+
+        let result = pipeline.free(ptr);
+        assert_eq!(result, FreeResult::Freed);
+    }
+
+    #[test]
+    fn null_pointer_early_exit_does_not_reach_later_stages() {
+        let pipeline = ValidationPipeline::new();
+        pipeline.set_validation_logging_enabled(true);
+        pipeline.clear_validation_logs();
+
+        let outcome = pipeline.validate(0);
+        assert!(matches!(outcome, ValidationOutcome::Null));
+
+        let stages = collected_stage_labels(&pipeline.export_validation_log_jsonl());
+        assert!(!stages.contains("safety_level"));
+        assert!(stages.contains("null_check"));
+        assert!(!stages.contains("tls_cache"));
+        assert!(!stages.contains("bloom"));
+        assert!(!stages.contains("arena_lookup"));
+        assert!(!stages.contains("fingerprint"));
+        assert!(!stages.contains("canary"));
+        assert!(!stages.contains("bounds"));
+    }
+
+    #[test]
+    fn foreign_pointer_early_exit_skips_deep_integrity_stages() {
+        let pipeline = ValidationPipeline::new();
+        pipeline.set_validation_logging_enabled(true);
+        pipeline.clear_validation_logs();
+
+        let outcome = pipeline.validate(0x6FFF_0000_0000usize);
+        assert!(matches!(outcome, ValidationOutcome::Foreign(_)));
+
+        let stages = collected_stage_labels(&pipeline.export_validation_log_jsonl());
+        assert!(!stages.contains("fingerprint"));
+        assert!(!stages.contains("canary"));
+        assert!(!stages.contains("bounds"));
+    }
+
+    #[test]
+    fn bloom_false_positives_do_not_classify_foreign_as_validated() {
+        let pipeline = ValidationPipeline::new();
+        let mut allocated = Vec::new();
+        for _ in 0..256 {
+            allocated.push(pipeline.allocate(64).expect("alloc"));
+        }
+
+        for i in 0..4096usize {
+            let addr = 0x6FFF_0000_0000usize + i * 0x1000;
+            let outcome = pipeline.validate(addr);
+            assert!(
+                !matches!(
+                    outcome,
+                    ValidationOutcome::CachedValid(_) | ValidationOutcome::Validated(_)
+                ),
+                "foreign address {addr:#x} must not validate as owned"
+            );
+        }
+
+        for ptr in allocated {
+            assert_eq!(pipeline.free(ptr), FreeResult::Freed);
+        }
+    }
+
+    #[test]
+    fn validation_log_export_includes_trace_and_decision_ids() {
+        let pipeline = ValidationPipeline::new();
+        pipeline.set_validation_logging_enabled(true);
+        pipeline.clear_validation_logs();
+
+        let ptr = pipeline.allocate(64).expect("alloc");
+        let addr = ptr as usize;
+        let _ = pipeline.validate(addr);
+        let _ = pipeline.validate(addr);
+        let _ = pipeline.validate(0xDEAD_BEEF);
+        let _ = pipeline.free(ptr);
+
+        let jsonl = pipeline.export_validation_log_jsonl();
+        assert!(
+            !jsonl.trim().is_empty(),
+            "expected structured validation logs"
+        );
+
+        for line in jsonl.lines().filter(|line| !line.trim().is_empty()) {
+            let row: Value = serde_json::from_str(line).expect("row must be valid JSON");
+            assert!(row.get("trace_id").and_then(Value::as_str).is_some());
+            assert!(row.get("decision_id").and_then(Value::as_u64).is_some());
+            assert!(row.get("decision_path").and_then(Value::as_str).is_some());
+            assert!(row.get("level").and_then(Value::as_str).is_some());
+            assert!(row.get("stage").and_then(Value::as_str).is_some());
+        }
+    }
+
+    #[test]
+    #[allow(unsafe_code)]
+    fn validation_logging_level_mapping_covers_spec_levels() {
+        let pipeline = ValidationPipeline::new();
+        pipeline.set_validation_logging_enabled(true);
+        pipeline.clear_validation_logs();
+
+        let ptr = pipeline.allocate(64).expect("alloc");
+        let addr = ptr as usize;
+
+        // Full validation path (strict) should produce info + warn + trace.
+        let _ = pipeline.validate(addr);
+        // Cache hit path should produce debug.
+        let _ = pipeline.validate(addr);
+
+        // Corrupt canary before free so validator emits an invariant-violation error.
+        // SAFETY: Intentional corruption to exercise validation error logging.
+        unsafe {
+            std::ptr::write_bytes(ptr.add(64), 0xAB, CANARY_SIZE);
+        }
+        crate::tls_cache::bump_tls_cache_epoch();
+        let _ = pipeline.validate(addr);
+
+        let jsonl = pipeline.export_validation_log_jsonl();
+        let mut levels = HashSet::new();
+        for line in jsonl.lines().filter(|line| !line.trim().is_empty()) {
+            let row: Value = serde_json::from_str(line).expect("row must be valid JSON");
+            if let Some(level) = row.get("level").and_then(Value::as_str) {
+                levels.insert(level.to_string());
+            }
+        }
+
+        assert!(levels.contains("trace"));
+        assert!(levels.contains("debug"));
+        assert!(levels.contains("info"));
+        assert!(levels.contains("warn"));
+        assert!(levels.contains("error"));
+    }
+
+    #[test]
+    fn validation_logging_cardinality_budget_is_bounded() {
+        let pipeline = ValidationPipeline::new();
+        pipeline.set_validation_logging_enabled(true);
+        pipeline.clear_validation_logs();
+
+        let ptr = pipeline.allocate(32).expect("alloc");
+        let addr = ptr as usize;
+        let _ = pipeline.validate(addr);
+        let _ = pipeline.validate(0);
+        let _ = pipeline.validate(0xA11CE);
+        let _ = pipeline.free(ptr);
+
+        let jsonl = pipeline.export_validation_log_jsonl();
+        let mut levels = HashSet::new();
+        let mut stages = HashSet::new();
+
+        for line in jsonl.lines().filter(|line| !line.trim().is_empty()) {
+            let row: Value = serde_json::from_str(line).expect("row must be valid JSON");
+            if let Some(level) = row.get("level").and_then(Value::as_str) {
+                levels.insert(level.to_string());
+            }
+            if let Some(stage) = row.get("stage").and_then(Value::as_str) {
+                stages.insert(stage.to_string());
+            }
+        }
+
+        assert!(
+            levels.len() <= MAX_LEVEL_LABEL_CARDINALITY,
+            "level label cardinality exceeded: {} > {}",
+            levels.len(),
+            MAX_LEVEL_LABEL_CARDINALITY
+        );
+        assert!(
+            stages.len() <= MAX_STAGE_LABEL_CARDINALITY,
+            "stage label cardinality exceeded: {} > {}",
+            stages.len(),
+            MAX_STAGE_LABEL_CARDINALITY
+        );
+    }
+
+    #[test]
     fn dependency_safe_order_delays_deep_checks_until_after_arena() {
         let scrambled = [
             CheckStage::Null,
@@ -845,5 +1982,62 @@ mod tests {
         assert!(arena_idx < fingerprint_idx);
         assert!(arena_idx < canary_idx);
         assert!(arena_idx < bounds_idx);
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        #[test]
+        fn dependency_safe_order_property_holds(random_keys in proptest::array::uniform7(any::<u16>())) {
+            let all_stages = [
+                CheckStage::Null,
+                CheckStage::TlsCache,
+                CheckStage::Bloom,
+                CheckStage::Arena,
+                CheckStage::Fingerprint,
+                CheckStage::Canary,
+                CheckStage::Bounds,
+            ];
+
+            let mut keyed = all_stages
+                .into_iter()
+                .enumerate()
+                .map(|(idx, stage)| (random_keys[idx], idx, stage))
+                .collect::<Vec<_>>();
+            keyed.sort_by_key(|(key, idx, _)| (*key, *idx));
+
+            let mut scrambled = [CheckStage::Null; 7];
+            for (idx, (_, _, stage)) in keyed.into_iter().enumerate() {
+                scrambled[idx] = stage;
+            }
+
+            let ordered = ValidationPipeline::dependency_safe_order(scrambled);
+            let input_set = scrambled.into_iter().collect::<HashSet<_>>();
+            let output_set = ordered.into_iter().collect::<HashSet<_>>();
+            prop_assert_eq!(input_set, output_set);
+
+            let arena_idx = ordered
+                .iter()
+                .position(|s| matches!(s, CheckStage::Arena))
+                .expect("arena in ordering");
+            let fingerprint_idx = ordered
+                .iter()
+                .position(|s| matches!(s, CheckStage::Fingerprint))
+                .expect("fingerprint in ordering");
+            let canary_idx = ordered
+                .iter()
+                .position(|s| matches!(s, CheckStage::Canary))
+                .expect("canary in ordering");
+            let bounds_idx = ordered
+                .iter()
+                .position(|s| matches!(s, CheckStage::Bounds))
+                .expect("bounds in ordering");
+            prop_assert!(arena_idx < fingerprint_idx);
+            prop_assert!(arena_idx < canary_idx);
+            prop_assert!(arena_idx < bounds_idx);
+
+            let reordered = ValidationPipeline::dependency_safe_order(ordered);
+            prop_assert_eq!(reordered, ordered);
+        }
     }
 }

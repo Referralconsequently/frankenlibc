@@ -13,7 +13,10 @@
 
 use core::fmt;
 use core::fmt::Write as _;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::fs::{File, OpenOptions};
+use std::io::{self, ErrorKind, Read as _, Seek as _, SeekFrom, Write as _};
+use std::path::Path;
 use std::time::Instant;
 
 use parking_lot::Mutex;
@@ -480,6 +483,364 @@ impl DecisionCardFilter {
     }
 }
 
+const DECISION_CARD_JOURNAL_MAGIC: [u8; 4] = *b"DCR1";
+const DECISION_CARD_JOURNAL_VERSION_V1: u16 = 1;
+const DECISION_CARD_JOURNAL_RECORD_SIZE: usize = 176;
+
+const DCR_OFF_MAGIC: usize = 0;
+const DCR_OFF_VERSION: usize = 4;
+const DCR_OFF_DECISION_ID: usize = 8;
+const DCR_OFF_DECISION_TYPE: usize = 16;
+const DCR_OFF_THREAD_ID: usize = 20;
+const DCR_OFF_SYMBOL_ID: usize = 28;
+const DCR_OFF_TIMESTAMP_NS: usize = 32;
+const DCR_OFF_EPOCH_ID: usize = 40;
+const DCR_OFF_EVIDENCE_SEQNO: usize = 48;
+const DCR_OFF_CTX_FAMILY: usize = 56;
+const DCR_OFF_CTX_IS_WRITE: usize = 57;
+const DCR_OFF_CTX_BLOOM_NEGATIVE: usize = 58;
+const DCR_OFF_CTX_CONTENTION_HINT: usize = 60;
+const DCR_OFF_DECISION_PROFILE: usize = 62;
+const DCR_OFF_DECISION_ACTION: usize = 63;
+const DCR_OFF_DECISION_HEAL_CODE: usize = 64;
+const DCR_OFF_COUNTERFACTUAL_ACTION: usize = 65;
+const DCR_OFF_COUNTERFACTUAL_HEAL_CODE: usize = 66;
+const DCR_OFF_LOSS_PRESENT: usize = 67;
+const DCR_OFF_REASONING_FLAGS: usize = 68;
+const DCR_OFF_POLICY_ID: usize = 72;
+const DCR_OFF_RISK_UPPER_BOUND_PPM: usize = 76;
+const DCR_OFF_DECISION_EVIDENCE_SEQNO: usize = 80;
+const DCR_OFF_ESTIMATED_COST_NS: usize = 88;
+const DCR_OFF_CTX_ADDR_HINT: usize = 96;
+const DCR_OFF_CTX_REQUESTED_BYTES: usize = 104;
+const DCR_OFF_DECISION_HEAL_ARG0: usize = 112;
+const DCR_OFF_DECISION_HEAL_ARG1: usize = 120;
+const DCR_OFF_COUNTERFACTUAL_HEAL_ARG0: usize = 128;
+const DCR_OFF_COUNTERFACTUAL_HEAL_ARG1: usize = 136;
+const DCR_OFF_LOSS_POSTERIOR_PPM: usize = 144;
+const DCR_OFF_LOSS_SELECTED_ACTION: usize = 148;
+const DCR_OFF_LOSS_COMPETING_ACTION: usize = 149;
+const DCR_OFF_LOSS_SELECTED_EXPECTED_MILLI: usize = 152;
+const DCR_OFF_LOSS_COMPETING_EXPECTED_MILLI: usize = 156;
+const DCR_OFF_ADVERSE: usize = 160;
+
+struct DecisionCardJournal {
+    file: File,
+    flush_every: u64,
+    pending_since_flush: u64,
+    appended_total: u64,
+    flush_total: u64,
+}
+
+impl DecisionCardJournal {
+    fn open(path: &Path, flush_every: u64) -> io::Result<(Self, Vec<DecisionCardV1>)> {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(path)?;
+        file.seek(SeekFrom::Start(0))?;
+        let replay_cards = replay_decision_cards_from_file(&mut file)?;
+        file.seek(SeekFrom::End(0))?;
+        Ok((
+            Self {
+                file,
+                flush_every: flush_every.max(1),
+                pending_since_flush: 0,
+                appended_total: 0,
+                flush_total: 0,
+            },
+            replay_cards,
+        ))
+    }
+
+    fn append(&mut self, card: DecisionCardV1) -> io::Result<()> {
+        let record = encode_decision_card_journal_record(card);
+        self.file.write_all(&record)?;
+        self.pending_since_flush = self.pending_since_flush.saturating_add(1);
+        self.appended_total = self.appended_total.saturating_add(1);
+        if self.pending_since_flush >= self.flush_every {
+            self.file.sync_data()?;
+            self.pending_since_flush = 0;
+            self.flush_total = self.flush_total.saturating_add(1);
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if self.pending_since_flush > 0 {
+            self.file.sync_data()?;
+            self.pending_since_flush = 0;
+            self.flush_total = self.flush_total.saturating_add(1);
+        }
+        Ok(())
+    }
+
+    fn stats(&self) -> (u64, u64) {
+        (self.appended_total, self.flush_total)
+    }
+}
+
+fn replay_decision_cards_from_file(file: &mut File) -> io::Result<Vec<DecisionCardV1>> {
+    let mut cards = Vec::new();
+    let mut buf = [0u8; DECISION_CARD_JOURNAL_RECORD_SIZE];
+    loop {
+        match file.read_exact(&mut buf) {
+            Ok(()) => {
+                if let Some(card) = decode_decision_card_journal_record(&buf) {
+                    cards.push(card);
+                }
+            }
+            Err(err) if err.kind() == ErrorKind::UnexpectedEof => break,
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(cards)
+}
+
+fn encode_decision_card_journal_record(
+    card: DecisionCardV1,
+) -> [u8; DECISION_CARD_JOURNAL_RECORD_SIZE] {
+    let mut out = [0u8; DECISION_CARD_JOURNAL_RECORD_SIZE];
+    out[DCR_OFF_MAGIC..DCR_OFF_MAGIC + 4].copy_from_slice(&DECISION_CARD_JOURNAL_MAGIC);
+    write_u16(&mut out, DCR_OFF_VERSION, DECISION_CARD_JOURNAL_VERSION_V1);
+    write_u64(&mut out, DCR_OFF_DECISION_ID, card.decision_id);
+    out[DCR_OFF_DECISION_TYPE] = card.decision_type as u8;
+    write_u64(&mut out, DCR_OFF_THREAD_ID, card.thread_id);
+    write_u32(&mut out, DCR_OFF_SYMBOL_ID, card.symbol_id);
+    write_u64(&mut out, DCR_OFF_TIMESTAMP_NS, card.timestamp_mono_ns);
+    write_u64(&mut out, DCR_OFF_EPOCH_ID, card.epoch_id);
+    write_u64(&mut out, DCR_OFF_EVIDENCE_SEQNO, card.evidence_seqno);
+    out[DCR_OFF_CTX_FAMILY] = card.context.family as u8;
+    out[DCR_OFF_CTX_IS_WRITE] = if card.context.is_write { 1 } else { 0 };
+    out[DCR_OFF_CTX_BLOOM_NEGATIVE] = if card.context.bloom_negative { 1 } else { 0 };
+    write_u16(
+        &mut out,
+        DCR_OFF_CTX_CONTENTION_HINT,
+        card.context.contention_hint,
+    );
+    out[DCR_OFF_DECISION_PROFILE] = profile_code(card.decision.profile);
+    out[DCR_OFF_DECISION_ACTION] = action_code(card.decision.action);
+    out[DCR_OFF_COUNTERFACTUAL_ACTION] = action_code(card.counterfactual_action);
+    write_u32(&mut out, DCR_OFF_REASONING_FLAGS, card.reasoning_flags);
+    write_u32(&mut out, DCR_OFF_POLICY_ID, card.decision.policy_id);
+    write_u32(
+        &mut out,
+        DCR_OFF_RISK_UPPER_BOUND_PPM,
+        card.decision.risk_upper_bound_ppm,
+    );
+    write_u64(
+        &mut out,
+        DCR_OFF_DECISION_EVIDENCE_SEQNO,
+        card.decision.evidence_seqno,
+    );
+    write_u64(&mut out, DCR_OFF_ESTIMATED_COST_NS, card.estimated_cost_ns);
+    write_u64(
+        &mut out,
+        DCR_OFF_CTX_ADDR_HINT,
+        u64::try_from(card.context.addr_hint).unwrap_or(u64::MAX),
+    );
+    write_u64(
+        &mut out,
+        DCR_OFF_CTX_REQUESTED_BYTES,
+        u64::try_from(card.context.requested_bytes).unwrap_or(u64::MAX),
+    );
+    out[DCR_OFF_ADVERSE] = if card.adverse { 1 } else { 0 };
+
+    let (decision_heal_code, decision_heal_arg0, decision_heal_arg1) =
+        healing_code_and_args(card.decision.action);
+    out[DCR_OFF_DECISION_HEAL_CODE] = decision_heal_code;
+    write_u64(&mut out, DCR_OFF_DECISION_HEAL_ARG0, decision_heal_arg0);
+    write_u64(&mut out, DCR_OFF_DECISION_HEAL_ARG1, decision_heal_arg1);
+
+    let (counterfactual_heal_code, counterfactual_heal_arg0, counterfactual_heal_arg1) =
+        healing_code_and_args(card.counterfactual_action);
+    out[DCR_OFF_COUNTERFACTUAL_HEAL_CODE] = counterfactual_heal_code;
+    write_u64(
+        &mut out,
+        DCR_OFF_COUNTERFACTUAL_HEAL_ARG0,
+        counterfactual_heal_arg0,
+    );
+    write_u64(
+        &mut out,
+        DCR_OFF_COUNTERFACTUAL_HEAL_ARG1,
+        counterfactual_heal_arg1,
+    );
+
+    if let Some(loss) = card.loss_evidence {
+        out[DCR_OFF_LOSS_PRESENT] = 1;
+        write_u32(
+            &mut out,
+            DCR_OFF_LOSS_POSTERIOR_PPM,
+            loss.posterior_adverse_ppm.min(1_000_000),
+        );
+        out[DCR_OFF_LOSS_SELECTED_ACTION] = loss.selected_action;
+        out[DCR_OFF_LOSS_COMPETING_ACTION] = loss.competing_action;
+        write_u32(
+            &mut out,
+            DCR_OFF_LOSS_SELECTED_EXPECTED_MILLI,
+            loss.selected_expected_loss_milli,
+        );
+        write_u32(
+            &mut out,
+            DCR_OFF_LOSS_COMPETING_EXPECTED_MILLI,
+            loss.competing_expected_loss_milli,
+        );
+    }
+
+    out
+}
+
+fn decode_decision_card_journal_record(
+    bytes: &[u8; DECISION_CARD_JOURNAL_RECORD_SIZE],
+) -> Option<DecisionCardV1> {
+    if bytes[DCR_OFF_MAGIC..DCR_OFF_MAGIC + 4] != DECISION_CARD_JOURNAL_MAGIC {
+        return None;
+    }
+    let version = read_u16(bytes, DCR_OFF_VERSION);
+    if version != DECISION_CARD_JOURNAL_VERSION_V1 {
+        return None;
+    }
+
+    let decision_type = decision_type_from_code(bytes[DCR_OFF_DECISION_TYPE])?;
+    let context_family = api_family_from_code(bytes[DCR_OFF_CTX_FAMILY])?;
+    let profile = validation_profile_from_code(bytes[DCR_OFF_DECISION_PROFILE]);
+
+    let decision_action = decode_membrane_action(
+        bytes[DCR_OFF_DECISION_ACTION],
+        bytes[DCR_OFF_DECISION_HEAL_CODE],
+        read_u64(bytes, DCR_OFF_DECISION_HEAL_ARG0),
+        read_u64(bytes, DCR_OFF_DECISION_HEAL_ARG1),
+    );
+    let counterfactual_action = decode_membrane_action(
+        bytes[DCR_OFF_COUNTERFACTUAL_ACTION],
+        bytes[DCR_OFF_COUNTERFACTUAL_HEAL_CODE],
+        read_u64(bytes, DCR_OFF_COUNTERFACTUAL_HEAL_ARG0),
+        read_u64(bytes, DCR_OFF_COUNTERFACTUAL_HEAL_ARG1),
+    );
+
+    let loss_evidence = if bytes[DCR_OFF_LOSS_PRESENT] == 0 {
+        None
+    } else {
+        Some(LossEvidenceV1 {
+            posterior_adverse_ppm: read_u32(bytes, DCR_OFF_LOSS_POSTERIOR_PPM).min(1_000_000),
+            selected_action: bytes[DCR_OFF_LOSS_SELECTED_ACTION],
+            competing_action: bytes[DCR_OFF_LOSS_COMPETING_ACTION],
+            selected_expected_loss_milli: read_u32(bytes, DCR_OFF_LOSS_SELECTED_EXPECTED_MILLI),
+            competing_expected_loss_milli: read_u32(bytes, DCR_OFF_LOSS_COMPETING_EXPECTED_MILLI),
+        })
+    };
+
+    Some(DecisionCardV1 {
+        decision_id: read_u64(bytes, DCR_OFF_DECISION_ID),
+        decision_type,
+        thread_id: read_u64(bytes, DCR_OFF_THREAD_ID),
+        symbol_id: read_u32(bytes, DCR_OFF_SYMBOL_ID),
+        timestamp_mono_ns: read_u64(bytes, DCR_OFF_TIMESTAMP_NS),
+        epoch_id: read_u64(bytes, DCR_OFF_EPOCH_ID),
+        evidence_seqno: read_u64(bytes, DCR_OFF_EVIDENCE_SEQNO),
+        context: RuntimeContext {
+            family: context_family,
+            addr_hint: usize::try_from(read_u64(bytes, DCR_OFF_CTX_ADDR_HINT))
+                .unwrap_or(usize::MAX),
+            requested_bytes: usize::try_from(read_u64(bytes, DCR_OFF_CTX_REQUESTED_BYTES))
+                .unwrap_or(usize::MAX),
+            is_write: bytes[DCR_OFF_CTX_IS_WRITE] != 0,
+            contention_hint: read_u16(bytes, DCR_OFF_CTX_CONTENTION_HINT),
+            bloom_negative: bytes[DCR_OFF_CTX_BLOOM_NEGATIVE] != 0,
+        },
+        decision: RuntimeDecision {
+            profile,
+            action: decision_action,
+            policy_id: read_u32(bytes, DCR_OFF_POLICY_ID),
+            risk_upper_bound_ppm: read_u32(bytes, DCR_OFF_RISK_UPPER_BOUND_PPM),
+            evidence_seqno: read_u64(bytes, DCR_OFF_DECISION_EVIDENCE_SEQNO),
+        },
+        adverse: bytes[DCR_OFF_ADVERSE] != 0,
+        estimated_cost_ns: read_u64(bytes, DCR_OFF_ESTIMATED_COST_NS),
+        reasoning_flags: read_u32(bytes, DCR_OFF_REASONING_FLAGS),
+        counterfactual_action,
+        loss_evidence,
+    })
+}
+
+fn decision_type_from_code(code: u8) -> Option<DecisionType> {
+    match code {
+        0 => Some(DecisionType::ModeTransition),
+        1 => Some(DecisionType::Quarantine),
+        2 => Some(DecisionType::Repair),
+        3 => Some(DecisionType::Escalation),
+        4 => Some(DecisionType::CertificateEvaluation),
+        5 => Some(DecisionType::PolicyOverride),
+        _ => None,
+    }
+}
+
+fn api_family_from_code(code: u8) -> Option<ApiFamily> {
+    match code {
+        0 => Some(ApiFamily::PointerValidation),
+        1 => Some(ApiFamily::Allocator),
+        2 => Some(ApiFamily::StringMemory),
+        3 => Some(ApiFamily::Stdio),
+        4 => Some(ApiFamily::Threading),
+        5 => Some(ApiFamily::Resolver),
+        6 => Some(ApiFamily::MathFenv),
+        7 => Some(ApiFamily::Loader),
+        8 => Some(ApiFamily::Stdlib),
+        9 => Some(ApiFamily::Ctype),
+        10 => Some(ApiFamily::Time),
+        11 => Some(ApiFamily::Signal),
+        12 => Some(ApiFamily::IoFd),
+        13 => Some(ApiFamily::Socket),
+        14 => Some(ApiFamily::Locale),
+        15 => Some(ApiFamily::Termios),
+        16 => Some(ApiFamily::Inet),
+        17 => Some(ApiFamily::Process),
+        18 => Some(ApiFamily::VirtualMemory),
+        19 => Some(ApiFamily::Poll),
+        _ => None,
+    }
+}
+
+const fn validation_profile_from_code(code: u8) -> ValidationProfile {
+    if code == 1 {
+        ValidationProfile::Full
+    } else {
+        ValidationProfile::Fast
+    }
+}
+
+fn decode_healing_action(code: u8, arg0: u64, arg1: u64) -> HealingAction {
+    match code {
+        1 => HealingAction::ClampSize {
+            requested: usize::try_from(arg0).unwrap_or(usize::MAX),
+            clamped: usize::try_from(arg1).unwrap_or(usize::MAX),
+        },
+        2 => HealingAction::TruncateWithNull {
+            requested: usize::try_from(arg0).unwrap_or(usize::MAX),
+            truncated: usize::try_from(arg1).unwrap_or(usize::MAX),
+        },
+        3 => HealingAction::IgnoreDoubleFree,
+        4 => HealingAction::IgnoreForeignFree,
+        5 => HealingAction::ReallocAsMalloc {
+            size: usize::try_from(arg0).unwrap_or(usize::MAX),
+        },
+        6 => HealingAction::ReturnSafeDefault,
+        7 => HealingAction::UpgradeToSafeVariant,
+        _ => HealingAction::None,
+    }
+}
+
+fn decode_membrane_action(action_code: u8, heal_code: u8, arg0: u64, arg1: u64) -> MembraneAction {
+    match action_code {
+        0 => MembraneAction::Allow,
+        1 => MembraneAction::FullValidate,
+        2 => MembraneAction::Repair(decode_healing_action(heal_code, arg0, arg1)),
+        3 => MembraneAction::Deny,
+        _ => MembraneAction::Allow,
+    }
+}
+
 /// Encode a v1 "decision" evidence payload.
 ///
 /// This mapping is designed to be:
@@ -845,6 +1206,9 @@ fn contains_u16(hay: &[u16], needle: u16) -> bool {
 pub struct SystematicEvidenceLog<const CAP: usize> {
     ring: EvidenceRingBuffer<CAP>,
     decision_cards: DecisionCardRingBuffer<CAP>,
+    decision_card_journal_enabled: AtomicBool,
+    decision_card_journal_errors: AtomicU64,
+    decision_card_journal: Mutex<Option<DecisionCardJournal>>,
     monotonic_start: Instant,
     last_timestamp_ns: AtomicU64,
     boot_nonce: u64,
@@ -877,11 +1241,75 @@ impl<const CAP: usize> SystematicEvidenceLog<CAP> {
         Self {
             ring: EvidenceRingBuffer::new(),
             decision_cards: DecisionCardRingBuffer::new(),
+            decision_card_journal_enabled: AtomicBool::new(false),
+            decision_card_journal_errors: AtomicU64::new(0),
+            decision_card_journal: Mutex::new(None),
             monotonic_start: Instant::now(),
             last_timestamp_ns: AtomicU64::new(0),
             boot_nonce,
             streams: core::array::from_fn(|_| Mutex::new(EpochStreamState::new())),
         }
+    }
+
+    /// Enable crash-safe append/replay for decision cards.
+    ///
+    /// Returns the number of replayed cards loaded from the existing journal.
+    pub fn enable_decision_card_journal<P: AsRef<Path>>(
+        &self,
+        path: P,
+        flush_every: u64,
+    ) -> io::Result<usize> {
+        if self.decision_card_journal_enabled.load(Ordering::Acquire) {
+            return Err(io::Error::new(
+                ErrorKind::AlreadyExists,
+                "decision-card journal already enabled",
+            ));
+        }
+
+        let (journal, replay_cards) = DecisionCardJournal::open(path.as_ref(), flush_every)?;
+        let mut max_decision_id = 0u64;
+        let mut max_timestamp = 0u64;
+        for card in replay_cards.iter().copied() {
+            max_decision_id = max_decision_id.max(card.decision_id);
+            max_timestamp = max_timestamp.max(card.timestamp_mono_ns);
+            self.decision_cards.publish(card.decision_id, card);
+        }
+
+        if max_decision_id > 0 {
+            self.decision_cards
+                .set_next_decision_id_floor(max_decision_id);
+        }
+        if max_timestamp > 0 {
+            self.last_timestamp_ns
+                .fetch_max(max_timestamp, Ordering::Relaxed);
+        }
+
+        *self.decision_card_journal.lock() = Some(journal);
+        self.decision_card_journal_enabled
+            .store(true, Ordering::Release);
+        Ok(replay_cards.len())
+    }
+
+    #[doc(hidden)]
+    pub fn flush_decision_card_journal_for_tests(&self) -> io::Result<()> {
+        let mut guard = self.decision_card_journal.lock();
+        if let Some(journal) = guard.as_mut() {
+            journal.flush()?;
+        }
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn decision_card_journal_error_count_for_tests(&self) -> u64 {
+        self.decision_card_journal_errors.load(Ordering::Relaxed)
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn decision_card_journal_stats_for_tests(&self) -> Option<(u64, u64)> {
+        let guard = self.decision_card_journal.lock();
+        guard.as_ref().map(DecisionCardJournal::stats)
     }
 
     /// Record a runtime decision as a systematic evidence symbol.
@@ -974,6 +1402,15 @@ impl<const CAP: usize> SystematicEvidenceLog<CAP> {
             loss_evidence,
         };
         self.decision_cards.publish(decision_id, card);
+        if self.decision_card_journal_enabled.load(Ordering::Relaxed) {
+            let mut guard = self.decision_card_journal.lock();
+            if let Some(journal) = guard.as_mut()
+                && journal.append(card).is_err()
+            {
+                self.decision_card_journal_errors
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
         seqno
     }
 
@@ -1225,6 +1662,21 @@ impl<const CAP: usize> DecisionCardRingBuffer<CAP> {
             .store(decision_id, Ordering::Release);
     }
 
+    pub fn set_next_decision_id_floor(&self, floor: u64) {
+        let mut observed = self.next_decision_id.load(Ordering::Relaxed);
+        while observed < floor {
+            match self.next_decision_id.compare_exchange_weak(
+                observed,
+                floor,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(actual) => observed = actual,
+            }
+        }
+    }
+
     #[must_use]
     pub fn snapshot_sorted(&self) -> Vec<DecisionCardV1> {
         let mut out = Vec::new();
@@ -1351,6 +1803,11 @@ fn read_u16(buf: &[u8], off: usize) -> u16 {
 }
 
 #[inline]
+fn read_u32(buf: &[u8], off: usize) -> u32 {
+    u32::from_le_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]])
+}
+
+#[inline]
 fn read_u64(buf: &[u8], off: usize) -> u64 {
     u64::from_le_bytes([
         buf[off],
@@ -1463,6 +1920,36 @@ mod tests {
     use super::*;
     use core::mem::size_of;
     use serde_json::Value;
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "frankenlibc_{name}_{}_{}.journal",
+            std::process::id(),
+            ts
+        ))
+    }
+
+    fn env_u64(name: &str, default: u64) -> u64 {
+        std::env::var(name)
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(default)
+    }
+
+    fn average_ns_per_op(elapsed: Duration, operations: u64) -> u64 {
+        if operations == 0 {
+            return 0;
+        }
+        let total = elapsed.as_nanos();
+        let avg = total / u128::from(operations);
+        u64::try_from(avg).unwrap_or(u64::MAX)
+    }
 
     #[test]
     fn record_layout_is_stable_v1() {
@@ -1960,5 +2447,284 @@ mod tests {
         assert!(!cards.is_empty());
         assert!(cards.len() <= 512);
         assert_eq!(cards.last().unwrap().decision_id, N);
+    }
+
+    #[test]
+    fn decision_card_query_latency_smoke_budget() {
+        const CAP: usize = 256;
+        let n = env_u64("FRANKENLIBC_EVIDENCE_QUERY_SAMPLE_SIZE", 200_000).max(10_000);
+        let budget_ns = env_u64("FRANKENLIBC_EVIDENCE_QUERY_BUDGET_NS", 5_000_000).max(100_000);
+
+        let log: SystematicEvidenceLog<CAP> = SystematicEvidenceLog::new(0xFACE_0123);
+        let ctx = RuntimeContext::pointer_validation(0x5151, true);
+        let allow = RuntimeDecision {
+            profile: ValidationProfile::Fast,
+            action: MembraneAction::Allow,
+            policy_id: 20,
+            risk_upper_bound_ppm: 20,
+            evidence_seqno: 0,
+        };
+        let repair = RuntimeDecision {
+            profile: ValidationProfile::Full,
+            action: MembraneAction::Repair(HealingAction::ClampSize {
+                requested: 96,
+                clamped: 64,
+            }),
+            policy_id: 21,
+            risk_upper_bound_ppm: 800_000,
+            evidence_seqno: 0,
+        };
+
+        for i in 0..n {
+            let decision = if i % 5 == 0 { repair } else { allow };
+            let _ = log.record_decision(
+                SafetyLevel::Hardened,
+                ctx,
+                decision,
+                11,
+                true,
+                None,
+                0,
+                None,
+            );
+        }
+
+        let start = Instant::now();
+        let repairs = log.query_decision_cards(DecisionCardFilter {
+            decision_type: Some(DecisionType::Repair),
+            ..DecisionCardFilter::any()
+        });
+        let elapsed_ns = u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
+
+        let expected = log
+            .decision_cards_snapshot_sorted()
+            .into_iter()
+            .filter(|card| card.decision_type == DecisionType::Repair)
+            .count();
+        assert_eq!(repairs.len(), expected);
+        assert!(
+            elapsed_ns <= budget_ns,
+            "query_decision_cards latency {}ns exceeded budget {}ns (set FRANKENLIBC_EVIDENCE_QUERY_BUDGET_NS for slower hosts)",
+            elapsed_ns,
+            budget_ns
+        );
+        eprintln!(
+            "decision_card_query_latency_smoke_budget: sample={}, visible={}, repairs={}, elapsed_ns={}, budget_ns={}",
+            n,
+            CAP,
+            repairs.len(),
+            elapsed_ns,
+            budget_ns
+        );
+    }
+
+    #[test]
+    fn decision_card_journal_append_overhead_smoke_budget() {
+        const CAP: usize = 512;
+        let n = env_u64("FRANKENLIBC_EVIDENCE_APPEND_SAMPLE_SIZE", 100_000).max(20_000);
+        let flush_every = env_u64("FRANKENLIBC_EVIDENCE_JOURNAL_FLUSH_EVERY", 4096).max(1);
+        let budget_ns =
+            env_u64("FRANKENLIBC_EVIDENCE_JOURNAL_OVERHEAD_BUDGET_NS", 200_000).max(1_000);
+
+        let ctx = RuntimeContext::pointer_validation(0x6161, false);
+        let decision = RuntimeDecision {
+            profile: ValidationProfile::Fast,
+            action: MembraneAction::Allow,
+            policy_id: 22,
+            risk_upper_bound_ppm: 20,
+            evidence_seqno: 0,
+        };
+
+        let baseline: SystematicEvidenceLog<CAP> = SystematicEvidenceLog::new(0xCA11_0001);
+        let baseline_start = Instant::now();
+        for _ in 0..n {
+            let _ = baseline.record_decision(
+                SafetyLevel::Strict,
+                ctx,
+                decision,
+                5,
+                false,
+                None,
+                0,
+                None,
+            );
+        }
+        let baseline_avg_ns = average_ns_per_op(baseline_start.elapsed(), n);
+
+        let path = unique_temp_file("decision_card_journal_append_budget");
+        let _ = std::fs::remove_file(&path);
+
+        let journaled: SystematicEvidenceLog<CAP> = SystematicEvidenceLog::new(0xCA11_0002);
+        journaled
+            .enable_decision_card_journal(&path, flush_every)
+            .expect("enable journal");
+        let journal_start = Instant::now();
+        for _ in 0..n {
+            let _ = journaled.record_decision(
+                SafetyLevel::Strict,
+                ctx,
+                decision,
+                5,
+                false,
+                None,
+                0,
+                None,
+            );
+        }
+        let journal_avg_ns = average_ns_per_op(journal_start.elapsed(), n);
+        let overhead_ns = journal_avg_ns.saturating_sub(baseline_avg_ns);
+        journaled
+            .flush_decision_card_journal_for_tests()
+            .expect("flush journal");
+
+        let stats = journaled
+            .decision_card_journal_stats_for_tests()
+            .expect("journal stats present");
+        assert_eq!(stats.0, n);
+        assert!(stats.1 >= 1);
+        assert_eq!(journaled.decision_card_journal_error_count_for_tests(), 0);
+        assert!(
+            overhead_ns <= budget_ns,
+            "journal append overhead {}ns exceeded budget {}ns (baseline {}ns, journal {}ns per op); set FRANKENLIBC_EVIDENCE_JOURNAL_OVERHEAD_BUDGET_NS for slower hosts",
+            overhead_ns,
+            budget_ns,
+            baseline_avg_ns,
+            journal_avg_ns
+        );
+        eprintln!(
+            "decision_card_journal_append_overhead_smoke_budget: sample={}, baseline_avg_ns={}, journal_avg_ns={}, overhead_ns={}, budget_ns={}, flush_every={}, flush_count={}",
+            n, baseline_avg_ns, journal_avg_ns, overhead_ns, budget_ns, flush_every, stats.1
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn decision_card_journal_replays_after_restart() {
+        let path = unique_temp_file("decision_card_replay");
+        let _ = std::fs::remove_file(&path);
+
+        let ctx = RuntimeContext::pointer_validation(0x4444, false);
+        let decision = RuntimeDecision {
+            profile: ValidationProfile::Fast,
+            action: MembraneAction::Allow,
+            policy_id: 333,
+            risk_upper_bound_ppm: 42,
+            evidence_seqno: 0,
+        };
+
+        {
+            let log: SystematicEvidenceLog<16> = SystematicEvidenceLog::new(0xABC0);
+            let replayed = log
+                .enable_decision_card_journal(&path, 1)
+                .expect("enable journal");
+            assert_eq!(replayed, 0);
+            for _ in 0..3 {
+                let _ = log.record_decision(
+                    SafetyLevel::Strict,
+                    ctx,
+                    decision,
+                    8,
+                    false,
+                    None,
+                    0,
+                    None,
+                );
+            }
+            log.flush_decision_card_journal_for_tests()
+                .expect("flush journal");
+        }
+
+        {
+            let log: SystematicEvidenceLog<16> = SystematicEvidenceLog::new(0xABC1);
+            let replayed = log
+                .enable_decision_card_journal(&path, 1)
+                .expect("enable journal");
+            assert_eq!(replayed, 3);
+            let cards = log.decision_cards_snapshot_sorted();
+            assert_eq!(cards.len(), 3);
+            assert_eq!(cards[0].decision_id, 1);
+            assert_eq!(cards[2].decision_id, 3);
+
+            let _ =
+                log.record_decision(SafetyLevel::Strict, ctx, decision, 9, false, None, 0, None);
+            log.flush_decision_card_journal_for_tests()
+                .expect("flush journal");
+        }
+
+        {
+            let log: SystematicEvidenceLog<16> = SystematicEvidenceLog::new(0xABC2);
+            let replayed = log
+                .enable_decision_card_journal(&path, 1)
+                .expect("enable journal");
+            assert_eq!(replayed, 4);
+            let cards = log.decision_cards_snapshot_sorted();
+            assert_eq!(cards.len(), 4);
+            assert_eq!(cards.last().unwrap().decision_id, 4);
+            assert!(
+                cards
+                    .windows(2)
+                    .all(|w| w[1].timestamp_mono_ns >= w[0].timestamp_mono_ns)
+            );
+            assert_eq!(log.decision_card_journal_error_count_for_tests(), 0);
+        }
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn decision_card_journal_ignores_partial_tail_record() {
+        let path = unique_temp_file("decision_card_partial_tail");
+        let _ = std::fs::remove_file(&path);
+
+        let ctx = RuntimeContext::pointer_validation(0x5555, true);
+        let decision = RuntimeDecision {
+            profile: ValidationProfile::Full,
+            action: MembraneAction::Repair(HealingAction::IgnoreForeignFree),
+            policy_id: 919,
+            risk_upper_bound_ppm: 900_000,
+            evidence_seqno: 0,
+        };
+
+        {
+            let log: SystematicEvidenceLog<8> = SystematicEvidenceLog::new(0xDD01);
+            log.enable_decision_card_journal(&path, 1)
+                .expect("enable journal");
+            let _ = log.record_decision(
+                SafetyLevel::Hardened,
+                ctx,
+                decision,
+                44,
+                true,
+                None,
+                0,
+                None,
+            );
+            log.flush_decision_card_journal_for_tests()
+                .expect("flush journal");
+        }
+
+        {
+            let mut f = OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .expect("open journal for corruption");
+            f.write_all(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE])
+                .expect("append partial bytes");
+            f.sync_data().expect("sync corrupted tail");
+        }
+
+        {
+            let log: SystematicEvidenceLog<8> = SystematicEvidenceLog::new(0xDD02);
+            let replayed = log
+                .enable_decision_card_journal(&path, 1)
+                .expect("enable journal");
+            assert_eq!(replayed, 1);
+            let cards = log.decision_cards_snapshot_sorted();
+            assert_eq!(cards.len(), 1);
+            assert_eq!(cards[0].decision_id, 1);
+        }
+
+        let _ = std::fs::remove_file(path);
     }
 }

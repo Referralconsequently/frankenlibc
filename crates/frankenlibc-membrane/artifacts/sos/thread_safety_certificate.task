@@ -1,0 +1,14 @@
+# MOSEK task export summary for bd-2ste.2 thread-safety SOS certificate.
+# This artifact is consumed by crates/frankenlibc-membrane/build.rs.
+schema_version: 1
+solver_family: mosek
+certificate: thread_safety
+dimension: 5
+monomial_degree: 2
+barrier_budget_milli: 900000
+gram_matrix:
+350,40,60,30,30
+40,1200,900,80,80
+60,900,1500,90,90
+30,80,90,700,120
+30,80,90,120,700

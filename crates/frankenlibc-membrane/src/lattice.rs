@@ -250,6 +250,34 @@ mod tests {
     }
 
     #[test]
+    fn absorption_laws_hold() {
+        let states = [
+            SafetyState::Valid,
+            SafetyState::Readable,
+            SafetyState::Writable,
+            SafetyState::Quarantined,
+            SafetyState::Freed,
+            SafetyState::Invalid,
+            SafetyState::Unknown,
+        ];
+
+        for &a in &states {
+            for &b in &states {
+                assert_eq!(
+                    a.join(a.meet(b)),
+                    a,
+                    "join absorption failed for ({a:?}, {b:?})"
+                );
+                assert_eq!(
+                    a.meet(a.join(b)),
+                    a,
+                    "meet absorption failed for ({a:?}, {b:?})"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn readable_writable_diamond() {
         // Readable and Writable are incomparable
         // Their join (most restrictive) is Quarantined

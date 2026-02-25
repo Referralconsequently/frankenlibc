@@ -21,7 +21,7 @@
 //!
 //! ## Runtime Design
 //!
-//! Two concrete barrier certificates:
+//! Three concrete barrier certificates:
 //!
 //! - **Invariant B (Pointer Provenance Admissibility)**: hot-path, <15ns,
 //!   4 variables (risk, validation_depth, bloom_fp_rate, arena_pressure),
@@ -30,6 +30,10 @@
 //! - **Invariant A (Quarantine Depth Safety Envelope)**: cadence-gated
 //!   (every 256 calls), ~100ns budget, 4 variables (depth, contention,
 //!   adverse_rate, latency_dual), degree-3 Gram matrix evaluation.
+//!
+//! - **Thread-Safety Certificate (Concurrent Allocation Integrity)**:
+//!   allocator/threading path, 5 variables (thread pressure, writer overflow,
+//!   owner conflict, free-list skew, epoch lag), degree-2 Gram matrix.
 //!
 //! ## References
 //!
@@ -45,6 +49,10 @@ mod generated_fragmentation_certificate {
     include!(concat!(env!("OUT_DIR"), "/sos_fragmentation_generated.rs"));
 }
 
+mod generated_thread_safety_certificate {
+    include!(concat!(env!("OUT_DIR"), "/sos_thread_safety_generated.rs"));
+}
+
 // ---------------------------------------------------------------------------
 // Maximum variable count for static arrays.
 // ---------------------------------------------------------------------------
@@ -56,6 +64,11 @@ const FRAGMENTATION_CERT_DIM: usize = generated_fragmentation_certificate::FRAGM
 /// Fragmentation barrier budget in milli-units.
 const FRAGMENTATION_BARRIER_BUDGET_MILLI: i64 =
     generated_fragmentation_certificate::FRAGMENTATION_BARRIER_BUDGET_MILLI;
+/// Thread-safety certificate dimensionality.
+const THREAD_SAFETY_CERT_DIM: usize = generated_thread_safety_certificate::THREAD_SAFETY_CERT_DIM;
+/// Thread-safety barrier budget in milli-units.
+const THREAD_SAFETY_BARRIER_BUDGET_MILLI: i64 =
+    generated_thread_safety_certificate::THREAD_SAFETY_BARRIER_BUDGET_MILLI;
 /// Allowed allocation/free imbalance before certificate penalties begin.
 const FRAGMENTATION_IMBALANCE_BUDGET_PPM: u32 = 200_000;
 /// Allowed size-class dispersion budget before penalties begin.
@@ -66,6 +79,22 @@ const FRAGMENTATION_ARENA_UTILIZATION_BUDGET_PPM: u32 = 700_000;
 const FRAGMENTATION_CHURN_BUDGET_PPM: u32 = 500_000;
 /// Fixed-point score scale for fragmentation certificate basis values.
 const FRAGMENTATION_SCORE_SCALE: i64 = 1_000;
+/// Fixed-point score scale for thread-safety certificate basis values.
+const THREAD_SAFETY_SCORE_SCALE: i64 = 1_000;
+/// Practical thread-count ceiling for normalization.
+const THREAD_SAFETY_MAX_THREADS: u32 = 1_024;
+/// Practical writer-overflow ceiling (writers above 1 touching same arena).
+const THREAD_SAFETY_MAX_WRITER_OVERFLOW: u32 = 16;
+/// Thread-count budget in ppm before penalties begin.
+const THREAD_SAFETY_THREAD_BUDGET_PPM: u32 = 62_500; // 64 / 1024
+/// Writer-overflow budget in ppm (zero tolerance for >1 concurrent writers).
+const THREAD_SAFETY_WRITER_OVERFLOW_BUDGET_PPM: u32 = 0;
+/// Arena-owner conflict budget in ppm.
+const THREAD_SAFETY_OWNER_CONFLICT_BUDGET_PPM: u32 = 0;
+/// Free-list generation skew budget in ppm.
+const THREAD_SAFETY_FREELIST_SKEW_BUDGET_PPM: u32 = 150_000;
+/// Allocation epoch lag budget in ppm.
+const THREAD_SAFETY_EPOCH_LAG_BUDGET_PPM: u32 = 150_000;
 
 // ---------------------------------------------------------------------------
 // Generic SOS certificate artifact.
@@ -198,12 +227,50 @@ pub static FRAGMENTATION_CERTIFICATE: SosCertificate<FRAGMENTATION_CERT_DIM> = S
     FRAGMENTATION_BARRIER_BUDGET_MILLI,
 );
 
+/// Thread-safety-certificate Gram matrix synthesized offline.
+///
+/// Basis variables represent excess-over-budget scores (0..1000):
+/// [thread_count, writer_overflow, owner_conflict, free_list_skew, epoch_lag].
+static THREAD_SAFETY_GRAM_MATRIX: [[i64; THREAD_SAFETY_CERT_DIM]; THREAD_SAFETY_CERT_DIM] =
+    generated_thread_safety_certificate::THREAD_SAFETY_GRAM_MATRIX;
+
+/// Offline proof hash for `THREAD_SAFETY_GRAM_MATRIX`.
+const THREAD_SAFETY_PROOF_HASH: [u8; 32] =
+    generated_thread_safety_certificate::THREAD_SAFETY_PROOF_HASH;
+
+/// Monomial degree for the thread-safety quadratic form.
+const THREAD_SAFETY_MONOMIAL_DEGREE: u32 =
+    generated_thread_safety_certificate::THREAD_SAFETY_MONOMIAL_DEGREE;
+
+/// SHA-256 over the source `.task` artifact consumed by build-time generation.
+pub const THREAD_SAFETY_TASK_SOURCE_SHA256_HEX: &str =
+    generated_thread_safety_certificate::THREAD_SAFETY_TASK_SOURCE_SHA256_HEX;
+
+/// Runtime thread-safety certificate artifact.
+pub static THREAD_SAFETY_CERTIFICATE: SosCertificate<THREAD_SAFETY_CERT_DIM> = SosCertificate::new(
+    THREAD_SAFETY_GRAM_MATRIX,
+    THREAD_SAFETY_PROOF_HASH,
+    THREAD_SAFETY_MONOMIAL_DEGREE,
+    THREAD_SAFETY_BARRIER_BUDGET_MILLI,
+);
+
 /// Convert `(value - budget)` excess into a fixed-point score in [0, 1000].
 #[inline]
 fn ppm_excess_to_score(value_ppm: u32, budget_ppm: u32) -> i64 {
     let excess = u64::from(value_ppm.saturating_sub(budget_ppm));
     let scaled = excess.saturating_mul(FRAGMENTATION_SCORE_SCALE as u64) / 1_000_000;
     scaled as i64
+}
+
+/// Convert a bounded ratio to ppm.
+#[inline]
+fn ratio_to_ppm(value: u32, max_value: u32) -> u32 {
+    if max_value == 0 {
+        return 0;
+    }
+    let clamped = value.min(max_value);
+    let numer = u64::from(clamped).saturating_mul(1_000_000);
+    (numer / u64::from(max_value)) as u32
 }
 
 /// Map quarantine-depth proxy to arena-utilization ppm.
@@ -256,6 +323,50 @@ pub fn evaluate_fragmentation_barrier(
     ];
 
     FRAGMENTATION_CERTIFICATE.evaluate_barrier(&basis, FRAGMENTATION_SCORE_SCALE)
+}
+
+/// Evaluate thread-safety barrier certificate.
+///
+/// Inputs:
+/// - `thread_count`: concurrent threads touching allocator paths.
+/// - `concurrent_writers`: concurrent writers observed for a single arena
+///   free-list critical section.
+/// - `arena_owner_conflict`: true when ownership checks disagree.
+/// - `free_list_skew_ppm`: normalized skew between expected/observed free-list
+///   generation progress.
+/// - `allocation_epoch_lag_ppm`: normalized lag between expected/observed
+///   allocation epochs.
+///
+/// Output:
+/// - positive => certified-safe headroom,
+/// - negative => certificate violation.
+#[must_use]
+pub fn evaluate_thread_safety_barrier(
+    thread_count: u32,
+    concurrent_writers: u32,
+    arena_owner_conflict: bool,
+    free_list_skew_ppm: u32,
+    allocation_epoch_lag_ppm: u32,
+) -> i64 {
+    let thread_count_ppm = ratio_to_ppm(thread_count, THREAD_SAFETY_MAX_THREADS);
+    let writer_overflow_ppm = ratio_to_ppm(
+        concurrent_writers.saturating_sub(1),
+        THREAD_SAFETY_MAX_WRITER_OVERFLOW,
+    );
+    let owner_conflict_ppm = if arena_owner_conflict { 1_000_000 } else { 0 };
+
+    let basis = [
+        ppm_excess_to_score(thread_count_ppm, THREAD_SAFETY_THREAD_BUDGET_PPM),
+        ppm_excess_to_score(
+            writer_overflow_ppm,
+            THREAD_SAFETY_WRITER_OVERFLOW_BUDGET_PPM,
+        ),
+        ppm_excess_to_score(owner_conflict_ppm, THREAD_SAFETY_OWNER_CONFLICT_BUDGET_PPM),
+        ppm_excess_to_score(free_list_skew_ppm, THREAD_SAFETY_FREELIST_SKEW_BUDGET_PPM),
+        ppm_excess_to_score(allocation_epoch_lag_ppm, THREAD_SAFETY_EPOCH_LAG_BUDGET_PPM),
+    ];
+
+    THREAD_SAFETY_CERTIFICATE.evaluate_barrier(&basis, THREAD_SAFETY_SCORE_SCALE)
 }
 
 // ---------------------------------------------------------------------------
@@ -540,7 +651,7 @@ pub enum SosBarrierState {
     /// Insufficient observations.
     #[default]
     Calibrating = 0,
-    /// Both barriers certify safety.
+    /// All active barriers certify safety.
     Safe = 1,
     /// One barrier is near threshold (within 20% of violation).
     Warning = 2,
@@ -558,6 +669,8 @@ pub struct SosBarrierSummary {
     pub quarantine_value: i64,
     /// Most recent fragmentation barrier value in milli-units.
     pub fragmentation_value: i64,
+    /// Most recent thread-safety barrier value in milli-units.
+    pub thread_safety_value: i64,
     /// Total observations.
     pub total_observations: u64,
     /// Count of provenance barrier violations.
@@ -566,15 +679,20 @@ pub struct SosBarrierSummary {
     pub quarantine_violations: u64,
     /// Count of fragmentation barrier violations.
     pub fragmentation_violations: u64,
+    /// Count of thread-safety barrier violations.
+    pub thread_safety_violations: u64,
     /// Whether certificate hash verification passed at controller init.
     pub fragmentation_hash_valid: bool,
+    /// Whether thread-safety certificate hash verification passed at init.
+    pub thread_safety_hash_valid: bool,
 }
 
 /// SOS Barrier Certificate Runtime Controller.
 ///
-/// Evaluates two barrier certificates:
+/// Evaluates barrier certificates:
 /// - Invariant B (provenance): every observation, hot-path.
 /// - Invariant A (quarantine): every CADENCE_A observations, cadence-gated.
+/// - Thread-safety SOS certificate: on allocator/threading observations.
 pub struct SosBarrierController {
     observations: u64,
     allocator_observations: u64,
@@ -583,10 +701,13 @@ pub struct SosBarrierController {
     last_provenance_value: i64,
     last_quarantine_value: i64,
     last_fragmentation_value: i64,
+    last_thread_safety_value: i64,
     provenance_violations: u64,
     quarantine_violations: u64,
     fragmentation_violations: u64,
+    thread_safety_violations: u64,
     fragmentation_hash_valid: bool,
+    thread_safety_hash_valid: bool,
 }
 
 impl Default for SosBarrierController {
@@ -606,10 +727,13 @@ impl SosBarrierController {
             last_provenance_value: PROVENANCE_RISK_BUDGET_PPM, // starts safe
             last_quarantine_value: 200,                        // starts at baseline safe
             last_fragmentation_value: FRAGMENTATION_BARRIER_BUDGET_MILLI,
+            last_thread_safety_value: THREAD_SAFETY_BARRIER_BUDGET_MILLI,
             provenance_violations: 0,
             quarantine_violations: 0,
             fragmentation_violations: 0,
+            thread_safety_violations: 0,
             fragmentation_hash_valid: FRAGMENTATION_CERTIFICATE.verify_integrity(),
+            thread_safety_hash_valid: THREAD_SAFETY_CERTIFICATE.verify_integrity(),
         }
     }
 
@@ -714,6 +838,39 @@ impl SosBarrierController {
         }
     }
 
+    /// Evaluate thread-safety SOS certificate.
+    ///
+    /// Returns true when the barrier certifies safety.
+    pub fn evaluate_thread_safety(
+        &mut self,
+        thread_count: u32,
+        concurrent_writers: u32,
+        arena_owner_conflict: bool,
+        free_list_skew_ppm: u32,
+        allocation_epoch_lag_ppm: u32,
+    ) -> bool {
+        if !self.thread_safety_hash_valid {
+            self.last_thread_safety_value = -THREAD_SAFETY_BARRIER_BUDGET_MILLI;
+            self.thread_safety_violations = self.thread_safety_violations.saturating_add(1);
+            return false;
+        }
+
+        let val = evaluate_thread_safety_barrier(
+            thread_count,
+            concurrent_writers,
+            arena_owner_conflict,
+            free_list_skew_ppm,
+            allocation_epoch_lag_ppm,
+        );
+        self.last_thread_safety_value = val;
+        if val < 0 {
+            self.thread_safety_violations = self.thread_safety_violations.saturating_add(1);
+            false
+        } else {
+            true
+        }
+    }
+
     /// Whether this observation is on the Invariant A cadence.
     #[must_use]
     pub fn is_quarantine_cadence(&self) -> bool {
@@ -727,7 +884,7 @@ impl SosBarrierController {
             return SosBarrierState::Calibrating;
         }
 
-        if !self.fragmentation_hash_valid {
+        if !self.fragmentation_hash_valid || !self.thread_safety_hash_valid {
             return SosBarrierState::Violated;
         }
 
@@ -735,6 +892,7 @@ impl SosBarrierController {
         if self.last_provenance_value < 0
             || self.last_quarantine_value < 0
             || self.last_fragmentation_value < 0
+            || self.last_thread_safety_value < 0
         {
             return SosBarrierState::Violated;
         }
@@ -746,10 +904,12 @@ impl SosBarrierController {
         let prov_warning = PROVENANCE_RISK_BUDGET_PPM / 5; // 20% of budget
         let quar_warning = 40; // 20% of baseline 200
         let frag_warning = FRAGMENTATION_BARRIER_BUDGET_MILLI / 5;
+        let thread_warning = THREAD_SAFETY_BARRIER_BUDGET_MILLI / 5;
 
         if prov_headroom < prov_warning
             || quar_headroom < quar_warning
             || frag_headroom < frag_warning
+            || self.last_thread_safety_value < thread_warning
         {
             return SosBarrierState::Warning;
         }
@@ -765,21 +925,26 @@ impl SosBarrierController {
             provenance_value: self.last_provenance_value,
             quarantine_value: self.last_quarantine_value,
             fragmentation_value: self.last_fragmentation_value,
+            thread_safety_value: self.last_thread_safety_value,
             total_observations: self.observations,
             provenance_violations: self.provenance_violations,
             quarantine_violations: self.quarantine_violations,
             fragmentation_violations: self.fragmentation_violations,
+            thread_safety_violations: self.thread_safety_violations,
             fragmentation_hash_valid: self.fragmentation_hash_valid,
+            thread_safety_hash_valid: self.thread_safety_hash_valid,
         }
     }
 
-    /// Total violation count across both barriers.
+    /// Total violation count across all barriers and hash-integrity checks.
     #[must_use]
     pub fn total_violations(&self) -> u64 {
-        let hash_invalid = if self.fragmentation_hash_valid { 0 } else { 1 };
+        let hash_invalid = (if self.fragmentation_hash_valid { 0 } else { 1 })
+            + (if self.thread_safety_hash_valid { 0 } else { 1 });
         self.provenance_violations
             .saturating_add(self.quarantine_violations)
             .saturating_add(self.fragmentation_violations)
+            .saturating_add(self.thread_safety_violations)
             .saturating_add(hash_invalid)
     }
 }
@@ -801,18 +966,29 @@ mod tests {
     }
 
     #[test]
-    fn generated_task_source_hash_is_hex_sha256() {
-        assert_eq!(
-            FRAGMENTATION_TASK_SOURCE_SHA256_HEX.len(),
-            64,
-            "task hash must be a 64-char SHA-256 hex string"
-        );
+    fn certificate_hash_matches_static_thread_safety_artifact() {
         assert!(
-            FRAGMENTATION_TASK_SOURCE_SHA256_HEX
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit()),
-            "task hash must contain only ASCII hex digits"
+            THREAD_SAFETY_CERTIFICATE.verify_integrity(),
+            "static thread-safety certificate hash must verify"
         );
+    }
+
+    #[test]
+    fn generated_task_source_hash_is_hex_sha256() {
+        for task_hash in [
+            FRAGMENTATION_TASK_SOURCE_SHA256_HEX,
+            THREAD_SAFETY_TASK_SOURCE_SHA256_HEX,
+        ] {
+            assert_eq!(
+                task_hash.len(),
+                64,
+                "task hash must be a 64-char SHA-256 hex string"
+            );
+            assert!(
+                task_hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                "task hash must contain only ASCII hex digits"
+            );
+        }
     }
 
     #[test]
@@ -828,6 +1004,22 @@ mod tests {
         assert!(
             !cert.verify_integrity(),
             "tampered Gram matrix must fail hash verification"
+        );
+    }
+
+    #[test]
+    fn thread_safety_certificate_tamper_is_detected() {
+        let mut tampered = THREAD_SAFETY_GRAM_MATRIX;
+        tampered[1][1] += 1;
+        let cert = SosCertificate::new(
+            tampered,
+            THREAD_SAFETY_PROOF_HASH,
+            THREAD_SAFETY_MONOMIAL_DEGREE,
+            THREAD_SAFETY_BARRIER_BUDGET_MILLI,
+        );
+        assert!(
+            !cert.verify_integrity(),
+            "tampered thread-safety Gram matrix must fail hash verification"
         );
     }
 
@@ -869,6 +1061,29 @@ mod tests {
         assert!(
             val < 0,
             "extreme fragmentation profile should violate certificate, got {val}"
+        );
+    }
+
+    #[test]
+    fn thread_safety_barrier_safe_nominal_profile() {
+        let val = evaluate_thread_safety_barrier(
+            16, // low allocator-thread pressure
+            1,  // no writer overflow
+            false, 60_000, // below free-list skew budget
+            40_000, // below epoch-lag budget
+        );
+        assert!(
+            val > 0,
+            "nominal thread-safety profile should be certified safe, got {val}"
+        );
+    }
+
+    #[test]
+    fn thread_safety_barrier_violates_on_conflicting_writers() {
+        let val = evaluate_thread_safety_barrier(700, 4, true, 900_000, 920_000);
+        assert!(
+            val < 0,
+            "conflicting writer profile should violate certificate, got {val}"
         );
     }
 
@@ -1143,10 +1358,13 @@ mod tests {
         assert_eq!(s.provenance_violations, ctrl.provenance_violations);
         assert_eq!(s.quarantine_violations, ctrl.quarantine_violations);
         assert_eq!(s.fragmentation_violations, ctrl.fragmentation_violations);
+        assert_eq!(s.thread_safety_violations, ctrl.thread_safety_violations);
         assert_eq!(s.fragmentation_hash_valid, ctrl.fragmentation_hash_valid);
+        assert_eq!(s.thread_safety_hash_valid, ctrl.thread_safety_hash_valid);
         assert_eq!(s.provenance_value, ctrl.last_provenance_value);
         assert_eq!(s.quarantine_value, ctrl.last_quarantine_value);
         assert_eq!(s.fragmentation_value, ctrl.last_fragmentation_value);
+        assert_eq!(s.thread_safety_value, ctrl.last_thread_safety_value);
     }
 
     #[test]
@@ -1177,6 +1395,23 @@ mod tests {
             skewed.fragmentation_violations > base_violations,
             "fragmentation violation counter should increase"
         );
+    }
+
+    #[test]
+    fn controller_thread_safety_violation_tracking() {
+        let mut ctrl = SosBarrierController::new();
+        for _ in 0..WARMUP {
+            ctrl.evaluate_provenance(10_000, 1_000_000, 10_000, 50_000);
+        }
+
+        assert!(ctrl.evaluate_thread_safety(32, 1, false, 40_000, 30_000));
+        let base_violations = ctrl.thread_safety_violations;
+        assert!(!ctrl.evaluate_thread_safety(700, 4, true, 900_000, 900_000));
+        assert!(
+            ctrl.thread_safety_violations > base_violations,
+            "thread-safety violation counter should increase"
+        );
+        assert_eq!(ctrl.state(), SosBarrierState::Violated);
     }
 
     // ---- Fixed-Point Arithmetic Tests ----
