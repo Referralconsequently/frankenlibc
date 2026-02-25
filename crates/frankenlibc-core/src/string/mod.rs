@@ -3,6 +3,7 @@
 //! Implements `<string.h>` functions as safe Rust operating on slices.
 
 pub mod mem;
+pub mod regex;
 pub mod str;
 pub mod strtok;
 pub mod wchar;
@@ -23,7 +24,7 @@ pub use wchar::{
     mbstowcs, mbtowc, towlower as wc_tolower, towupper as wc_toupper, wcstombs, wctomb, wcwidth,
 };
 pub use wide::{
-    wcscat, wcscmp, wcscpy, wcscspn, wcsdup_len, wcslen, wcsncat, wcsncmp, wcsncpy, wcsnlen,
-    wcspbrk, wcsrchr, wcsspn, wcsstr, wcstok, wcswidth, wmemchr, wmemcmp, wmemcpy, wmemmove,
-    wmemset,
+    wcpcpy, wcpncpy, wcscasecmp, wcscat, wcscmp, wcscpy, wcscspn, wcsdup_len, wcslen, wcsncasecmp,
+    wcsncat, wcsncmp, wcsncpy, wcsnlen, wcspbrk, wcsrchr, wcsspn, wcsstr, wcstok, wcswidth,
+    wmemchr, wmemcmp, wmemcpy, wmemmove, wmemrchr, wmemset,
 };

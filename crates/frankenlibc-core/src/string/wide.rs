@@ -399,9 +399,133 @@ pub fn wcstok(s: &mut [u32], delim: &[u32], start: usize) -> Option<(usize, usiz
     Some((token_start, pos))
 }
 
+/// Copies a NUL-terminated wide string from `src` into `dest`, returning the
+/// index of the NUL terminator in `dest`.
+///
+/// Equivalent to GNU `wcpcpy`. Like `wcscpy` but returns a pointer to the end
+/// of the destination string (the NUL terminator position).
+///
+/// # Panics
+///
+/// Panics if `dest` is too small to hold `src` plus the NUL terminator.
+pub fn wcpcpy(dest: &mut [u32], src: &[u32]) -> usize {
+    let src_len = wcslen(src);
+    assert!(
+        dest.len() > src_len,
+        "wcpcpy: destination buffer too small ({} elements for {} element string + NUL)",
+        dest.len(),
+        src_len
+    );
+    dest[..src_len].copy_from_slice(&src[..src_len]);
+    dest[src_len] = 0;
+    src_len // index of the NUL terminator
+}
+
+/// Copies at most `n` wide characters from `src` into `dest`, returning the
+/// index one past the last written character (or at the NUL if padded).
+///
+/// Equivalent to GNU `wcpncpy`. If `src` is shorter than `n`, remaining
+/// elements in `dest` are NUL-padded. Returns the index of the first NUL
+/// in the destination if padded, or `n` if no NUL was written.
+///
+/// # Panics
+///
+/// Panics if `dest` is smaller than `n`.
+pub fn wcpncpy(dest: &mut [u32], src: &[u32], n: usize) -> usize {
+    assert!(
+        dest.len() >= n,
+        "wcpncpy: destination buffer too small ({} elements for request {})",
+        dest.len(),
+        n
+    );
+    let src_len = wcslen(src);
+    let copy_len = src_len.min(n);
+
+    dest[..copy_len].copy_from_slice(&src[..copy_len]);
+
+    if copy_len < n {
+        dest[copy_len..n].fill(0);
+        copy_len // index of first NUL
+    } else {
+        n // no NUL written
+    }
+}
+
+/// Case-insensitive comparison of two NUL-terminated wide strings.
+///
+/// Equivalent to GNU `wcscasecmp`. Uses simple ASCII case-folding
+/// (towlower) for comparison.
+pub fn wcscasecmp(s1: &[u32], s2: &[u32]) -> i32 {
+    let mut i = 0;
+    loop {
+        let a = if i < s1.len() { s1[i] } else { 0 };
+        let b = if i < s2.len() { s2[i] } else { 0 };
+
+        let la = simple_towlower(a);
+        let lb = simple_towlower(b);
+
+        if la != lb {
+            return if (la as i32) < (lb as i32) { -1 } else { 1 };
+        }
+        if a == 0 {
+            return 0;
+        }
+        i += 1;
+    }
+}
+
+/// Bounded case-insensitive comparison of two wide strings.
+///
+/// Equivalent to GNU `wcsncasecmp`. Compares at most `n` wide characters.
+pub fn wcsncasecmp(s1: &[u32], s2: &[u32], n: usize) -> i32 {
+    let mut i = 0;
+    while i < n {
+        let a = if i < s1.len() { s1[i] } else { 0 };
+        let b = if i < s2.len() { s2[i] } else { 0 };
+
+        let la = simple_towlower(a);
+        let lb = simple_towlower(b);
+
+        if la != lb {
+            return if (la as i32) < (lb as i32) { -1 } else { 1 };
+        }
+        if a == 0 {
+            return 0;
+        }
+        i += 1;
+    }
+    0
+}
+
+/// Locates the last occurrence of `c` in the first `n` wide characters of `s`.
+///
+/// Equivalent to GNU `wmemrchr`. Searches backwards.
+pub fn wmemrchr(s: &[u32], c: u32, n: usize) -> Option<usize> {
+    let count = n.min(s.len());
+    (0..count).rev().find(|&i| s[i] == c)
+}
+
+/// Simple ASCII-range case folding for wide characters.
+/// Maps A-Z to a-z, leaves everything else unchanged.
+#[inline]
+fn simple_towlower(c: u32) -> u32 {
+    if (0x41..=0x5A).contains(&c) {
+        c + 0x20
+    } else {
+        c
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    fn to_wide_cstring(bytes: &[u8]) -> Vec<u32> {
+        let mut out: Vec<u32> = bytes.iter().map(|&byte| byte as u32).collect();
+        out.push(0);
+        out
+    }
 
     #[test]
     fn test_wcslen_basic() {
@@ -692,5 +816,168 @@ mod tests {
         let mut s = [0u32];
         let delim = [b' ' as u32, 0];
         assert!(wcstok(&mut s, &delim, 0).is_none());
+    }
+
+    #[test]
+    fn test_wcpcpy_basic() {
+        let src = [b'H' as u32, b'i' as u32, 0];
+        let mut dest = [0u32; 4];
+        let nul_idx = wcpcpy(&mut dest, &src);
+        assert_eq!(nul_idx, 2);
+        assert_eq!(&dest[..3], &[b'H' as u32, b'i' as u32, 0]);
+    }
+
+    #[test]
+    fn test_wcpcpy_empty() {
+        let src = [0u32];
+        let mut dest = [0xFFu32; 4];
+        let nul_idx = wcpcpy(&mut dest, &src);
+        assert_eq!(nul_idx, 0);
+        assert_eq!(dest[0], 0);
+    }
+
+    #[test]
+    fn test_wcpncpy_short_src() {
+        let src = [b'A' as u32, 0];
+        let mut dest = [0xFFu32; 6];
+        let end_idx = wcpncpy(&mut dest, &src, 4);
+        assert_eq!(end_idx, 1); // index of first NUL (padding)
+        assert_eq!(dest[0], b'A' as u32);
+        assert_eq!(dest[1], 0);
+        assert_eq!(dest[2], 0);
+        assert_eq!(dest[3], 0);
+        assert_eq!(dest[4], 0xFF); // untouched
+    }
+
+    #[test]
+    fn test_wcpncpy_exact() {
+        let src = [b'A' as u32, b'B' as u32, b'C' as u32, 0];
+        let mut dest = [0u32; 6];
+        let end_idx = wcpncpy(&mut dest, &src, 3);
+        assert_eq!(end_idx, 3); // no NUL written (n == src_len)
+        assert_eq!(&dest[..3], &[b'A' as u32, b'B' as u32, b'C' as u32]);
+    }
+
+    #[test]
+    fn test_wcscasecmp_equal() {
+        let s1 = [
+            b'H' as u32,
+            b'e' as u32,
+            b'L' as u32,
+            b'l' as u32,
+            b'O' as u32,
+            0,
+        ];
+        let s2 = [
+            b'h' as u32,
+            b'E' as u32,
+            b'l' as u32,
+            b'L' as u32,
+            b'o' as u32,
+            0,
+        ];
+        assert_eq!(wcscasecmp(&s1, &s2), 0);
+    }
+
+    #[test]
+    fn test_wcscasecmp_less() {
+        let s1 = [b'a' as u32, 0];
+        let s2 = [b'B' as u32, 0];
+        assert!(wcscasecmp(&s1, &s2) < 0);
+    }
+
+    #[test]
+    fn test_wcscasecmp_greater() {
+        let s1 = [b'Z' as u32, 0];
+        let s2 = [b'a' as u32, 0];
+        assert!(wcscasecmp(&s1, &s2) > 0);
+    }
+
+    #[test]
+    fn test_wcsncasecmp_partial() {
+        let s1 = [b'A' as u32, b'B' as u32, b'x' as u32, 0];
+        let s2 = [b'a' as u32, b'b' as u32, b'Y' as u32, 0];
+        assert_eq!(wcsncasecmp(&s1, &s2, 2), 0);
+        assert!(wcsncasecmp(&s1, &s2, 3) < 0);
+    }
+
+    #[test]
+    fn test_wcsncasecmp_zero() {
+        let s1 = [b'A' as u32, 0];
+        let s2 = [b'Z' as u32, 0];
+        assert_eq!(wcsncasecmp(&s1, &s2, 0), 0);
+    }
+
+    #[test]
+    fn test_wmemrchr_found() {
+        let s = [1u32, 2, 3, 2, 4];
+        assert_eq!(wmemrchr(&s, 2, 5), Some(3));
+    }
+
+    #[test]
+    fn test_wmemrchr_not_found() {
+        let s = [1u32, 2, 3];
+        assert_eq!(wmemrchr(&s, 5, 3), None);
+    }
+
+    #[test]
+    fn test_wmemrchr_first_only() {
+        let s = [7u32, 1, 2, 3];
+        assert_eq!(wmemrchr(&s, 7, 4), Some(0));
+    }
+
+    proptest! {
+        #[test]
+        fn prop_wcslen_matches_first_nul_or_slice_len(data in proptest::collection::vec(any::<u32>(), 0..64)) {
+            let expected = data.iter().position(|&ch| ch == 0).unwrap_or(data.len());
+            prop_assert_eq!(wcslen(&data), expected);
+        }
+
+        #[test]
+        fn prop_wcsnlen_honors_explicit_bound(
+            data in proptest::collection::vec(any::<u32>(), 0..64),
+            maxlen in 0usize..96
+        ) {
+            let limit = maxlen.min(data.len());
+            let expected = data.iter().take(limit).position(|&ch| ch == 0).unwrap_or(limit);
+            prop_assert_eq!(wcsnlen(&data, maxlen), expected);
+        }
+
+        #[test]
+        fn prop_wcscmp_is_antisymmetric(
+            left in proptest::collection::vec(any::<u8>(), 0..64),
+            right in proptest::collection::vec(any::<u8>(), 0..64)
+        ) {
+            let left_wide = to_wide_cstring(&left);
+            let right_wide = to_wide_cstring(&right);
+            let lr = wcscmp(&left_wide, &right_wide);
+            let rl = wcscmp(&right_wide, &left_wide);
+            prop_assert_eq!(lr.signum(), -rl.signum());
+        }
+
+        #[test]
+        fn prop_wmemset_overwrites_prefix_only(
+            seed in proptest::collection::vec(any::<u32>(), 0..64),
+            value in any::<u32>(),
+            n in 0usize..96
+        ) {
+            let mut dest = seed.clone();
+            let written = wmemset(&mut dest, value, n);
+            let expected = n.min(seed.len());
+            prop_assert_eq!(written, expected);
+            prop_assert!(dest.iter().take(expected).all(|&ch| ch == value));
+            prop_assert_eq!(&dest[expected..], &seed[expected..]);
+        }
+
+        #[test]
+        fn prop_wmemchr_matches_slice_position(
+            haystack in proptest::collection::vec(any::<u32>(), 0..64),
+            needle in any::<u32>(),
+            n in 0usize..96
+        ) {
+            let limit = n.min(haystack.len());
+            let expected = haystack[..limit].iter().position(|&ch| ch == needle);
+            prop_assert_eq!(wmemchr(&haystack, needle, n), expected);
+        }
     }
 }

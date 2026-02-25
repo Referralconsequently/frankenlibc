@@ -626,7 +626,7 @@ mod tests {
         let mut s = *b"hello,world,end\0";
         let result = strsep(&mut s, b",\0");
         assert_eq!(result, Some(5)); // comma replaced with NUL
-        assert_eq!(s[5], 0); 
+        assert_eq!(s[5], 0);
     }
 
     #[test]

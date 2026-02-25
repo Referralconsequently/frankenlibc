@@ -117,6 +117,167 @@ pub fn flags_to_oflags(flags: &OpenFlags) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
+// Memory backing for fmemopen / open_memstream
+// ---------------------------------------------------------------------------
+
+/// Memory backing for memory-based stdio streams.
+///
+/// `Fixed` is for `fmemopen`: a position-tracked buffer with a fixed maximum
+/// size. `Dynamic` is for `open_memstream`: a growable write buffer.
+#[derive(Debug)]
+pub enum MemBacking {
+    /// `fmemopen`: position-tracked fixed-size buffer.
+    Fixed {
+        /// The backing data (capacity == max size).
+        data: Vec<u8>,
+        /// Current read/write position.
+        pos: usize,
+        /// Logical end of valid content (for reads and NUL termination).
+        content_end: usize,
+    },
+    /// `open_memstream`: dynamically growing write buffer.
+    Dynamic {
+        /// The backing data (grows on write past end).
+        data: Vec<u8>,
+        /// Current write position.
+        pos: usize,
+    },
+}
+
+impl MemBacking {
+    /// Write data at the current position. Returns bytes actually written.
+    pub fn write(&mut self, src: &[u8]) -> usize {
+        match self {
+            MemBacking::Fixed {
+                data,
+                pos,
+                content_end,
+            } => {
+                let avail = data.len().saturating_sub(*pos);
+                let n = src.len().min(avail);
+                if n > 0 {
+                    data[*pos..*pos + n].copy_from_slice(&src[..n]);
+                    *pos += n;
+                    if *pos > *content_end {
+                        *content_end = *pos;
+                    }
+                }
+                n
+            }
+            MemBacking::Dynamic { data, pos } => {
+                let end = *pos + src.len();
+                if end > data.len() {
+                    data.resize(end, 0);
+                }
+                data[*pos..end].copy_from_slice(src);
+                *pos = end;
+                src.len()
+            }
+        }
+    }
+
+    /// Read up to `count` bytes from the current position. Returns the data read.
+    pub fn read(&mut self, count: usize) -> Vec<u8> {
+        match self {
+            MemBacking::Fixed {
+                data,
+                pos,
+                content_end,
+            } => {
+                let avail = (*content_end).saturating_sub(*pos);
+                let n = count.min(avail);
+                if n == 0 {
+                    return Vec::new();
+                }
+                let result = data[*pos..*pos + n].to_vec();
+                *pos += n;
+                result
+            }
+            MemBacking::Dynamic { data, pos } => {
+                let avail = data.len().saturating_sub(*pos);
+                let n = count.min(avail);
+                if n == 0 {
+                    return Vec::new();
+                }
+                let result = data[*pos..*pos + n].to_vec();
+                *pos += n;
+                result
+            }
+        }
+    }
+
+    /// Seek to a new position. `whence`: 0=SEEK_SET, 1=SEEK_CUR, 2=SEEK_END.
+    /// Returns the new position on success, or `None` on invalid seek.
+    pub fn seek(&mut self, offset: i64, whence: i32) -> Option<i64> {
+        let (size, pos) = match self {
+            MemBacking::Fixed {
+                data,
+                pos,
+                content_end,
+            } => {
+                let sz = if whence == 2 {
+                    *content_end
+                } else {
+                    data.len()
+                };
+                (sz, pos)
+            }
+            MemBacking::Dynamic { data, pos } => (data.len(), pos),
+        };
+
+        let base = match whence {
+            0 => 0i64,        // SEEK_SET
+            1 => *pos as i64, // SEEK_CUR
+            2 => size as i64, // SEEK_END
+            _ => return None,
+        };
+
+        let new_pos = base.checked_add(offset)?;
+        if new_pos < 0 {
+            return None;
+        }
+
+        let new_pos = new_pos as usize;
+        // For Fixed, clamp to buffer size; for Dynamic, allow within data length
+        let max = match self {
+            MemBacking::Fixed { data, .. } => data.len(),
+            MemBacking::Dynamic { data, .. } => data.len(),
+        };
+        if new_pos > max {
+            return None;
+        }
+
+        match self {
+            MemBacking::Fixed { pos: p, .. } => *p = new_pos,
+            MemBacking::Dynamic { pos: p, .. } => *p = new_pos,
+        }
+        Some(new_pos as i64)
+    }
+
+    /// Current position.
+    pub fn position(&self) -> usize {
+        match self {
+            MemBacking::Fixed { pos, .. } | MemBacking::Dynamic { pos, .. } => *pos,
+        }
+    }
+
+    /// Current data slice (for open_memstream sync).
+    pub fn data(&self) -> &[u8] {
+        match self {
+            MemBacking::Fixed {
+                data, content_end, ..
+            } => &data[..*content_end],
+            MemBacking::Dynamic { data, .. } => data.as_slice(),
+        }
+    }
+
+    /// Clone the data as a new Vec (for returning to C caller via malloc).
+    pub fn data_clone(&self) -> Vec<u8> {
+        self.data().to_vec()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Stream
 // ---------------------------------------------------------------------------
 
@@ -127,9 +288,9 @@ pub fn flags_to_oflags(flags: &OpenFlags) -> i32 {
 /// manages a registry mapping opaque `FILE*` pointers to stream IDs.
 #[derive(Debug)]
 pub struct StdioStream {
-    /// Underlying file descriptor (-1 if closed).
+    /// Underlying file descriptor (-1 if closed, -2 if memory-backed).
     fd: i32,
-    /// I/O buffer.
+    /// I/O buffer (used for fd-backed streams only).
     buffer: StreamBuffer,
     /// How the file was opened.
     open_flags: OpenFlags,
@@ -139,6 +300,8 @@ pub struct StdioStream {
     offset: i64,
     /// One-byte pushback for ungetc (layered on top of buffer).
     ungetc_byte: Option<u8>,
+    /// Optional memory backing for fmemopen/open_memstream.
+    mem_backing: Option<MemBacking>,
 }
 
 impl StdioStream {
@@ -170,6 +333,7 @@ impl StdioStream {
             flags: StreamFlags::default(),
             offset: 0,
             ungetc_byte: None,
+            mem_backing: None,
         }
     }
 
@@ -182,6 +346,50 @@ impl StdioStream {
             flags: StreamFlags::default(),
             offset: 0,
             ungetc_byte: None,
+            mem_backing: None,
+        }
+    }
+
+    /// Create a memory-backed stream for `fmemopen`.
+    ///
+    /// If `data` is provided (user buffer), it becomes the fixed backing.
+    /// `content_len` is the initial amount of valid content for reading.
+    pub fn new_mem_fixed(data: Vec<u8>, content_len: usize, open_flags: OpenFlags) -> Self {
+        let cl = content_len.min(data.len());
+        // For write modes without append, position starts at 0.
+        // For append mode, position starts at content_end.
+        let pos = if open_flags.append { cl } else { 0 };
+        Self {
+            fd: -2, // sentinel: memory-backed
+            buffer: StreamBuffer::new(BufMode::None, 0),
+            open_flags,
+            flags: StreamFlags::default(),
+            offset: pos as i64,
+            ungetc_byte: None,
+            mem_backing: Some(MemBacking::Fixed {
+                data,
+                pos,
+                content_end: cl,
+            }),
+        }
+    }
+
+    /// Create a dynamically-growing memory stream for `open_memstream`.
+    pub fn new_mem_dynamic() -> Self {
+        Self {
+            fd: -2,
+            buffer: StreamBuffer::new(BufMode::None, 0),
+            open_flags: OpenFlags {
+                writable: true,
+                ..Default::default()
+            },
+            flags: StreamFlags::default(),
+            offset: 0,
+            ungetc_byte: None,
+            mem_backing: Some(MemBacking::Dynamic {
+                data: Vec::new(),
+                pos: 0,
+            }),
         }
     }
 
@@ -393,7 +601,95 @@ impl StdioStream {
 
     /// Check if the stream is closed.
     pub fn is_closed(&self) -> bool {
-        self.fd < 0
+        self.fd < 0 && self.mem_backing.is_none()
+    }
+
+    // -----------------------------------------------------------------------
+    // Memory-backed stream operations
+    // -----------------------------------------------------------------------
+
+    /// Check if this stream is memory-backed (fmemopen/open_memstream).
+    pub fn is_mem_backed(&self) -> bool {
+        self.mem_backing.is_some()
+    }
+
+    /// Write data to a memory-backed stream. Returns bytes written.
+    /// For fd-backed streams, returns 0 (caller should use buffer_write).
+    pub fn mem_write(&mut self, data: &[u8]) -> usize {
+        if !self.open_flags.writable {
+            self.flags.error = true;
+            return 0;
+        }
+        self.flags.io_started = true;
+        if let Some(ref mut backing) = self.mem_backing {
+            let n = backing.write(data);
+            self.offset = backing.position() as i64;
+            n
+        } else {
+            0
+        }
+    }
+
+    /// Read data from a memory-backed stream. Returns data read.
+    /// For fd-backed streams, returns empty (caller should use buffered_read).
+    pub fn mem_read(&mut self, count: usize) -> Vec<u8> {
+        if count == 0 {
+            return Vec::new();
+        }
+        if !self.open_flags.readable {
+            self.flags.error = true;
+            return Vec::new();
+        }
+        self.flags.io_started = true;
+
+        let mut result = Vec::new();
+        let mut remaining = count;
+
+        // Handle ungetc byte first.
+        if let Some(b) = self.ungetc_byte.take() {
+            result.push(b);
+            remaining -= 1;
+            if remaining == 0 {
+                return result;
+            }
+        }
+
+        if let Some(ref mut backing) = self.mem_backing {
+            let data = backing.read(remaining);
+            if data.is_empty() && result.is_empty() {
+                self.flags.eof = true;
+            }
+            result.extend(data);
+            self.offset = backing.position() as i64;
+        }
+        result
+    }
+
+    /// Seek within a memory-backed stream.
+    /// Returns the new position on success, or -1 on failure.
+    pub fn mem_seek(&mut self, offset: i64, whence: i32) -> i64 {
+        self.ungetc_byte = None;
+        self.flags.eof = false;
+        if let Some(ref mut backing) = self.mem_backing {
+            if let Some(new_pos) = backing.seek(offset, whence) {
+                self.offset = new_pos;
+                new_pos
+            } else {
+                -1
+            }
+        } else {
+            -1
+        }
+    }
+
+    /// Get a reference to the memory backing data (for open_memstream sync).
+    pub fn mem_data(&self) -> Option<&[u8]> {
+        self.mem_backing.as_ref().map(|b| b.data())
+    }
+
+    /// Clone the memory backing data (for returning to C caller).
+    pub fn mem_data_clone(&self) -> Option<Vec<u8>> {
+        self.mem_backing.as_ref().map(|b| b.data_clone())
     }
 }
 
@@ -608,5 +904,240 @@ mod tests {
         let f = parse_mode(b"r+").unwrap();
         let o = flags_to_oflags(&f);
         assert_ne!(o & 2, 0); // O_RDWR
+    }
+
+    // -----------------------------------------------------------------------
+    // MemBacking tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_mem_backing_fixed_write_read() {
+        let mut b = MemBacking::Fixed {
+            data: vec![0u8; 32],
+            pos: 0,
+            content_end: 0,
+        };
+        assert_eq!(b.write(b"hello"), 5);
+        assert_eq!(b.position(), 5);
+        // Seek back to start.
+        assert_eq!(b.seek(0, 0), Some(0));
+        let out = b.read(5);
+        assert_eq!(&out, b"hello");
+        assert_eq!(b.position(), 5);
+    }
+
+    #[test]
+    fn test_mem_backing_fixed_write_at_capacity() {
+        let mut b = MemBacking::Fixed {
+            data: vec![0u8; 4],
+            pos: 0,
+            content_end: 0,
+        };
+        // Writing more than capacity truncates.
+        assert_eq!(b.write(b"abcdef"), 4);
+        assert_eq!(b.data(), b"abcd");
+    }
+
+    #[test]
+    fn test_mem_backing_fixed_read_past_content_end() {
+        let mut b = MemBacking::Fixed {
+            data: vec![0u8; 32],
+            pos: 0,
+            content_end: 3,
+        };
+        // Only 3 bytes of content available.
+        let out = b.read(10);
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn test_mem_backing_dynamic_write_grows() {
+        let mut b = MemBacking::Dynamic {
+            data: Vec::new(),
+            pos: 0,
+        };
+        assert_eq!(b.write(b"hello"), 5);
+        assert_eq!(b.write(b" world"), 6);
+        assert_eq!(b.data(), b"hello world");
+        assert_eq!(b.position(), 11);
+    }
+
+    #[test]
+    fn test_mem_backing_dynamic_overwrite() {
+        let mut b = MemBacking::Dynamic {
+            data: Vec::new(),
+            pos: 0,
+        };
+        b.write(b"hello world");
+        // Seek to position 5 and overwrite.
+        assert_eq!(b.seek(5, 0), Some(5));
+        b.write(b"_RUST");
+        assert_eq!(b.data(), b"hello_RUSTd");
+    }
+
+    #[test]
+    fn test_mem_backing_seek_set_cur_end() {
+        let mut b = MemBacking::Fixed {
+            data: vec![0u8; 10],
+            pos: 0,
+            content_end: 5,
+        };
+        // SEEK_SET
+        assert_eq!(b.seek(3, 0), Some(3));
+        assert_eq!(b.position(), 3);
+        // SEEK_CUR
+        assert_eq!(b.seek(2, 1), Some(5));
+        assert_eq!(b.position(), 5);
+        // SEEK_END (relative to content_end for Fixed)
+        assert_eq!(b.seek(-2, 2), Some(3));
+        assert_eq!(b.position(), 3);
+    }
+
+    #[test]
+    fn test_mem_backing_seek_invalid() {
+        let mut b = MemBacking::Fixed {
+            data: vec![0u8; 10],
+            pos: 0,
+            content_end: 5,
+        };
+        // Negative resulting position.
+        assert_eq!(b.seek(-1, 0), None);
+        // Past buffer size.
+        assert_eq!(b.seek(11, 0), None);
+        // Invalid whence.
+        assert_eq!(b.seek(0, 99), None);
+    }
+
+    #[test]
+    fn test_mem_backing_data_clone() {
+        let b = MemBacking::Fixed {
+            data: vec![1, 2, 3, 4, 5],
+            pos: 0,
+            content_end: 3,
+        };
+        let cloned = b.data_clone();
+        assert_eq!(&cloned, &[1, 2, 3]);
+    }
+
+    // -----------------------------------------------------------------------
+    // StdioStream memory-backed tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stream_mem_fixed_write_read_cycle() {
+        let data = vec![0u8; 64];
+        let flags = OpenFlags {
+            readable: true,
+            writable: true,
+            ..Default::default()
+        };
+        let mut s = StdioStream::new_mem_fixed(data, 0, flags);
+        assert!(s.is_mem_backed());
+        assert!(!s.is_closed());
+
+        // Write.
+        assert_eq!(s.mem_write(b"POSIX"), 5);
+        assert_eq!(s.offset(), 5);
+
+        // Seek back.
+        assert_eq!(s.mem_seek(0, 0), 0);
+
+        // Read.
+        let out = s.mem_read(5);
+        assert_eq!(&out, b"POSIX");
+    }
+
+    #[test]
+    fn test_stream_mem_fixed_read_only() {
+        let data = b"Hello, World!".to_vec();
+        let flags = OpenFlags {
+            readable: true,
+            ..Default::default()
+        };
+        let mut s = StdioStream::new_mem_fixed(data, 13, flags);
+
+        let out = s.mem_read(5);
+        assert_eq!(&out, b"Hello");
+
+        // Writing should fail (not writable).
+        assert_eq!(s.mem_write(b"x"), 0);
+        assert!(s.is_error());
+    }
+
+    #[test]
+    fn test_stream_mem_fixed_append_position() {
+        let mut data = b"abc".to_vec();
+        data.resize(16, 0);
+        let flags = OpenFlags {
+            writable: true,
+            append: true,
+            ..Default::default()
+        };
+        let s = StdioStream::new_mem_fixed(data, 3, flags);
+        // Append mode: position starts at content_end.
+        assert_eq!(s.offset(), 3);
+    }
+
+    #[test]
+    fn test_stream_mem_dynamic_write_and_data() {
+        let mut s = StdioStream::new_mem_dynamic();
+        assert!(s.is_mem_backed());
+
+        assert_eq!(s.mem_write(b"dynamic"), 7);
+        assert_eq!(s.mem_write(b" stream"), 7);
+        assert_eq!(s.offset(), 14);
+
+        let data = s.mem_data().unwrap();
+        assert_eq!(data, b"dynamic stream");
+    }
+
+    #[test]
+    fn test_stream_mem_dynamic_data_clone() {
+        let mut s = StdioStream::new_mem_dynamic();
+        s.mem_write(b"test");
+        let cloned = s.mem_data_clone().unwrap();
+        assert_eq!(&cloned, b"test");
+    }
+
+    #[test]
+    fn test_stream_mem_seek_resets_eof() {
+        let data = vec![0u8; 8];
+        let flags = OpenFlags {
+            readable: true,
+            writable: true,
+            ..Default::default()
+        };
+        let mut s = StdioStream::new_mem_fixed(data, 0, flags);
+        s.set_eof();
+        assert!(s.is_eof());
+        s.mem_seek(0, 0);
+        assert!(!s.is_eof());
+    }
+
+    #[test]
+    fn test_stream_mem_read_sets_eof() {
+        let data = b"ab".to_vec();
+        let flags = OpenFlags {
+            readable: true,
+            ..Default::default()
+        };
+        let mut s = StdioStream::new_mem_fixed(data, 2, flags);
+        let out = s.mem_read(2);
+        assert_eq!(&out, b"ab");
+        // Next read at end should set EOF.
+        let out2 = s.mem_read(1);
+        assert!(out2.is_empty());
+        assert!(s.is_eof());
+    }
+
+    #[test]
+    fn test_stream_fd_not_mem_backed() {
+        let flags = OpenFlags {
+            readable: true,
+            ..Default::default()
+        };
+        let s = StdioStream::new(3, flags);
+        assert!(!s.is_mem_backed());
+        assert!(s.mem_data().is_none());
     }
 }

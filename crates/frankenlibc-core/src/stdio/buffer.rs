@@ -44,15 +44,18 @@ impl BufMode {
 /// Stream buffer state for a single direction (read or write).
 ///
 /// Invariants:
-/// - `pos <= filled <= data.len()`
+/// - `read_pos <= read_filled <= data.len()`
+/// - `write_len <= data.len()`
 /// - `data.len() <= capacity` (capacity is fixed at creation)
 #[derive(Debug)]
 pub struct StreamBuffer {
     data: Vec<u8>,
-    /// Current read/write position in the buffer.
-    pos: usize,
-    /// Number of valid bytes in the buffer (for read buffers).
-    filled: usize,
+    /// Current read cursor position.
+    read_pos: usize,
+    /// Number of valid bytes available for read buffering.
+    read_filled: usize,
+    /// Number of valid bytes staged for write flushing.
+    write_len: usize,
     /// Buffering mode.
     mode: BufMode,
     /// Whether any I/O has occurred (disables setvbuf changes per POSIX).
@@ -69,8 +72,9 @@ impl StreamBuffer {
         };
         Self {
             data: vec![0u8; cap],
-            pos: 0,
-            filled: 0,
+            read_pos: 0,
+            read_filled: 0,
+            write_len: 0,
             mode,
             io_started: false,
         }
@@ -115,8 +119,9 @@ impl StreamBuffer {
             size.max(1)
         };
         self.data = vec![0u8; cap];
-        self.pos = 0;
-        self.filled = 0;
+        self.read_pos = 0;
+        self.read_filled = 0;
+        self.write_len = 0;
         true
     }
 
@@ -147,12 +152,12 @@ impl StreamBuffer {
 
     /// Get any pending buffered write data that needs flushing.
     pub fn pending_write_data(&self) -> &[u8] {
-        &self.data[..self.pos]
+        &self.data[..self.write_len]
     }
 
     /// Mark write buffer as flushed (reset position).
     pub fn mark_flushed(&mut self) {
-        self.pos = 0;
+        self.write_len = 0;
     }
 
     // -----------------------------------------------------------------------
@@ -165,16 +170,16 @@ impl StreamBuffer {
     /// from the underlying fd.
     pub fn read(&mut self, count: usize) -> &[u8] {
         self.io_started = true;
-        let available = self.filled - self.pos;
+        let available = self.read_filled.saturating_sub(self.read_pos);
         let take = count.min(available);
-        let slice = &self.data[self.pos..self.pos + take];
-        self.pos += take;
+        let slice = &self.data[self.read_pos..self.read_pos + take];
+        self.read_pos += take;
         slice
     }
 
     /// Number of buffered bytes available for reading.
     pub fn readable(&self) -> usize {
-        self.filled.saturating_sub(self.pos)
+        self.read_filled.saturating_sub(self.read_pos)
     }
 
     /// Fill the read buffer with data from an external source.
@@ -182,8 +187,8 @@ impl StreamBuffer {
     pub fn fill(&mut self, data: &[u8]) -> usize {
         let take = data.len().min(self.data.len());
         self.data[..take].copy_from_slice(&data[..take]);
-        self.pos = 0;
-        self.filled = take;
+        self.read_pos = 0;
+        self.read_filled = take;
         take
     }
 
@@ -191,17 +196,17 @@ impl StreamBuffer {
     ///
     /// Returns `true` on success, `false` if no space available.
     pub fn unget(&mut self, byte: u8) -> bool {
-        if self.pos > 0 {
-            self.pos -= 1;
-            self.data[self.pos] = byte;
+        if self.read_pos > 0 {
+            self.read_pos -= 1;
+            self.data[self.read_pos] = byte;
             true
-        } else if self.filled < self.data.len() {
+        } else if self.read_filled < self.data.len() {
             // Shift buffer right by 1 to make room.
-            if self.filled > 0 {
-                self.data.copy_within(0..self.filled, 1);
+            if self.read_filled > 0 {
+                self.data.copy_within(0..self.read_filled, 1);
             }
             self.data[0] = byte;
-            self.filled += 1;
+            self.read_filled += 1;
             true
         } else {
             false
@@ -210,8 +215,9 @@ impl StreamBuffer {
 
     /// Reset the buffer (discard all pending data).
     pub fn reset(&mut self) {
-        self.pos = 0;
-        self.filled = 0;
+        self.read_pos = 0;
+        self.read_filled = 0;
+        self.write_len = 0;
     }
 
     // -----------------------------------------------------------------------
@@ -219,11 +225,11 @@ impl StreamBuffer {
     // -----------------------------------------------------------------------
 
     fn write_full(&mut self, data: &[u8]) -> WriteResult {
-        let remaining = self.data.len().saturating_sub(self.pos);
+        let remaining = self.data.len().saturating_sub(self.write_len);
         if data.len() <= remaining {
             // Fits entirely in the buffer.
-            self.data[self.pos..self.pos + data.len()].copy_from_slice(data);
-            self.pos += data.len();
+            self.data[self.write_len..self.write_len + data.len()].copy_from_slice(data);
+            self.write_len += data.len();
             WriteResult {
                 buffered: data.len(),
                 flush_needed: false,
@@ -231,10 +237,10 @@ impl StreamBuffer {
             }
         } else {
             // Buffer is full — flush existing + overflow.
-            let mut flush = Vec::with_capacity(self.pos + data.len());
-            flush.extend_from_slice(&self.data[..self.pos]);
+            let mut flush = Vec::with_capacity(self.write_len + data.len());
+            flush.extend_from_slice(&self.data[..self.write_len]);
             flush.extend_from_slice(data);
-            self.pos = 0;
+            self.write_len = 0;
             WriteResult {
                 buffered: 0,
                 flush_needed: true,
@@ -259,14 +265,14 @@ impl StreamBuffer {
                 }
 
                 // Flush everything up to and including the last newline.
-                let mut flush = Vec::with_capacity(self.pos + flush_end);
-                flush.extend_from_slice(&self.data[..self.pos]);
+                let mut flush = Vec::with_capacity(self.write_len + flush_end);
+                flush.extend_from_slice(&self.data[..self.write_len]);
                 flush.extend_from_slice(&data[..flush_end]);
-                self.pos = 0;
+                self.write_len = 0;
 
                 // Buffer the remainder after the newline.
                 self.data[..remainder.len()].copy_from_slice(remainder);
-                self.pos = remainder.len();
+                self.write_len = remainder.len();
 
                 WriteResult {
                     buffered: remainder.len(),
@@ -392,6 +398,32 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn prop_set_mode_before_io_resets_state(
+            initial_mode in prop_oneof![Just(BufMode::Full), Just(BufMode::Line), Just(BufMode::None)],
+            target_mode in prop_oneof![Just(BufMode::Full), Just(BufMode::Line), Just(BufMode::None)],
+            initial_capacity in 0usize..128,
+            target_size in 0usize..128,
+            prefill in proptest::collection::vec(any::<u8>(), 0..128),
+        ) {
+            let mut buf = StreamBuffer::new(initial_mode, initial_capacity);
+            let _ = buf.fill(&prefill);
+
+            let changed = buf.set_mode(target_mode, target_size);
+
+            let expected_capacity = if matches!(target_mode, BufMode::None) {
+                0
+            } else {
+                target_size.max(1)
+            };
+
+            prop_assert!(changed);
+            prop_assert_eq!(buf.mode(), target_mode);
+            prop_assert_eq!(buf.capacity(), expected_capacity);
+            prop_assert_eq!(buf.readable(), 0);
+            prop_assert!(buf.pending_write_data().is_empty());
+        }
+
         #[test]
         fn prop_full_mode_buffers_without_flush_when_capacity_allows(
             cap in 1usize..128,

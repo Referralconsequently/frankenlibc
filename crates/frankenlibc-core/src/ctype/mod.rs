@@ -104,6 +104,7 @@ pub fn to_ascii(c: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_is_alpha() {
@@ -309,6 +310,30 @@ mod tests {
                 to_ascii(c),
                 "to_ascii idempotent failed for {c}"
             );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn prop_core_classification_invariants(c in any::<u8>()) {
+            prop_assert_eq!(is_alnum(c), is_alpha(c) || is_digit(c));
+            prop_assert_eq!(is_alpha(c), is_upper(c) || is_lower(c));
+            prop_assert_eq!(is_graph(c), is_print(c) && c != b' ');
+            prop_assert_eq!(is_punct(c), is_print(c) && !is_alnum(c) && !is_space(c));
+        }
+
+        #[test]
+        fn prop_case_conversion_roundtrip(c in any::<u8>()) {
+            prop_assert_eq!(to_lower(to_upper(c)), to_lower(c));
+            prop_assert_eq!(to_upper(to_lower(c)), to_upper(c));
+        }
+
+        #[test]
+        fn prop_to_ascii_masks_to_seven_bits(c in any::<u8>()) {
+            let masked = to_ascii(c);
+            prop_assert_eq!(masked, c & 0x7F);
+            prop_assert!(is_ascii_val(masked));
+            prop_assert_eq!(to_ascii(masked), masked);
         }
     }
 }
