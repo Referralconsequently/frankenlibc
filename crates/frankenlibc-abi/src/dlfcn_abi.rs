@@ -90,7 +90,10 @@ host_delegate!(host_dlsym, "dlsym", DlsymFn);
 type DlcloseFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 host_delegate!(host_dlclose, "dlclose", DlcloseFn);
 
-type DlIteratePhdrFn = unsafe extern "C" fn(Option<unsafe extern "C" fn(*mut c_void, usize, *mut c_void) -> c_int>, *mut c_void) -> c_int;
+type DlIteratePhdrFn = unsafe extern "C" fn(
+    Option<unsafe extern "C" fn(*mut c_void, usize, *mut c_void) -> c_int>,
+    *mut c_void,
+) -> c_int;
 host_delegate!(host_dl_iterate_phdr, "dl_iterate_phdr", DlIteratePhdrFn);
 
 type DladdrFn = unsafe extern "C" fn(*const c_void, *mut c_void) -> c_int;
@@ -121,7 +124,9 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
             // Hardened mode: default to RTLD_NOW | RTLD_LOCAL.
             let healed_flags = dlfcn_core::RTLD_NOW;
             clear_dlerror();
-            let handle = unsafe { host_dlopen().map_or(std::ptr::null_mut(), |f| f(filename, healed_flags)) };
+            let handle = unsafe {
+                host_dlopen().map_or(std::ptr::null_mut(), |f| f(filename, healed_flags))
+            };
             let adverse = handle.is_null();
             if adverse {
                 let host_err = unsafe { libc::dlerror() };

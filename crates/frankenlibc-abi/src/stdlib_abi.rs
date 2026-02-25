@@ -237,7 +237,9 @@ pub unsafe extern "C" fn strtol(
 
     let (val, consumed, status) = frankenlibc_core::stdlib::conversion::strtol_impl(slice, base);
 
-    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow
+        || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow
+    {
         unsafe { set_abi_errno(libc::ERANGE) };
     } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
         unsafe { set_abi_errno(libc::EINVAL) };
@@ -309,10 +311,11 @@ pub unsafe extern "C" fn strtoimax(
     let (len, _terminated) = unsafe { scan_c_string(nptr, bound) };
     let slice = unsafe { std::slice::from_raw_parts(nptr as *const u8, len) };
 
-    let (val, consumed, status) =
-        frankenlibc_core::stdlib::conversion::strtoimax_impl(slice, base);
+    let (val, consumed, status) = frankenlibc_core::stdlib::conversion::strtoimax_impl(slice, base);
 
-    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow
+        || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow
+    {
         unsafe { set_abi_errno(libc::ERANGE) };
     } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
         unsafe { set_abi_errno(libc::EINVAL) };
@@ -399,7 +402,9 @@ pub unsafe extern "C" fn strtoul(
 
     let (val, consumed, status) = frankenlibc_core::stdlib::conversion::strtoul_impl(slice, base);
 
-    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow
+        || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow
+    {
         unsafe { set_abi_errno(libc::ERANGE) };
     } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
         unsafe { set_abi_errno(libc::EINVAL) };
@@ -471,10 +476,11 @@ pub unsafe extern "C" fn strtoumax(
     let (len, _terminated) = unsafe { scan_c_string(nptr, bound) };
     let slice = unsafe { std::slice::from_raw_parts(nptr as *const u8, len) };
 
-    let (val, consumed, status) =
-        frankenlibc_core::stdlib::conversion::strtoumax_impl(slice, base);
+    let (val, consumed, status) = frankenlibc_core::stdlib::conversion::strtoumax_impl(slice, base);
 
-    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow {
+    if status == frankenlibc_core::stdlib::conversion::ConversionStatus::Overflow
+        || status == frankenlibc_core::stdlib::conversion::ConversionStatus::Underflow
+    {
         unsafe { set_abi_errno(libc::ERANGE) };
     } else if status == frankenlibc_core::stdlib::conversion::ConversionStatus::InvalidBase {
         unsafe { set_abi_errno(libc::EINVAL) };

@@ -93,17 +93,25 @@ const MANAGED_MUTEX_MAGIC: u32 = 0x474d_5854; // "GMXT"
 const PTHREAD_MUTEX_NORMAL_TYPE: i32 = 0;
 const PTHREAD_MUTEX_RECURSIVE_TYPE: i32 = 1;
 const PTHREAD_MUTEX_ERRORCHECK_TYPE: i32 = 2;
+const PTHREAD_CANCEL_ENABLE_STATE: c_int = 0;
+const PTHREAD_CANCEL_DISABLE_STATE: c_int = 1;
+const PTHREAD_CANCEL_DEFERRED_TYPE: c_int = 0;
+const PTHREAD_CANCEL_ASYNCHRONOUS_TYPE: c_int = 1;
 
 /// Sentinel value for "no owner" in owner_tid fields.
 const MUTEX_NO_OWNER: i32 = 0;
 const MANAGED_RWLOCK_MAGIC: u32 = 0x4752_5758; // "GRWX"
 static THREAD_HANDLE_REGISTRY: LazyLock<Mutex<HashMap<usize, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static CANCEL_PENDING_REGISTRY: LazyLock<Mutex<HashMap<usize, bool>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 static HOST_SYMBOL_CACHE: LazyLock<Mutex<HashMap<&'static [u8], usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 thread_local! {
     static THREADING_POLICY_DEPTH: Cell<u32> = const { Cell::new(0) };
+    static THREAD_CANCEL_STATE: Cell<c_int> = const { Cell::new(PTHREAD_CANCEL_ENABLE_STATE) };
+    static THREAD_CANCEL_TYPE: Cell<c_int> = const { Cell::new(PTHREAD_CANCEL_DEFERRED_TYPE) };
 }
 
 unsafe fn resolve_host_symbol(name: &'static [u8]) -> *mut c_void {
@@ -2277,38 +2285,130 @@ pub unsafe extern "C" fn pthread_rwlockattr_destroy(
 }
 
 // ---------------------------------------------------------------------------
-// pthread cancellation — GlibcCallThrough
+// pthread cancellation — native cooperative cancellation state
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" {
-    #[link_name = "pthread_cancel"]
-    fn libc_pthread_cancel(thread: libc::pthread_t) -> c_int;
-    #[link_name = "pthread_setcancelstate"]
-    fn libc_pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int;
-    #[link_name = "pthread_setcanceltype"]
-    fn libc_pthread_setcanceltype(typ: c_int, oldtype: *mut c_int) -> c_int;
-    #[link_name = "pthread_testcancel"]
-    fn libc_pthread_testcancel();
+fn pthread_handle_key(thread: libc::pthread_t) -> usize {
+    thread as usize
+}
+
+fn current_cancel_key() -> usize {
+    native_pthread_self() as usize
+}
+
+fn cancellation_pending(thread_key: usize) -> bool {
+    CANCEL_PENDING_REGISTRY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&thread_key)
+        .copied()
+        .unwrap_or(false)
+}
+
+fn set_cancellation_pending(thread_key: usize, pending: bool) {
+    let mut registry = CANCEL_PENDING_REGISTRY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if pending {
+        registry.insert(thread_key, true);
+    } else {
+        registry.remove(&thread_key);
+    }
+}
+
+fn cancel_enabled_for_current_thread() -> bool {
+    THREAD_CANCEL_STATE.with(|state| state.get() == PTHREAD_CANCEL_ENABLE_STATE)
+}
+
+fn cancel_async_for_current_thread() -> bool {
+    THREAD_CANCEL_TYPE.with(|typ| typ.get() == PTHREAD_CANCEL_ASYNCHRONOUS_TYPE)
+}
+
+fn consume_pending_cancel_for_current_thread() -> bool {
+    if !cancel_enabled_for_current_thread() {
+        return false;
+    }
+    let thread_key = current_cancel_key();
+    if !cancellation_pending(thread_key) {
+        return false;
+    }
+    set_cancellation_pending(thread_key, false);
+    true
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_cancel(thread: libc::pthread_t) -> c_int {
-    unsafe { libc_pthread_cancel(thread) }
+    if thread == 0 {
+        return libc::ESRCH;
+    }
+
+    // Validate that the target looks alive before enqueuing a cancel request.
+    // Signal 0 performs existence checking without delivering a signal.
+    let liveness = unsafe { libc::pthread_kill(thread, 0) };
+    if liveness != 0 {
+        return liveness;
+    }
+
+    let thread_key = pthread_handle_key(thread);
+    set_cancellation_pending(thread_key, true);
+
+    if thread_key == current_cancel_key()
+        && cancel_enabled_for_current_thread()
+        && cancel_async_for_current_thread()
+    {
+        let _ = consume_pending_cancel_for_current_thread();
+    }
+
+    0
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int {
-    unsafe { libc_pthread_setcancelstate(state, oldstate) }
+    if state != PTHREAD_CANCEL_ENABLE_STATE && state != PTHREAD_CANCEL_DISABLE_STATE {
+        return libc::EINVAL;
+    }
+
+    let previous = THREAD_CANCEL_STATE.with(|cell| {
+        let prev = cell.get();
+        cell.set(state);
+        prev
+    });
+    if !oldstate.is_null() {
+        // SAFETY: oldstate is provided by caller and checked for null.
+        unsafe { *oldstate = previous };
+    }
+
+    if state == PTHREAD_CANCEL_ENABLE_STATE && cancel_async_for_current_thread() {
+        let _ = consume_pending_cancel_for_current_thread();
+    }
+    0
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_setcanceltype(typ: c_int, oldtype: *mut c_int) -> c_int {
-    unsafe { libc_pthread_setcanceltype(typ, oldtype) }
+    if typ != PTHREAD_CANCEL_DEFERRED_TYPE && typ != PTHREAD_CANCEL_ASYNCHRONOUS_TYPE {
+        return libc::EINVAL;
+    }
+
+    let previous = THREAD_CANCEL_TYPE.with(|cell| {
+        let prev = cell.get();
+        cell.set(typ);
+        prev
+    });
+    if !oldtype.is_null() {
+        // SAFETY: oldtype is provided by caller and checked for null.
+        unsafe { *oldtype = previous };
+    }
+
+    if typ == PTHREAD_CANCEL_ASYNCHRONOUS_TYPE && cancel_enabled_for_current_thread() {
+        let _ = consume_pending_cancel_for_current_thread();
+    }
+    0
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_testcancel() {
-    unsafe { libc_pthread_testcancel() }
+    let _ = consume_pending_cancel_for_current_thread();
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -2760,6 +2860,87 @@ mod tests {
         unsafe {
             assert_eq!(pthread_mutex_destroy(mutex), 0);
             free_mutex_ptr(mutex);
+        }
+    }
+
+    fn reset_cancel_state_for_tests() {
+        THREAD_CANCEL_STATE.with(|cell| cell.set(PTHREAD_CANCEL_ENABLE_STATE));
+        THREAD_CANCEL_TYPE.with(|cell| cell.set(PTHREAD_CANCEL_DEFERRED_TYPE));
+        set_cancellation_pending(current_cancel_key(), false);
+    }
+
+    fn current_thread_pending_cancel() -> bool {
+        cancellation_pending(current_cancel_key())
+    }
+
+    #[test]
+    fn pthread_cancel_validates_state_and_type_inputs() {
+        reset_cancel_state_for_tests();
+        let mut old_state = -1;
+        let mut old_type = -1;
+
+        // SAFETY: exercising local ABI state transitions.
+        unsafe {
+            assert_eq!(
+                pthread_setcancelstate(PTHREAD_CANCEL_DISABLE_STATE, &mut old_state),
+                0
+            );
+            assert_eq!(old_state, PTHREAD_CANCEL_ENABLE_STATE);
+            assert_eq!(
+                pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS_TYPE, &mut old_type),
+                0
+            );
+            assert_eq!(old_type, PTHREAD_CANCEL_DEFERRED_TYPE);
+            assert_eq!(
+                pthread_setcancelstate(99, std::ptr::null_mut()),
+                libc::EINVAL
+            );
+            assert_eq!(
+                pthread_setcanceltype(99, std::ptr::null_mut()),
+                libc::EINVAL
+            );
+        }
+    }
+
+    #[test]
+    fn pthread_cancel_marks_pending_and_testcancel_consumes_when_enabled() {
+        reset_cancel_state_for_tests();
+
+        // SAFETY: exercising local ABI cancellation state machine.
+        unsafe {
+            let self_thread = pthread_self();
+            assert_eq!(pthread_cancel(self_thread), 0);
+            assert!(current_thread_pending_cancel());
+
+            assert_eq!(
+                pthread_setcancelstate(PTHREAD_CANCEL_DISABLE_STATE, std::ptr::null_mut()),
+                0
+            );
+            pthread_testcancel();
+            assert!(current_thread_pending_cancel());
+
+            assert_eq!(
+                pthread_setcancelstate(PTHREAD_CANCEL_ENABLE_STATE, std::ptr::null_mut()),
+                0
+            );
+            pthread_testcancel();
+            assert!(!current_thread_pending_cancel());
+        }
+    }
+
+    #[test]
+    fn pthread_cancel_self_async_consumes_immediately() {
+        reset_cancel_state_for_tests();
+
+        // SAFETY: exercising local ABI cancellation state machine.
+        unsafe {
+            assert_eq!(
+                pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS_TYPE, std::ptr::null_mut()),
+                0
+            );
+            let self_thread = pthread_self();
+            assert_eq!(pthread_cancel(self_thread), 0);
+            assert!(!current_thread_pending_cancel());
         }
     }
 }

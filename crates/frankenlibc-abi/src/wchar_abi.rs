@@ -3082,3 +3082,381 @@ pub unsafe extern "C" fn wcsxfrm(
     }
     src_len
 }
+
+// ---------------------------------------------------------------------------
+// wcpcpy  (GNU extension)
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcpcpy(dst: *mut u32, src: *const u32) -> *mut u32 {
+    if dst.is_null() || src.is_null() {
+        return dst;
+    }
+
+    let (mode, decision) = runtime_policy::decide(
+        ApiFamily::StringMemory,
+        dst as usize,
+        0,
+        true,
+        known_remaining(dst as usize).is_none() && known_remaining(src as usize).is_none(),
+        0,
+    );
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::StringMemory, decision.profile, 7, true);
+        return std::ptr::null_mut();
+    }
+
+    let repair = repair_enabled(mode.heals_enabled(), decision.action);
+    let src_bound = if repair {
+        known_remaining(src as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+    let dst_bound = if repair {
+        known_remaining(dst as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+
+    // SAFETY: strict mode follows libc semantics; hardened mode bounds reads/writes.
+    let (nul_offset, adverse) = unsafe {
+        let (src_len, src_terminated) = scan_w_string(src, src_bound);
+        let requested = src_len.saturating_add(1);
+        if repair {
+            match dst_bound {
+                Some(0) => {
+                    record_truncation(requested, 0);
+                    (0usize, true)
+                }
+                Some(limit) => {
+                    let max_payload = limit.saturating_sub(1);
+                    let copy_payload = src_len.min(max_payload);
+                    if copy_payload > 0 {
+                        std::ptr::copy_nonoverlapping(src, dst, copy_payload);
+                    }
+                    *dst.add(copy_payload) = 0;
+                    let truncated = !src_terminated || copy_payload < src_len;
+                    if truncated {
+                        record_truncation(requested, copy_payload);
+                    }
+                    (copy_payload, truncated)
+                }
+                None => {
+                    let mut i = 0usize;
+                    loop {
+                        let ch = *src.add(i);
+                        *dst.add(i) = ch;
+                        if ch == 0 {
+                            break (i, false);
+                        }
+                        i += 1;
+                    }
+                }
+            }
+        } else {
+            let mut i = 0usize;
+            loop {
+                let ch = *src.add(i);
+                *dst.add(i) = ch;
+                if ch == 0 {
+                    break (i, false);
+                }
+                i += 1;
+            }
+        }
+    };
+
+    runtime_policy::observe(
+        ApiFamily::StringMemory,
+        decision.profile,
+        runtime_policy::scaled_cost(7, nul_offset * 4),
+        adverse,
+    );
+    // Return pointer to the NUL terminator in dst
+    unsafe { dst.add(nul_offset) }
+}
+
+// ---------------------------------------------------------------------------
+// wcpncpy  (GNU extension)
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcpncpy(dst: *mut u32, src: *const u32, n: usize) -> *mut u32 {
+    if dst.is_null() || src.is_null() || n == 0 {
+        return dst;
+    }
+
+    let (mode, decision) = runtime_policy::decide(
+        ApiFamily::StringMemory,
+        dst as usize,
+        n * 4,
+        true,
+        known_remaining(dst as usize).is_none() && known_remaining(src as usize).is_none(),
+        0,
+    );
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::StringMemory, decision.profile, 7, true);
+        return std::ptr::null_mut();
+    }
+
+    let repair = repair_enabled(mode.heals_enabled(), decision.action);
+    let src_bound = if repair {
+        known_remaining(src as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+
+    // SAFETY: dst has room for n wchars; src is scanned with optional bound.
+    let (end_offset, adverse) = unsafe {
+        let (src_len, _src_terminated) = scan_w_string(src, src_bound);
+        let copy_len = src_len.min(n);
+
+        if copy_len > 0 {
+            std::ptr::copy_nonoverlapping(src, dst, copy_len);
+        }
+
+        // Pad remainder with NULs
+        if copy_len < n {
+            for i in copy_len..n {
+                *dst.add(i) = 0;
+            }
+            (copy_len, false) // return pointer to first NUL
+        } else {
+            (n, false) // src >= n, no NUL written, return dst+n
+        }
+    };
+
+    runtime_policy::observe(
+        ApiFamily::StringMemory,
+        decision.profile,
+        runtime_policy::scaled_cost(7, n * 4),
+        adverse,
+    );
+    unsafe { dst.add(end_offset) }
+}
+
+// ---------------------------------------------------------------------------
+// wcscasecmp  (GNU extension)
+// ---------------------------------------------------------------------------
+
+/// Simple ASCII case-fold for wide characters (A-Z → a-z).
+#[inline]
+fn abi_towlower(c: u32) -> u32 {
+    if (0x41..=0x5A).contains(&c) {
+        c + 0x20
+    } else {
+        c
+    }
+}
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcscasecmp(s1: *const u32, s2: *const u32) -> c_int {
+    if s1.is_null() || s2.is_null() {
+        return 0;
+    }
+
+    let (mode, decision) = runtime_policy::decide(
+        ApiFamily::StringMemory,
+        s1 as usize,
+        0,
+        false,
+        known_remaining(s1 as usize).is_none() && known_remaining(s2 as usize).is_none(),
+        0,
+    );
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::StringMemory, decision.profile, 6, true);
+        return 0;
+    }
+
+    let repair = repair_enabled(mode.heals_enabled(), decision.action);
+    let lhs_bound = if repair {
+        known_remaining(s1 as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+    let rhs_bound = if repair {
+        known_remaining(s2 as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+    let cmp_bound = match (lhs_bound, rhs_bound) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    };
+
+    let (result, adverse, span) = unsafe {
+        let mut i = 0usize;
+        let mut adverse_local = false;
+        loop {
+            if let Some(limit) = cmp_bound
+                && i >= limit
+            {
+                adverse_local = true;
+                break (0, adverse_local, i);
+            }
+            let a = abi_towlower(*s1.add(i));
+            let b = abi_towlower(*s2.add(i));
+            if a != b || *s1.add(i) == 0 {
+                let diff = if (a as i32) < (b as i32) { -1 } else { 1 };
+                break (
+                    if a == b { 0 } else { diff },
+                    adverse_local,
+                    i.saturating_add(1),
+                );
+            }
+            i += 1;
+        }
+    };
+
+    if adverse {
+        record_truncation(cmp_bound.unwrap_or(span), span);
+    }
+    runtime_policy::observe(
+        ApiFamily::StringMemory,
+        decision.profile,
+        runtime_policy::scaled_cost(7, span * 4),
+        adverse,
+    );
+    result
+}
+
+// ---------------------------------------------------------------------------
+// wcsncasecmp  (GNU extension)
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcsncasecmp(s1: *const u32, s2: *const u32, n: usize) -> c_int {
+    if s1.is_null() || s2.is_null() || n == 0 {
+        return 0;
+    }
+
+    let (mode, decision) = runtime_policy::decide(
+        ApiFamily::StringMemory,
+        s1 as usize,
+        n * 4,
+        false,
+        known_remaining(s1 as usize).is_none() && known_remaining(s2 as usize).is_none(),
+        0,
+    );
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::StringMemory, decision.profile, 6, true);
+        return 0;
+    }
+
+    let repair = repair_enabled(mode.heals_enabled(), decision.action);
+    let lhs_bound = if repair {
+        known_remaining(s1 as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+    let rhs_bound = if repair {
+        known_remaining(s2 as usize).map(bytes_to_wchars)
+    } else {
+        None
+    };
+    let cmp_bound = match (lhs_bound, rhs_bound) {
+        (Some(a), Some(b)) => Some(a.min(b).min(n)),
+        (Some(a), None) => Some(a.min(n)),
+        (None, Some(b)) => Some(b.min(n)),
+        (None, None) => Some(n),
+    };
+
+    let (result, adverse, span) = unsafe {
+        let mut i = 0usize;
+        let mut adverse_local = false;
+        loop {
+            if let Some(limit) = cmp_bound
+                && i >= limit
+            {
+                if i < n {
+                    adverse_local = true;
+                }
+                break (0, adverse_local, i);
+            }
+            let a = abi_towlower(*s1.add(i));
+            let b = abi_towlower(*s2.add(i));
+            if a != b || *s1.add(i) == 0 {
+                let diff = if (a as i32) < (b as i32) { -1 } else { 1 };
+                break (
+                    if a == b { 0 } else { diff },
+                    adverse_local,
+                    i.saturating_add(1),
+                );
+            }
+            i += 1;
+        }
+    };
+
+    if adverse {
+        record_truncation(cmp_bound.unwrap_or(span), span);
+    }
+    runtime_policy::observe(
+        ApiFamily::StringMemory,
+        decision.profile,
+        runtime_policy::scaled_cost(7, span * 4),
+        adverse,
+    );
+    result
+}
+
+// ---------------------------------------------------------------------------
+// wmemrchr  (GNU extension)
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wmemrchr(s: *const u32, c: u32, n: usize) -> *mut u32 {
+    if n == 0 || s.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let (mode, decision) = runtime_policy::decide(
+        ApiFamily::StringMemory,
+        s as usize,
+        n * 4,
+        false,
+        known_remaining(s as usize).is_none(),
+        0,
+    );
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(
+            ApiFamily::StringMemory,
+            decision.profile,
+            runtime_policy::scaled_cost(6, n * 4),
+            true,
+        );
+        return std::ptr::null_mut();
+    }
+
+    let repair = repair_enabled(mode.heals_enabled(), decision.action);
+    let mut scan_len = n;
+    let mut clamped = false;
+
+    if repair {
+        let s_rem = known_remaining(s as usize)
+            .map(bytes_to_wchars)
+            .unwrap_or(usize::MAX);
+        if n > s_rem {
+            scan_len = s_rem;
+            clamped = true;
+            record_truncation(n, s_rem);
+        }
+    }
+
+    let result = unsafe {
+        let slice = std::slice::from_raw_parts(s, scan_len);
+        match (0..scan_len).rev().find(|&i| slice[i] == c) {
+            Some(i) => s.add(i) as *mut u32,
+            None => std::ptr::null_mut(),
+        }
+    };
+
+    runtime_policy::observe(
+        ApiFamily::StringMemory,
+        decision.profile,
+        runtime_policy::scaled_cost(6, scan_len * 4),
+        clamped,
+    );
+    result
+}

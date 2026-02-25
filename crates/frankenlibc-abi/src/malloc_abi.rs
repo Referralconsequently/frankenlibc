@@ -850,7 +850,7 @@ pub unsafe extern "C" fn posix_memalign(
             ptr
         }
     };
-    
+
     runtime_policy::observe(
         ApiFamily::Allocator,
         decision.profile,
@@ -931,7 +931,7 @@ pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void 
             out
         }
     };
-    
+
     runtime_policy::observe(
         ApiFamily::Allocator,
         decision.profile,
@@ -971,7 +971,7 @@ pub unsafe extern "C" fn aligned_alloc(alignment: usize, size: usize) -> *mut c_
         unsafe { set_abi_errno(EINVAL as c_int) };
         return std::ptr::null_mut();
     }
-    
+
     let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
         // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
         let out = unsafe { native_libc_aligned_alloc(alignment, size) };
@@ -1014,7 +1014,7 @@ pub unsafe extern "C" fn aligned_alloc(alignment: usize, size: usize) -> *mut c_
             out
         }
     };
-    
+
     runtime_policy::observe(
         ApiFamily::Allocator,
         decision.profile,

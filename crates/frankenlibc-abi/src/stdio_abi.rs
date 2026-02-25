@@ -55,6 +55,13 @@ unsafe fn scan_c_str_len(ptr: *const c_char, bound: Option<usize>) -> (usize, bo
 }
 
 #[inline]
+unsafe fn c_str_bytes<'a>(ptr: *const c_char) -> &'a [u8] {
+    let (len, _) = unsafe { scan_c_str_len(ptr, None) };
+    // SAFETY: `scan_c_str_len` scanned until the first NUL byte, so this range is readable.
+    unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len) }
+}
+
+#[inline]
 unsafe fn set_abi_errno(val: c_int) {
     let p = unsafe { super::errno_abi::__errno_location() };
     unsafe { *p = val };
@@ -211,19 +218,10 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
         return std::ptr::null_mut();
     }
 
-    let (_, decision) =
-        runtime_policy::decide(ApiFamily::Stdio, pathname as usize, 0, false, false, 0);
-    if matches!(decision.action, MembraneAction::Deny) {
-        unsafe { set_abi_errno(errno::EACCES) };
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
-        return std::ptr::null_mut();
-    }
-
     // Parse mode string.
     let mode_bytes = unsafe { CStr::from_ptr(mode) }.to_bytes();
     let Some(open_flags) = parse_mode(mode_bytes) else {
         unsafe { set_abi_errno(errno::EINVAL) };
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return std::ptr::null_mut();
     };
 
@@ -245,7 +243,6 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
             .raw_os_error()
             .unwrap_or(errno::ENOENT);
         unsafe { set_abi_errno(e) };
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 30, true);
         return std::ptr::null_mut();
     }
 
@@ -261,8 +258,6 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
     let id = alloc_stream_id();
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     reg.streams.insert(id, stream);
-
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 30, false);
     id as *mut c_void
 }
 
@@ -274,18 +269,24 @@ pub unsafe extern "C" fn fclose(stream: *mut c_void) -> c_int {
         return libc::EOF;
     }
 
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, id, 0, true, false, 0);
-    if matches!(decision.action, MembraneAction::Deny) {
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
-        return libc::EOF;
-    }
-
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut s) = reg.streams.remove(&id) else {
         unsafe { set_abi_errno(errno::EBADF) };
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
         return libc::EOF;
     };
+
+    // Memory-backed streams: sync data, then clean up.
+    if s.is_mem_backed() {
+        unsafe { sync_memstream_to_caller(id, &s) };
+        // Remove sync metadata for open_memstream.
+        let mut sync_guard = mem_sync_registry()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ref mut map) = *sync_guard {
+            map.remove(&id);
+        }
+        return 0;
+    }
 
     let fd = s.fd();
     // Flush pending writes.
@@ -325,7 +326,6 @@ pub unsafe extern "C" fn fclose(stream: *mut c_void) -> c_int {
         }
     }
 
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, adverse);
     if adverse { libc::EOF } else { 0 }
 }
 
@@ -362,6 +362,12 @@ pub unsafe extern "C" fn fflush(stream: *mut c_void) -> c_int {
     let id = stream as usize;
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = reg.streams.get_mut(&id) {
+        // Memory-backed streams: sync data to C caller's pointers (open_memstream).
+        if s.is_mem_backed() {
+            unsafe { sync_memstream_to_caller(id, s) };
+            runtime_policy::observe(ApiFamily::Stdio, decision.profile, 8, false);
+            return 0;
+        }
         let ok = unsafe { flush_stream(s) };
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 8, !ok);
         if ok { 0 } else { libc::EOF }
@@ -391,6 +397,17 @@ pub unsafe extern "C" fn fgetc(stream: *mut c_void) -> c_int {
         return libc::EOF;
     };
 
+    // Memory-backed streams: read directly from backing.
+    if s.is_mem_backed() {
+        let data = s.mem_read(1);
+        if data.is_empty() {
+            runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
+            return libc::EOF;
+        }
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, false);
+        return data[0] as c_int;
+    }
+
     // Try buffered read first.
     let data = s.buffered_read(1);
     if !data.is_empty() {
@@ -403,7 +420,7 @@ pub unsafe extern "C" fn fgetc(stream: *mut c_void) -> c_int {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
         return libc::EOF;
     }
-    
+
     if s.buffer_capacity() == 0 {
         let mut b = [0u8; 1];
         let fd = s.fd();
@@ -456,6 +473,17 @@ pub unsafe extern "C" fn fputc(c: c_int, stream: *mut c_void) -> c_int {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
         return libc::EOF;
     };
+
+    // Memory-backed streams: write directly to backing.
+    if s.is_mem_backed() {
+        let n = s.mem_write(&[byte]);
+        if n == 0 {
+            runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
+            return libc::EOF;
+        }
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, false);
+        return c;
+    }
 
     let flush_data = s.buffer_write(&[byte]);
     if !flush_data.is_empty() {
@@ -721,67 +749,48 @@ pub unsafe extern "C" fn fread(
     }
 
     let id = stream as usize;
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, id, total, true, false, 0);
-    if matches!(decision.action, MembraneAction::Deny) {
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
-        return 0;
-    }
 
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let Some(s) = reg.streams.get_mut(&id) else {
-        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return 0;
     };
 
     let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, total) };
     let mut read_total = 0usize;
 
+    // Memory-backed streams: read directly from the backing.
+    if s.is_mem_backed() {
+        let data = s.mem_read(total);
+        let n = data.len();
+        dst[..n].copy_from_slice(&data);
+        return n.checked_div(size).unwrap_or(0);
+    }
+
     while read_total < total {
-        let chunk = s.buffered_read(total - read_total);
-        if !chunk.is_empty() {
-            dst[read_total..read_total + chunk.len()].copy_from_slice(&chunk);
-            read_total += chunk.len();
+        // Prefer direct fd reads to avoid recursive memcpy interposition through
+        // buffered internals under LD_PRELOAD.
+        let fd = s.fd();
+        let to_read = total - read_total;
+        let rc = unsafe { sys_read_fd(fd, dst[read_total..].as_mut_ptr().cast(), to_read) };
+        if rc > 0 {
+            let bytes_read = rc as usize;
+            read_total += bytes_read;
+            s.set_offset(s.offset().saturating_add(bytes_read as i64));
             continue;
-        }
-        if s.is_eof() || s.is_error() {
+        } else if rc == 0 {
+            s.set_eof();
             break;
-        }
-        
-        if s.buffer_capacity() == 0 {
-            let fd = s.fd();
-            let to_read = total - read_total;
-            let rc = unsafe { sys_read_fd(fd, dst[read_total..].as_mut_ptr().cast(), to_read) };
-            if rc > 0 {
-                let bytes_read = rc as usize;
-                read_total += bytes_read;
-                s.set_offset(s.offset().saturating_add(bytes_read as i64));
+        } else {
+            let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if e == errno::EINTR {
                 continue;
-            } else if rc == 0 {
-                s.set_eof();
-                break;
-            } else {
-                let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if e != errno::EINTR {
-                    s.set_error();
-                }
-                break;
             }
-        }
-        
-        let rc = unsafe { refill_stream(s) };
-        if rc <= 0 {
+            s.set_error();
             break;
         }
     }
 
-    let items = read_total.checked_div(size).unwrap_or(0);
-    runtime_policy::observe(
-        ApiFamily::Stdio,
-        decision.profile,
-        runtime_policy::scaled_cost(15, read_total),
-        items < nmemb,
-    );
-    items
+    read_total.checked_div(size).unwrap_or(0)
 }
 
 /// POSIX `fwrite`.
@@ -814,6 +823,19 @@ pub unsafe extern "C" fn fwrite(
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return 0;
     };
+
+    // Memory-backed streams: write directly to the backing.
+    if s.is_mem_backed() {
+        let written = s.mem_write(src);
+        let complete_items = if size > 0 { written / size } else { 0 };
+        runtime_policy::observe(
+            ApiFamily::Stdio,
+            decision.profile,
+            runtime_policy::scaled_cost(15, total),
+            written < total,
+        );
+        return complete_items;
+    }
 
     let flush_data = s.buffer_write(src);
     if !flush_data.is_empty() {
@@ -885,6 +907,18 @@ pub unsafe extern "C" fn fseek(stream: *mut c_void, offset: c_long, whence: c_in
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
         return -1;
     };
+
+    // Memory-backed streams: seek within the backing buffer.
+    if s.is_mem_backed() {
+        let new_pos = s.mem_seek(offset, whence);
+        if new_pos < 0 {
+            unsafe { set_abi_errno(errno::EINVAL) };
+            runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
+            return -1;
+        }
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, false);
+        return 0;
+    }
 
     // Flush pending writes and discard read buffer.
     let pending = s.prepare_seek();
@@ -1421,8 +1455,7 @@ unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize) -> Vec<u8
                             if ptr.is_null() {
                                 format_str(b"(null)", &resolved_spec, &mut buf);
                             } else {
-                                let s_bytes =
-                                    unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
+                                let s_bytes = unsafe { c_str_bytes(ptr as *const c_char) };
                                 format_str(s_bytes, &resolved_spec, &mut buf);
                             }
                         }
@@ -1440,6 +1473,25 @@ unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize) -> Vec<u8
         }
     }
     buf
+}
+
+fn write_all_fd(fd: c_int, data: &[u8]) -> bool {
+    let mut written = 0usize;
+    while written < data.len() {
+        let rc = unsafe { sys_write_fd(fd, data[written..].as_ptr().cast(), data.len() - written) };
+        if rc < 0 {
+            let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if e == errno::EINTR {
+                continue;
+            }
+            return false;
+        }
+        if rc == 0 {
+            return false;
+        }
+        written += rc as usize;
+    }
+    true
 }
 
 /// POSIX `snprintf` — format at most `size` bytes into `str`.
@@ -1460,7 +1512,7 @@ pub unsafe extern "C" fn snprintf(
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -1497,13 +1549,14 @@ pub unsafe extern "C" fn sprintf(
         return -1;
     }
 
-    let (mode, decision) = runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, 0, true, false, 0);
+    let (mode, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, 0, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -1561,7 +1614,7 @@ pub unsafe extern "C" fn fprintf(
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -1636,7 +1689,7 @@ pub unsafe extern "C" fn printf(format: *const c_char, mut args: ...) -> c_int {
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -1645,83 +1698,15 @@ pub unsafe extern "C" fn printf(format: *const c_char, mut args: ...) -> c_int {
     let rendered = unsafe { render_printf(fmt_bytes, arg_buf.as_ptr(), extract_count) };
     let total_len = rendered.len();
 
-    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(s) = reg.streams.get_mut(&id) {
-        let flush_data = s.buffer_write(&rendered);
-        if !flush_data.is_empty() {
-            let fd = s.fd();
-            let mut written = 0usize;
-            let mut success = true;
-            while written < flush_data.len() {
-                let rc = unsafe {
-                    sys_write_fd(
-                        fd,
-                        flush_data[written..].as_ptr().cast(),
-                        flush_data.len() - written,
-                    )
-                };
-                if rc <= 0 {
-                    success = false;
-                    break;
-                }
-                written += rc as usize;
-            }
-            if success {
-                // buffer_write already managed the internal buffer state.
-            } else {
-                s.set_error();
-                runtime_policy::observe(
-                    ApiFamily::Stdio,
-                    decision.profile,
-                    runtime_policy::scaled_cost(15, total_len),
-                    true,
-                );
-                return -1;
-            }
-        }
-    } else {
-        // Fallback: direct write if stream not in registry.
-        drop(reg);
-        let mut written = 0usize;
-        let mut adverse = false;
-        while written < total_len {
-            let rc = unsafe {
-                sys_write_fd(
-                    libc::STDOUT_FILENO,
-                    rendered[written..].as_ptr().cast(),
-                    total_len - written,
-                )
-            };
-            if rc < 0 {
-                let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if e == errno::EINTR {
-                    continue;
-                }
-                adverse = true;
-                break;
-            } else if rc == 0 {
-                adverse = true;
-                break;
-            }
-            written += rc as usize;
-        }
-        runtime_policy::observe(
-            ApiFamily::Stdio,
-            decision.profile,
-            runtime_policy::scaled_cost(15, total_len),
-            adverse,
-        );
-        return if adverse { -1 } else { total_len as c_int };
-    }
-    drop(reg);
+    let wrote_all = write_all_fd(libc::STDOUT_FILENO, &rendered);
 
     runtime_policy::observe(
         ApiFamily::Stdio,
         decision.profile,
         runtime_policy::scaled_cost(15, total_len),
-        false,
+        !wrote_all,
     );
-    total_len as c_int
+    if wrote_all { total_len as c_int } else { -1 }
 }
 
 /// POSIX `dprintf`.
@@ -1737,7 +1722,7 @@ pub unsafe extern "C" fn dprintf(fd: c_int, format: *const c_char, mut args: ...
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -1749,13 +1734,8 @@ pub unsafe extern "C" fn dprintf(fd: c_int, format: *const c_char, mut args: ...
     let mut written = 0usize;
     let mut adverse = false;
     while written < total_len {
-        let rc = unsafe {
-            sys_write_fd(
-                fd,
-                rendered[written..].as_ptr().cast(),
-                total_len - written,
-            )
-        };
+        let rc =
+            unsafe { sys_write_fd(fd, rendered[written..].as_ptr().cast(), total_len - written) };
         if rc < 0 {
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             if e == errno::EINTR {
@@ -1798,7 +1778,7 @@ pub unsafe extern "C" fn asprintf(
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -1844,10 +1824,6 @@ unsafe extern "C" {
     fn libc_vsnprintf(s: *mut c_char, n: usize, fmt: *const c_char, ap: *mut c_void) -> c_int;
     #[link_name = "vsprintf"]
     fn libc_vsprintf(s: *mut c_char, fmt: *const c_char, ap: *mut c_void) -> c_int;
-    #[link_name = "vfprintf"]
-    fn libc_vfprintf(stream: *mut c_void, fmt: *const c_char, ap: *mut c_void) -> c_int;
-    #[link_name = "vprintf"]
-    fn libc_vprintf(fmt: *const c_char, ap: *mut c_void) -> c_int;
     #[link_name = "vdprintf"]
     fn libc_vdprintf(fd: c_int, fmt: *const c_char, ap: *mut c_void) -> c_int;
     #[link_name = "vasprintf"]
@@ -1865,7 +1841,8 @@ pub unsafe extern "C" fn vsnprintf(
     if format.is_null() {
         return -1;
     }
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, size, true, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, size, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
@@ -1882,7 +1859,8 @@ pub unsafe extern "C" fn vsprintf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    let (mode, decision) = runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, 0, true, false, 0);
+    let (mode, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, str_buf as usize, 0, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
@@ -1919,13 +1897,35 @@ pub unsafe extern "C" fn vfprintf(
     if format.is_null() {
         return -1;
     }
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
     }
-    let rc = unsafe { libc_vfprintf(stream, format, ap) };
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+
+    // `stream` is a FrankenLibC stream handle, not a host glibc `FILE*`.
+    // Resolve to file descriptor through the registry and emit via vdprintf.
+    let id = stream as usize;
+    let fd = {
+        let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+        match reg.streams.get(&id) {
+            Some(s) => s.fd(),
+            None => {
+                runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+                return -1;
+            }
+        }
+    };
+
+    let rc = unsafe { libc_vdprintf(fd, format, ap) };
+    let adverse = rc < 0;
+    runtime_policy::observe(
+        ApiFamily::Stdio,
+        decision.profile,
+        runtime_policy::scaled_cost(15, rc.max(0) as usize),
+        adverse,
+    );
     rc
 }
 
@@ -1936,13 +1936,29 @@ pub unsafe extern "C" fn vprintf(format: *const c_char, ap: *mut c_void) -> c_in
         return -1;
     }
     let stdout_ptr = STDOUT_SENTINEL as *mut c_void;
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stdout_ptr as usize, 0, false, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, stdout_ptr as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
     }
-    let rc = unsafe { libc_vprintf(format, ap) };
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, false);
+
+    // Mirror vfprintf behavior: resolve stdout sentinel to an fd and emit via vdprintf.
+    let fd = {
+        let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+        reg.streams
+            .get(&(stdout_ptr as usize))
+            .map_or(libc::STDOUT_FILENO, |s| s.fd())
+    };
+
+    let rc = unsafe { libc_vdprintf(fd, format, ap) };
+    let adverse = rc < 0;
+    runtime_policy::observe(
+        ApiFamily::Stdio,
+        decision.profile,
+        runtime_policy::scaled_cost(15, rc.max(0) as usize),
+        adverse,
+    );
     rc
 }
 
@@ -2025,7 +2041,8 @@ pub unsafe extern "C" fn fscanf(
     if format.is_null() {
         return -1;
     }
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
@@ -2042,7 +2059,8 @@ pub unsafe extern "C" fn scanf(format: *const c_char, mut args: ...) -> c_int {
         return -1;
     }
     let stdin_ptr = STDIN_SENTINEL as *mut c_void;
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stdin_ptr as usize, 0, false, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, stdin_ptr as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
@@ -2082,7 +2100,8 @@ pub unsafe extern "C" fn vfscanf(
     if format.is_null() {
         return -1;
     }
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, stream as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
@@ -2099,7 +2118,8 @@ pub unsafe extern "C" fn vscanf(format: *const c_char, ap: *mut c_void) -> c_int
         return -1;
     }
     let stdin_ptr = STDIN_SENTINEL as *mut c_void;
-    let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, stdin_ptr as usize, 0, false, false, 0);
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, stdin_ptr as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
@@ -2125,7 +2145,7 @@ pub unsafe extern "C" fn printf_chk(_flag: c_int, format: *const c_char, mut arg
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -2134,61 +2154,15 @@ pub unsafe extern "C" fn printf_chk(_flag: c_int, format: *const c_char, mut arg
     let rendered = unsafe { render_printf(fmt_bytes, arg_buf.as_ptr(), extract_count) };
     let total_len = rendered.len();
 
-    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(s) = reg.streams.get_mut(&id) {
-        let flush_data = s.buffer_write(&rendered);
-        if !flush_data.is_empty() {
-            let fd = s.fd();
-            let mut written = 0usize;
-            let mut success = true;
-            while written < flush_data.len() {
-                let rc = unsafe {
-                    sys_write_fd(
-                        fd,
-                        flush_data[written..].as_ptr().cast(),
-                        flush_data.len() - written,
-                    )
-                };
-                if rc <= 0 {
-                    success = false;
-                    break;
-                }
-                written += rc as usize;
-            }
-            if success {
-                // buffer_write already managed the internal buffer state.
-            } else {
-                s.set_error();
-                runtime_policy::observe(
-                    ApiFamily::Stdio,
-                    decision.profile,
-                    runtime_policy::scaled_cost(15, total_len),
-                    true,
-                );
-                return -1;
-            }
-        }
-    } else {
-        drop(reg);
-        let rc = unsafe { sys_write_fd(libc::STDOUT_FILENO, rendered.as_ptr().cast(), total_len) };
-        let adverse = rc < 0 || rc as usize != total_len;
-        runtime_policy::observe(
-            ApiFamily::Stdio,
-            decision.profile,
-            runtime_policy::scaled_cost(15, total_len),
-            adverse,
-        );
-        return if adverse { -1 } else { total_len as c_int };
-    }
-    drop(reg);
+    let wrote_all = write_all_fd(libc::STDOUT_FILENO, &rendered);
 
     runtime_policy::observe(
         ApiFamily::Stdio,
         decision.profile,
         runtime_policy::scaled_cost(15, total_len),
-        false,
+        !wrote_all,
     );
-    total_len as c_int
+    if wrote_all { total_len as c_int } else { -1 }
 }
 
 /// glibc fortified `__fprintf_chk`.
@@ -2210,7 +2184,7 @@ pub unsafe extern "C" fn fprintf_chk(
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -2286,7 +2260,7 @@ pub unsafe extern "C" fn sprintf_chk(
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -3053,7 +3027,7 @@ pub unsafe extern "C" fn snprintf_chk(
         return -1;
     }
 
-    let fmt_bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let fmt_bytes = unsafe { c_str_bytes(format) };
     let segments = parse_format_string(fmt_bytes);
     let extract_count = count_printf_args(&segments);
     let mut arg_buf = [0u64; MAX_VA_ARGS];
@@ -3135,16 +3109,57 @@ pub unsafe extern "C" fn fsetpos64(stream: *mut c_void, pos: *const c_void) -> c
 // ---------------------------------------------------------------------------
 
 unsafe extern "C" {
-    #[link_name = "fmemopen"]
-    fn libc_fmemopen(buf: *mut c_void, size: usize, mode: *const c_char) -> *mut c_void;
-    #[link_name = "open_memstream"]
-    fn libc_open_memstream(ptr: *mut *mut c_char, sizeloc: *mut usize) -> *mut c_void;
     #[link_name = "fopencookie"]
     fn libc_fopencookie(
         cookie: *mut c_void,
         mode: *const c_char,
         funcs: *const c_void,
     ) -> *mut c_void;
+}
+
+/// Metadata for open_memstream: tracks the C caller's pointer and size locations.
+struct MemStreamSync {
+    ptr_loc: *mut *mut c_char,
+    size_loc: *mut usize,
+}
+
+// SAFETY: MemStreamSync holds raw pointers passed by the C caller.
+// The C caller is responsible for keeping these pointers valid for
+// the lifetime of the stream (per POSIX open_memstream contract).
+unsafe impl Send for MemStreamSync {}
+unsafe impl Sync for MemStreamSync {}
+
+/// Registry of open_memstream sync metadata, keyed by stream sentinel ID.
+static MEM_STREAM_SYNC: Mutex<Option<HashMap<usize, MemStreamSync>>> = Mutex::new(None);
+
+fn mem_sync_registry() -> &'static Mutex<Option<HashMap<usize, MemStreamSync>>> {
+    &MEM_STREAM_SYNC
+}
+
+/// Synchronize open_memstream data to the C caller's pointers.
+/// Called after fflush and fclose for open_memstream streams.
+unsafe fn sync_memstream_to_caller(id: usize, stream: &StdioStream) {
+    let mut sync_guard = mem_sync_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(ref map) = *sync_guard {
+        if let Some(info) = map.get(&id) {
+            if let Some(data) = stream.mem_data() {
+                let len = data.len();
+                // Allocate a new buffer via malloc and copy data + NUL terminator.
+                let buf = unsafe { malloc(len + 1) };
+                if !buf.is_null() {
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(data.as_ptr(), buf.cast::<u8>(), len);
+                        *buf.cast::<u8>().add(len) = 0; // NUL-terminate
+                        *info.ptr_loc = buf.cast::<c_char>();
+                        *info.size_loc = len;
+                    }
+                }
+            }
+        }
+    }
+    drop(sync_guard);
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -3195,18 +3210,109 @@ pub unsafe extern "C" fn fputc_unlocked(c: c_int, stream: *mut c_void) -> c_int 
     unsafe { fputc(c, stream) }
 }
 
+/// POSIX `fmemopen` — open a memory buffer as a stream.
+///
+/// If `buf` is NULL, an internal buffer of `size` bytes is allocated.
+/// The returned FILE* is a FrankenLibC sentinel backed by memory.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn fmemopen(
     buf: *mut c_void,
     size: usize,
     mode: *const c_char,
 ) -> *mut c_void {
-    unsafe { libc_fmemopen(buf, size, mode) }
+    if size == 0 || mode.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return std::ptr::null_mut();
+    }
+
+    // Parse mode string.
+    let mode_bytes = unsafe { CStr::from_ptr(mode) }.to_bytes();
+    let Some(open_flags) = parse_mode(mode_bytes) else {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return std::ptr::null_mut();
+    };
+
+    // Prepare the backing buffer.
+    let (data, content_len) = if buf.is_null() {
+        // Internal buffer: zero-initialized, no initial content.
+        (vec![0u8; size], 0)
+    } else {
+        // User-provided buffer: copy into our Vec so we own it safely.
+        // For read modes, content_len = size (entire buffer is readable).
+        // For write modes (non-append), content_len = 0 (starts empty for writing).
+        // For append mode, content_len = position of first NUL or size.
+        let slice = unsafe { std::slice::from_raw_parts(buf.cast::<u8>(), size) };
+        let mut v = vec![0u8; size];
+        v[..size].copy_from_slice(slice);
+
+        let cl = if open_flags.readable && !open_flags.writable {
+            // "r" mode: entire buffer is valid content
+            size
+        } else if open_flags.append {
+            // "a"/"a+" mode: content_len = first NUL byte or size
+            v.iter().position(|&b| b == 0).unwrap_or(size)
+        } else if open_flags.writable && !open_flags.readable {
+            // "w" mode: content starts empty
+            0
+        } else {
+            // "r+" or "w+" mode: entire buffer is valid content
+            size
+        };
+        (v, cl)
+    };
+
+    let stream = StdioStream::new_mem_fixed(data, content_len, open_flags);
+    let id = alloc_stream_id();
+    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+    reg.streams.insert(id, stream);
+    id as *mut c_void
 }
 
+/// POSIX `open_memstream` — open a dynamic memory buffer for writing.
+///
+/// After each fflush/fclose, `*ptr` is updated to point to a malloc'd buffer
+/// containing the stream data (NUL-terminated), and `*sizeloc` is set to the
+/// data length (not counting the NUL).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn open_memstream(ptr: *mut *mut c_char, sizeloc: *mut usize) -> *mut c_void {
-    unsafe { libc_open_memstream(ptr, sizeloc) }
+    if ptr.is_null() || sizeloc.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return std::ptr::null_mut();
+    }
+
+    let stream = StdioStream::new_mem_dynamic();
+    let id = alloc_stream_id();
+
+    // Register the stream.
+    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+    reg.streams.insert(id, stream);
+    drop(reg);
+
+    // Register sync metadata so fflush/fclose can update the C caller's pointers.
+    let mut sync_guard = mem_sync_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let map = sync_guard.get_or_insert_with(HashMap::new);
+    map.insert(
+        id,
+        MemStreamSync {
+            ptr_loc: ptr,
+            size_loc: sizeloc,
+        },
+    );
+    drop(sync_guard);
+
+    // Initialize caller's pointers to empty state.
+    unsafe {
+        let initial_buf = malloc(1);
+        if !initial_buf.is_null() {
+            *initial_buf.cast::<u8>() = 0; // NUL-terminate
+            *ptr = initial_buf.cast::<c_char>();
+            *sizeloc = 0;
+        }
+    }
+
+    id as *mut c_void
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

@@ -2,7 +2,7 @@
 
 //! Integration tests for `<string.h>` ABI entrypoints.
 
-use frankenlibc_abi::string_abi::{stpcpy, stpncpy, strchrnul, strncmp, strnlen};
+use frankenlibc_abi::string_abi::{fnmatch, stpcpy, stpncpy, strchrnul, strncmp, strnlen};
 
 #[test]
 fn strncmp_returns_zero_for_n_zero() {
@@ -125,4 +125,93 @@ fn strchrnul_returns_terminator_when_absent() {
     // SAFETY: return value points inside the same C string.
     let offset = unsafe { pos.offset_from(haystack) };
     assert_eq!(offset, 7);
+}
+
+// ---- fnmatch tests ----
+
+#[test]
+fn fnmatch_simple_star() {
+    let pat = c"*.txt".as_ptr();
+    let str_ = c"hello.txt".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, str_, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_star_no_match() {
+    let pat = c"*.txt".as_ptr();
+    let str_ = c"hello.rs".as_ptr();
+    assert_ne!(unsafe { fnmatch(pat, str_, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_question_mark() {
+    let pat = c"a?c".as_ptr();
+    let str_ = c"abc".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, str_, 0) }, 0);
+
+    let no_match = c"abbc".as_ptr();
+    assert_ne!(unsafe { fnmatch(pat, no_match, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_bracket() {
+    let pat = c"[abc]at".as_ptr();
+    let cat = c"cat".as_ptr();
+    let bat = c"bat".as_ptr();
+    let dat = c"dat".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, cat, 0) }, 0);
+    assert_eq!(unsafe { fnmatch(pat, bat, 0) }, 0);
+    assert_ne!(unsafe { fnmatch(pat, dat, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_bracket_range() {
+    let pat = c"[a-z]".as_ptr();
+    let m = c"m".as_ptr();
+    let upper = c"M".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, m, 0) }, 0);
+    assert_ne!(unsafe { fnmatch(pat, upper, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_negated_bracket() {
+    let pat = c"[!0-9]".as_ptr();
+    let alpha = c"a".as_ptr();
+    let digit = c"5".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, alpha, 0) }, 0);
+    assert_ne!(unsafe { fnmatch(pat, digit, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_pathname_flag() {
+    let pat = c"*.c".as_ptr();
+    let with_slash = c"src/main.c".as_ptr();
+    // Without FNM_PATHNAME, * matches /
+    assert_eq!(unsafe { fnmatch(pat, with_slash, 0) }, 0);
+    // With FNM_PATHNAME (2), * does NOT match /
+    assert_ne!(unsafe { fnmatch(pat, with_slash, 2) }, 0);
+}
+
+#[test]
+fn fnmatch_casefold() {
+    let pat = c"hello".as_ptr();
+    let upper = c"HELLO".as_ptr();
+    // Without casefold
+    assert_ne!(unsafe { fnmatch(pat, upper, 0) }, 0);
+    // With FNM_CASEFOLD (16)
+    assert_eq!(unsafe { fnmatch(pat, upper, 16) }, 0);
+}
+
+#[test]
+fn fnmatch_exact_match() {
+    let pat = c"hello".as_ptr();
+    let str_ = c"hello".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, str_, 0) }, 0);
+}
+
+#[test]
+fn fnmatch_empty_pattern_empty_string() {
+    let pat = c"".as_ptr();
+    let str_ = c"".as_ptr();
+    assert_eq!(unsafe { fnmatch(pat, str_, 0) }, 0);
 }

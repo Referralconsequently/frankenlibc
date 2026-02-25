@@ -7,8 +7,10 @@
 #![allow(dead_code)]
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::ffi::c_char;
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicPtr, AtomicU8, AtomicU32, AtomicU64, Ordering as AtomicOrdering};
 
 use frankenlibc_core::syscall;
@@ -19,8 +21,8 @@ use frankenlibc_membrane::decision_contract::{
     DecisionEvent as DecisionContractEvent, TsmState,
 };
 use frankenlibc_membrane::runtime_math::{
-    ApiFamily, MembraneAction, RuntimeContext, RuntimeDecision, RuntimeMathKernel,
-    ValidationProfile,
+    ApiFamily, MembraneAction, RuntimeContext, RuntimeDecision, RuntimeEvidenceContractSnapshot,
+    RuntimeKernelSnapshot, RuntimeMathKernel, ValidationProfile,
 };
 
 // Kernel lifecycle states.
@@ -42,6 +44,12 @@ const TRACE_UNKNOWN_SYMBOL: &str = "unknown";
 const CONTROLLER_ID_RUNTIME_MATH: &str = "runtime_math_kernel.v1";
 const DECISION_GATE_RUNTIME_POLICY: &str = "runtime_policy.decide";
 const DECISION_CONTRACT_CLEAR_THRESHOLD: u16 = 3;
+const MODE_SWITCH_CHECK_STRIDE: u64 = 4096;
+const MODE_LOG_CAPACITY: usize = 256;
+// Export helpers are non-hotpath and should tolerate cross-thread kernel init.
+const KERNEL_EXPORT_RETRY_ATTEMPTS: usize = 5_000;
+const CONTROLLER_ID_RUNTIME_MODE: &str = "runtime_policy.mode.v1";
+const MODE_LOG_ARTIFACT: &str = "crates/frankenlibc-abi/src/runtime_policy.rs";
 
 // Manual init guard that avoids OnceLock's internal futex.
 // OnceLock::get_or_init uses a futex wait when it sees init-in-progress,
@@ -55,6 +63,9 @@ static MODE_STATE: AtomicU8 = AtomicU8::new(MODE_UNRESOLVED);
 static PANIC_HOOK_STATE: AtomicU8 = AtomicU8::new(PANIC_HOOK_UNSET);
 static PANIC_HOOK_WRITE_STATE: AtomicU8 = AtomicU8::new(PANIC_HOOK_WRITE_IDLE);
 static PANIC_HOOK_LOG_COUNT: AtomicU32 = AtomicU32::new(0);
+static MODE_SWITCH_CHECK_COUNTER: AtomicU64 = AtomicU64::new(0);
+static MODE_LOG_DECISION_SEQ: AtomicU64 = AtomicU64::new(0);
+static MODE_EVENT_LOGS: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
 
 unsafe extern "C" {
     static mut environ: *mut *mut c_char;
@@ -151,15 +162,129 @@ fn parse_mode_from_environ() -> Result<Option<SafetyLevel>, ()> {
     Ok(None)
 }
 
+fn mode_name(level: SafetyLevel) -> &'static str {
+    match level {
+        SafetyLevel::Strict => "strict",
+        SafetyLevel::Hardened => "hardened",
+        SafetyLevel::Off => "off",
+    }
+}
+
+fn now_utc_iso_like() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{:09}Z", now.as_secs(), now.subsec_nanos())
+}
+
+fn push_mode_event(
+    level: &'static str,
+    event: &'static str,
+    resolved_mode: SafetyLevel,
+    requested_mode: Option<SafetyLevel>,
+) {
+    let decision_id = MODE_LOG_DECISION_SEQ.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+    let trace_id = format!("runtime_policy::mode::{decision_id:016x}");
+    let requested_mode = requested_mode
+        .map(|mode| format!("\"{}\"", mode_name(mode)))
+        .unwrap_or_else(|| "null".to_string());
+    let timestamp = now_utc_iso_like();
+    let line = format!(
+        "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{trace_id}\",\"decision_id\":{decision_id},\"level\":\"{level}\",\"event\":\"{event}\",\"controller_id\":\"{CONTROLLER_ID_RUNTIME_MODE}\",\"decision_path\":\"mode->cache->immutable\",\"mode\":\"{}\",\"requested_mode\":{requested_mode},\"artifact_refs\":[\"{MODE_LOG_ARTIFACT}\"]}}",
+        mode_name(resolved_mode),
+    );
+
+    if let Ok(mut logs) = MODE_EVENT_LOGS.lock() {
+        if logs.len() >= MODE_LOG_CAPACITY {
+            let _ = logs.pop_front();
+        }
+        logs.push_back(line);
+    }
+}
+
+fn maybe_log_mode_switch_attempt(cached_mode: SafetyLevel) {
+    let sequence = MODE_SWITCH_CHECK_COUNTER.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+    if !sequence.is_multiple_of(MODE_SWITCH_CHECK_STRIDE) {
+        return;
+    }
+
+    match parse_mode_from_environ() {
+        Ok(Some(requested_mode)) if requested_mode != cached_mode => {
+            push_mode_event(
+                "error",
+                "runtime_mode_switch_attempt",
+                cached_mode,
+                Some(requested_mode),
+            );
+        }
+        Ok(_) => {}
+        Err(_) => {
+            push_mode_event("warn", "runtime_mode_env_unavailable", cached_mode, None);
+        }
+    }
+}
+
+#[must_use]
+pub(crate) fn export_mode_event_log_jsonl() -> String {
+    MODE_EVENT_LOGS
+        .lock()
+        .ok()
+        .map(|logs| logs.iter().cloned().collect::<Vec<_>>().join("\n"))
+        .unwrap_or_default()
+}
+
+pub(crate) fn clear_mode_event_log() {
+    if let Ok(mut logs) = MODE_EVENT_LOGS.lock() {
+        logs.clear();
+    }
+}
+
+fn load_thread_local_mode_cache() -> Option<SafetyLevel> {
+    MODE_THREAD_LOCAL_CACHE
+        .try_with(|cache| {
+            let cached = cache.get();
+            if cached != MODE_UNRESOLVED && cached != MODE_RESOLVING {
+                Some(u8_to_mode(cached))
+            } else {
+                None
+            }
+        })
+        .ok()
+        .flatten()
+}
+
+fn store_thread_local_mode_cache(level: SafetyLevel) {
+    let mode = mode_to_u8(level);
+    let _ = MODE_THREAD_LOCAL_CACHE.try_with(|cache| cache.set(mode));
+}
+
+fn clear_thread_local_mode_cache() {
+    let _ = MODE_THREAD_LOCAL_CACHE.try_with(|cache| cache.set(MODE_UNRESOLVED));
+}
+
 #[must_use]
 pub(crate) fn mode() -> SafetyLevel {
+    if let Some(resolved) = load_thread_local_mode_cache() {
+        maybe_log_mode_switch_attempt(resolved);
+        return resolved;
+    }
+
     let cached = MODE_STATE.load(AtomicOrdering::Relaxed);
 
     if cached != MODE_UNRESOLVED && cached != MODE_RESOLVING {
-        return u8_to_mode(cached);
+        let resolved = u8_to_mode(cached);
+        store_thread_local_mode_cache(resolved);
+        maybe_log_mode_switch_attempt(resolved);
+        return resolved;
     }
 
     if cached == MODE_RESOLVING {
+        push_mode_event(
+            "warn",
+            "runtime_mode_resolution_reentrant",
+            SafetyLevel::Strict,
+            None,
+        );
         return SafetyLevel::Strict;
     }
 
@@ -174,8 +299,17 @@ pub(crate) fn mode() -> SafetyLevel {
     {
         let v = MODE_STATE.load(AtomicOrdering::Relaxed);
         return if v != MODE_UNRESOLVED && v != MODE_RESOLVING {
-            u8_to_mode(v)
+            let resolved = u8_to_mode(v);
+            store_thread_local_mode_cache(resolved);
+            maybe_log_mode_switch_attempt(resolved);
+            resolved
         } else {
+            push_mode_event(
+                "warn",
+                "runtime_mode_resolution_race",
+                SafetyLevel::Strict,
+                None,
+            );
             SafetyLevel::Strict
         };
     }
@@ -183,14 +317,29 @@ pub(crate) fn mode() -> SafetyLevel {
     match parse_mode_from_environ() {
         Ok(Some(level)) => {
             MODE_STATE.store(mode_to_u8(level), AtomicOrdering::Release);
+            store_thread_local_mode_cache(level);
+            push_mode_event("info", "runtime_mode_selected_startup", level, Some(level));
             level
         }
         Ok(None) => {
             MODE_STATE.store(MODE_STRICT, AtomicOrdering::Release);
+            store_thread_local_mode_cache(SafetyLevel::Strict);
+            push_mode_event(
+                "info",
+                "runtime_mode_selected_startup_default",
+                SafetyLevel::Strict,
+                None,
+            );
             SafetyLevel::Strict
         }
         Err(_) => {
             MODE_STATE.store(MODE_UNRESOLVED, AtomicOrdering::Release);
+            push_mode_event(
+                "error",
+                "runtime_mode_resolution_failed",
+                SafetyLevel::Strict,
+                None,
+            );
             SafetyLevel::Strict
         }
     }
@@ -256,6 +405,7 @@ impl DecisionExplainability {
 }
 
 thread_local! {
+    static MODE_THREAD_LOCAL_CACHE: Cell<u8> = const { Cell::new(MODE_UNRESOLVED) };
     static TRACE_COUNTER: Cell<u64> = const { Cell::new(0) };
     static DECISION_COUNTER: Cell<u64> = const { Cell::new(0) };
     static TRACE_CONTEXT: Cell<Option<TraceContext>> = const { Cell::new(None) };
@@ -632,6 +782,100 @@ fn kernel() -> Option<&'static RuntimeMathKernel> {
     Some(unsafe { &*ptr })
 }
 
+#[inline]
+fn kernel_with_retry(spins: usize) -> Option<&'static RuntimeMathKernel> {
+    for _ in 0..spins {
+        if let Some(k) = kernel() {
+            return Some(k);
+        }
+        if KERNEL_STATE.load(AtomicOrdering::Acquire) == STATE_BROKEN {
+            return None;
+        }
+        std::hint::spin_loop();
+        std::thread::yield_now();
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    kernel()
+}
+
+#[must_use]
+pub(crate) fn runtime_kernel_snapshot(mode: SafetyLevel) -> Option<RuntimeKernelSnapshot> {
+    let Some(_reentry_guard) = enter_policy_reentry_guard() else {
+        return None;
+    };
+    ensure_minimal_panic_hook();
+    let Some(k) = kernel_with_retry(KERNEL_EXPORT_RETRY_ATTEMPTS) else {
+        return None;
+    };
+    match panic::catch_unwind(AssertUnwindSafe(|| k.snapshot(mode))) {
+        Ok(snapshot) => Some(snapshot),
+        Err(_) => {
+            mark_kernel_broken();
+            None
+        }
+    }
+}
+
+#[must_use]
+pub(crate) fn runtime_evidence_contract_snapshot() -> Option<RuntimeEvidenceContractSnapshot> {
+    let Some(_reentry_guard) = enter_policy_reentry_guard() else {
+        return None;
+    };
+    ensure_minimal_panic_hook();
+    let Some(k) = kernel_with_retry(KERNEL_EXPORT_RETRY_ATTEMPTS) else {
+        return None;
+    };
+    match panic::catch_unwind(AssertUnwindSafe(|| k.evidence_contract_snapshot())) {
+        Ok(snapshot) => Some(snapshot),
+        Err(_) => {
+            mark_kernel_broken();
+            None
+        }
+    }
+}
+
+#[must_use]
+pub(crate) fn export_runtime_decision_cards_json() -> Option<String> {
+    let Some(_reentry_guard) = enter_policy_reentry_guard() else {
+        return None;
+    };
+    ensure_minimal_panic_hook();
+    let Some(k) = kernel_with_retry(KERNEL_EXPORT_RETRY_ATTEMPTS) else {
+        return None;
+    };
+    match panic::catch_unwind(AssertUnwindSafe(|| k.export_decision_cards_json())) {
+        Ok(export) => Some(export),
+        Err(_) => {
+            mark_kernel_broken();
+            None
+        }
+    }
+}
+
+#[must_use]
+pub(crate) fn export_runtime_math_log_jsonl(
+    mode: SafetyLevel,
+    bead_id: &str,
+    run_id: &str,
+) -> Option<String> {
+    let Some(_reentry_guard) = enter_policy_reentry_guard() else {
+        return None;
+    };
+    ensure_minimal_panic_hook();
+    let Some(k) = kernel_with_retry(KERNEL_EXPORT_RETRY_ATTEMPTS) else {
+        return None;
+    };
+    match panic::catch_unwind(AssertUnwindSafe(|| {
+        k.export_runtime_math_log_jsonl(mode, bead_id, run_id)
+    })) {
+        Ok(export) => Some(export),
+        Err(_) => {
+            mark_kernel_broken();
+            None
+        }
+    }
+}
+
 /// Default passthrough decision used during kernel initialization (reentrant guard).
 fn passthrough_decision() -> RuntimeDecision {
     RuntimeDecision {
@@ -859,6 +1103,21 @@ mod tests {
     use std::ffi::OsString;
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
+    struct ModeSwitchCounterGuard {
+        previous: u64,
+    }
+
+    impl Drop for ModeSwitchCounterGuard {
+        fn drop(&mut self) {
+            MODE_SWITCH_CHECK_COUNTER.store(self.previous, AtomicOrdering::SeqCst);
+        }
+    }
+
+    fn set_mode_switch_counter_for_tests(value: u64) -> ModeSwitchCounterGuard {
+        let previous = MODE_SWITCH_CHECK_COUNTER.swap(value, AtomicOrdering::SeqCst);
+        ModeSwitchCounterGuard { previous }
+    }
+
     fn reset_cohomology_stage_hashes_for_tests() {
         for slot in &COHOMOLOGY_STAGE_HASHES {
             slot.store(0, AtomicOrdering::Relaxed);
@@ -867,17 +1126,29 @@ mod tests {
 
     struct ModeStateGuard {
         previous: u8,
+        previous_tls: u8,
     }
 
     impl Drop for ModeStateGuard {
         fn drop(&mut self) {
             MODE_STATE.store(self.previous, AtomicOrdering::SeqCst);
+            let _ = MODE_THREAD_LOCAL_CACHE.try_with(|cache| cache.set(self.previous_tls));
         }
     }
 
     fn set_mode_state_for_tests(state: u8) -> ModeStateGuard {
+        let previous_tls = MODE_THREAD_LOCAL_CACHE
+            .try_with(|cache| {
+                let previous = cache.get();
+                cache.set(MODE_UNRESOLVED);
+                previous
+            })
+            .unwrap_or(MODE_UNRESOLVED);
         let previous = MODE_STATE.swap(state, AtomicOrdering::SeqCst);
-        ModeStateGuard { previous }
+        ModeStateGuard {
+            previous,
+            previous_tls,
+        }
     }
 
     struct EnvVarGuard {
@@ -960,6 +1231,7 @@ mod tests {
 
         assert_eq!(mode(), SafetyLevel::Hardened);
         MODE_STATE.store(MODE_UNRESOLVED, AtomicOrdering::SeqCst);
+        clear_thread_local_mode_cache();
         // SAFETY: test-only env mutation is serialized by `env_lock`.
         unsafe {
             std::env::set_var("FRANKENLIBC_MODE", "strict");
@@ -969,6 +1241,62 @@ mod tests {
             SafetyLevel::Strict,
             "resetting cache should force environment re-parse"
         );
+    }
+
+    #[test]
+    fn mode_populates_thread_local_cache_after_resolution() {
+        let _lock = env_lock();
+        let _env = EnvVarGuard::set(Some("hardened"));
+        let _state = set_mode_state_for_tests(MODE_UNRESOLVED);
+
+        assert_eq!(mode(), SafetyLevel::Hardened);
+
+        let cached = MODE_THREAD_LOCAL_CACHE
+            .try_with(Cell::get)
+            .unwrap_or(MODE_UNRESOLVED);
+        assert_eq!(
+            cached, MODE_HARDENED,
+            "resolved mode should be cached in thread-local state"
+        );
+    }
+
+    #[test]
+    fn mode_logging_captures_startup_selection_and_switch_attempt() {
+        let _lock = env_lock();
+        clear_mode_event_log();
+        let _env = EnvVarGuard::set(Some("hardened"));
+        let _state = set_mode_state_for_tests(MODE_UNRESOLVED);
+
+        assert_eq!(mode(), SafetyLevel::Hardened);
+        // SAFETY: test-only env mutation is serialized by `env_lock`.
+        unsafe {
+            std::env::set_var("FRANKENLIBC_MODE", "strict");
+        }
+
+        let _counter =
+            set_mode_switch_counter_for_tests(MODE_SWITCH_CHECK_STRIDE.saturating_sub(1));
+        assert_eq!(mode(), SafetyLevel::Hardened);
+
+        let jsonl = export_mode_event_log_jsonl();
+        assert!(
+            jsonl.contains("\"event\":\"runtime_mode_selected_startup\""),
+            "mode startup selection must be logged"
+        );
+        assert!(
+            jsonl.contains("\"event\":\"runtime_mode_switch_attempt\""),
+            "mode switch attempts after startup must be logged"
+        );
+
+        for line in jsonl.lines().filter(|line| !line.trim().is_empty()) {
+            assert!(
+                line.contains("\"trace_id\""),
+                "mode log row must include trace_id"
+            );
+            assert!(
+                line.contains("\"decision_id\""),
+                "mode log row must include decision_id"
+            );
+        }
     }
 
     #[test]
@@ -1264,5 +1592,43 @@ mod tests {
         );
         assert!(!ok);
         assert_eq!(kernel.snapshot(SafetyLevel::Hardened).consistency_faults, 1);
+    }
+
+    #[test]
+    fn runtime_kernel_snapshot_wrapper_exposes_live_decision_state() {
+        let (_, decision) = decide(ApiFamily::Allocator, 0xfeed_cafe, 96, true, false, 7);
+        observe(ApiFamily::Allocator, decision.profile, 12, false);
+
+        let snapshot = runtime_kernel_snapshot(mode())
+            .expect("runtime kernel snapshot should be available after decide/observe");
+        assert!(snapshot.schema_version > 0);
+        assert!(snapshot.decisions >= 1);
+    }
+
+    #[test]
+    fn runtime_evidence_contract_wrapper_and_cards_export_are_available() {
+        let (_, decision) = decide(ApiFamily::StringMemory, 0xabc0, 32, false, false, 1);
+        observe(ApiFamily::StringMemory, decision.profile, 9, false);
+
+        let evidence = runtime_evidence_contract_snapshot()
+            .expect("evidence contract snapshot should be available");
+        assert!(evidence.evidence_seqno > 0);
+
+        let cards =
+            export_runtime_decision_cards_json().expect("decision-card export should be available");
+        assert!(cards.contains("\"schema\":\"decision_cards.v1\""));
+        assert!(cards.contains("\"count\":"));
+    }
+
+    #[test]
+    fn runtime_math_log_wrapper_includes_required_traceability_fields() {
+        let (_, decision) = decide(ApiFamily::Resolver, 0x4242, 128, false, false, 3);
+        observe(ApiFamily::Resolver, decision.profile, 15, false);
+
+        let jsonl = export_runtime_math_log_jsonl(mode(), "bd-5vr.1", "runtime-policy-wrapper")
+            .expect("runtime-math jsonl export should be available");
+        assert!(jsonl.contains("\"event\":\"runtime_decision\""));
+        assert!(jsonl.contains("\"bead_id\":\"bd-5vr.1\""));
+        assert!(jsonl.contains("\"scenario_id\":\"runtime-policy-wrapper\""));
     }
 }

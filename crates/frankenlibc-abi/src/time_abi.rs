@@ -473,19 +473,62 @@ pub unsafe extern "C" fn ctime(timer: *const i64) -> *mut std::ffi::c_char {
 }
 
 // ---------------------------------------------------------------------------
-// strptime — GlibcCallThrough (complex format parser, kept for now)
+// strptime — native implementation
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" {
-    #[link_name = "strptime"]
-    fn libc_strptime(
-        s: *const std::ffi::c_char,
-        fmt: *const std::ffi::c_char,
-        tm: *mut libc::tm,
-    ) -> *mut std::ffi::c_char;
+/// Parse at most 2 decimal digits from `input[pos..]`, returning (value, new_pos).
+/// Returns `None` if no digit is found at `pos`.
+unsafe fn parse_digits(input: *const u8, pos: usize, max_digits: usize) -> Option<(i32, usize)> {
+    let mut val: i32 = 0;
+    let mut count = 0usize;
+    let mut p = pos;
+    while count < max_digits {
+        let ch = unsafe { *input.add(p) };
+        if ch.is_ascii_digit() {
+            val = val * 10 + (ch - b'0') as i32;
+            p += 1;
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    if count == 0 { None } else { Some((val, p)) }
 }
 
+/// Skip leading ASCII whitespace from `input[pos..]`.
+unsafe fn skip_ws(input: *const u8, mut pos: usize) -> usize {
+    while unsafe { *input.add(pos) }.is_ascii_whitespace() {
+        pos += 1;
+    }
+    pos
+}
+
+/// Match a case-insensitive prefix from `input[pos..]` against `name`.
+/// Returns new position after the match, or `None` if no match.
+unsafe fn match_name(input: *const u8, pos: usize, name: &[u8]) -> Option<usize> {
+    for (i, &expected) in name.iter().enumerate() {
+        let ch = unsafe { *input.add(pos + i) };
+        if ch.to_ascii_lowercase() != expected.to_ascii_lowercase() {
+            return None;
+        }
+    }
+    Some(pos + name.len())
+}
+
+static ABBR_MONTHS: [&[u8]; 12] = [
+    b"jan", b"feb", b"mar", b"apr", b"may", b"jun", b"jul", b"aug", b"sep", b"oct", b"nov", b"dec",
+];
+
+static ABBR_DAYS: [&[u8]; 7] = [b"sun", b"mon", b"tue", b"wed", b"thu", b"fri", b"sat"];
+
 /// POSIX `strptime` — parse date/time string into broken-down time.
+///
+/// Supports format specifiers: `%Y`, `%m`, `%d`, `%H`, `%M`, `%S`,
+/// `%j`, `%b`/`%B`/`%h` (month name), `%a`/`%A` (weekday name),
+/// `%n`/`%t` (whitespace), `%%` (literal `%`), `%C` (century),
+/// `%y` (2-digit year), `%I` (12-hour), `%p` (AM/PM), `%e` (day with
+/// leading space), `%D` (`%m/%d/%y`), `%T` (`%H:%M:%S`),
+/// `%R` (`%H:%M`), `%F` (`%Y-%m-%d`).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn strptime(
     s: *const std::ffi::c_char,
@@ -495,7 +538,277 @@ pub unsafe extern "C" fn strptime(
     if s.is_null() || format.is_null() || tm.is_null() {
         return std::ptr::null_mut();
     }
-    unsafe { libc_strptime(s, format, tm) }
+
+    let input = s as *const u8;
+    let fmt = format as *const u8;
+    let mut si = 0usize; // position in input
+    let mut fi = 0usize; // position in format
+    let mut century: Option<i32> = None;
+    let mut is_pm: Option<bool> = None;
+
+    loop {
+        let fc = unsafe { *fmt.add(fi) };
+        if fc == 0 {
+            break; // end of format
+        }
+
+        if fc == b'%' {
+            fi += 1;
+            let spec = unsafe { *fmt.add(fi) };
+            if spec == 0 {
+                return std::ptr::null_mut(); // trailing %
+            }
+            fi += 1;
+
+            match spec {
+                b'Y' => {
+                    // 4-digit year
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 4) } {
+                        unsafe { (*tm).tm_year = val - 1900 };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'C' => {
+                    // Century (first 2 digits of year)
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        century = Some(val);
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'y' => {
+                    // 2-digit year within century
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_year = val + if val < 69 { 100 } else { 0 } };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'm' => {
+                    // Month [01,12]
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_mon = val - 1 };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'd' | b'e' => {
+                    // Day of month [01,31] (%e allows leading space)
+                    si = unsafe { skip_ws(input, si) };
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_mday = val };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'H' => {
+                    // Hour (24-hour) [00,23]
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_hour = val };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'I' => {
+                    // Hour (12-hour) [01,12]
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_hour = val % 12 };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'p' => {
+                    // AM/PM
+                    if let Some(new_si) = unsafe { match_name(input, si, b"am") } {
+                        is_pm = Some(false);
+                        si = new_si;
+                    } else if let Some(new_si) = unsafe { match_name(input, si, b"pm") } {
+                        is_pm = Some(true);
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'M' => {
+                    // Minute [00,59]
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_min = val };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'S' => {
+                    // Second [00,60] (60 for leap second)
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 2) } {
+                        unsafe { (*tm).tm_sec = val };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'j' => {
+                    // Day of year [001,366]
+                    if let Some((val, new_si)) = unsafe { parse_digits(input, si, 3) } {
+                        unsafe { (*tm).tm_yday = val - 1 };
+                        si = new_si;
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'b' | b'B' | b'h' => {
+                    // Abbreviated or full month name
+                    let mut found = false;
+                    for (idx, name) in ABBR_MONTHS.iter().enumerate() {
+                        if let Some(new_si) = unsafe { match_name(input, si, name) } {
+                            unsafe { (*tm).tm_mon = idx as i32 };
+                            si = new_si;
+                            // Skip remaining alphabetic chars (for full month names)
+                            while unsafe { *input.add(si) }.is_ascii_alphabetic() {
+                                si += 1;
+                            }
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'a' | b'A' => {
+                    // Abbreviated or full weekday name
+                    let mut found = false;
+                    for (idx, name) in ABBR_DAYS.iter().enumerate() {
+                        if let Some(new_si) = unsafe { match_name(input, si, name) } {
+                            unsafe { (*tm).tm_wday = idx as i32 };
+                            si = new_si;
+                            while unsafe { *input.add(si) }.is_ascii_alphabetic() {
+                                si += 1;
+                            }
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        return std::ptr::null_mut();
+                    }
+                }
+                b'n' | b't' => {
+                    // Any whitespace
+                    si = unsafe { skip_ws(input, si) };
+                }
+                b'%' => {
+                    // Literal %
+                    if unsafe { *input.add(si) } != b'%' {
+                        return std::ptr::null_mut();
+                    }
+                    si += 1;
+                }
+                // Composite specifiers
+                b'D' => {
+                    // %m/%d/%y
+                    let result = unsafe {
+                        strptime(
+                            input.add(si) as *const std::ffi::c_char,
+                            b"%m/%d/%y\0".as_ptr() as *const std::ffi::c_char,
+                            tm,
+                        )
+                    };
+                    if result.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    si += unsafe { result.offset_from(input.add(si) as *const std::ffi::c_char) }
+                        as usize;
+                }
+                b'T' => {
+                    // %H:%M:%S
+                    let result = unsafe {
+                        strptime(
+                            input.add(si) as *const std::ffi::c_char,
+                            b"%H:%M:%S\0".as_ptr() as *const std::ffi::c_char,
+                            tm,
+                        )
+                    };
+                    if result.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    si += unsafe { result.offset_from(input.add(si) as *const std::ffi::c_char) }
+                        as usize;
+                }
+                b'R' => {
+                    // %H:%M
+                    let result = unsafe {
+                        strptime(
+                            input.add(si) as *const std::ffi::c_char,
+                            b"%H:%M\0".as_ptr() as *const std::ffi::c_char,
+                            tm,
+                        )
+                    };
+                    if result.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    si += unsafe { result.offset_from(input.add(si) as *const std::ffi::c_char) }
+                        as usize;
+                }
+                b'F' => {
+                    // %Y-%m-%d
+                    let result = unsafe {
+                        strptime(
+                            input.add(si) as *const std::ffi::c_char,
+                            b"%Y-%m-%d\0".as_ptr() as *const std::ffi::c_char,
+                            tm,
+                        )
+                    };
+                    if result.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    si += unsafe { result.offset_from(input.add(si) as *const std::ffi::c_char) }
+                        as usize;
+                }
+                _ => {
+                    // Unknown specifier — fail
+                    return std::ptr::null_mut();
+                }
+            }
+        } else if fc.is_ascii_whitespace() {
+            // Format whitespace matches any amount of input whitespace
+            fi += 1;
+            si = unsafe { skip_ws(input, si) };
+        } else {
+            // Literal character match
+            if unsafe { *input.add(si) } != fc {
+                return std::ptr::null_mut();
+            }
+            fi += 1;
+            si += 1;
+        }
+    }
+
+    // Post-processing: apply century override
+    if let Some(c) = century {
+        let year_in_century = unsafe { (*tm).tm_year + 1900 } % 100;
+        unsafe { (*tm).tm_year = c * 100 + year_in_century - 1900 };
+    }
+
+    // Post-processing: apply AM/PM
+    if let Some(pm) = is_pm {
+        if pm {
+            let h = unsafe { (*tm).tm_hour };
+            if h < 12 {
+                unsafe { (*tm).tm_hour = h + 12 };
+            }
+        }
+    }
+
+    unsafe { input.add(si) as *mut std::ffi::c_char }
 }
 
 // ---------------------------------------------------------------------------
@@ -533,3 +846,6 @@ pub unsafe extern "C" fn clock_settime(
     }
     rc
 }
+
+// Tests for time_abi are in crates/frankenlibc-abi/tests/time_abi_test.rs
+// (time_abi module is #[cfg(not(test))] in lib.rs, so inline tests cannot run)

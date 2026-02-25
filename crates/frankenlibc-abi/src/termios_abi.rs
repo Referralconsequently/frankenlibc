@@ -282,10 +282,12 @@ pub unsafe extern "C" fn tcsendbreak(fd: c_int, duration: c_int) -> c_int {
     } else {
         libc::TCSBRK
     };
-    let arg = if duration > 0 { duration as libc::c_long as usize } else { 0 };
-    let rc = match unsafe {
-        syscall::sys_ioctl(fd, request as usize, arg)
-    } {
+    let arg = if duration > 0 {
+        duration as libc::c_long as usize
+    } else {
+        0
+    };
+    let rc = match unsafe { syscall::sys_ioctl(fd, request as usize, arg) } {
         Ok(_) => 0,
         Err(e) => {
             unsafe { set_abi_errno(e) };

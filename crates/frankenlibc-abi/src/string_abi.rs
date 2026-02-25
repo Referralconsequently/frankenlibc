@@ -9,6 +9,7 @@ use std::cell::Cell;
 use std::ffi::{c_char, c_int, c_void};
 
 use frankenlibc_membrane::check_oracle::CheckStage;
+use frankenlibc_membrane::config::SafetyLevel;
 use frankenlibc_membrane::heal::{HealingAction, global_healing_policy};
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
@@ -55,16 +56,25 @@ unsafe fn raw_memcpy_bytes(dst: *mut u8, src: *const u8, n: usize) {
     use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
     static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
     static RESOLVING: AtomicBool = AtomicBool::new(false);
-    
+
     let mut ptr = PTR.load(Ordering::Relaxed);
     if ptr.is_null() {
         if !RESOLVING.swap(true, Ordering::SeqCst) {
-            ptr = crate::dlfcn_abi::dlvsym_next(b"memcpy\0".as_ptr().cast(), b"GLIBC_2.14\0".as_ptr().cast());
+            ptr = crate::dlfcn_abi::dlvsym_next(
+                b"memcpy\0".as_ptr().cast(),
+                b"GLIBC_2.14\0".as_ptr().cast(),
+            );
             if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(b"memcpy\0".as_ptr().cast(), b"GLIBC_2.2.5\0".as_ptr().cast());
+                ptr = crate::dlfcn_abi::dlvsym_next(
+                    b"memcpy\0".as_ptr().cast(),
+                    b"GLIBC_2.2.5\0".as_ptr().cast(),
+                );
             }
             if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(b"memcpy\0".as_ptr().cast(), b"GLIBC_2.17\0".as_ptr().cast());
+                ptr = crate::dlfcn_abi::dlvsym_next(
+                    b"memcpy\0".as_ptr().cast(),
+                    b"GLIBC_2.17\0".as_ptr().cast(),
+                );
             }
             if !ptr.is_null() {
                 PTR.store(ptr, Ordering::Relaxed);
@@ -72,9 +82,10 @@ unsafe fn raw_memcpy_bytes(dst: *mut u8, src: *const u8, n: usize) {
             RESOLVING.store(false, Ordering::SeqCst);
         }
     }
-    
+
     if !ptr.is_null() {
-        let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void = std::mem::transmute(ptr);
+        let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void =
+            std::mem::transmute(ptr);
         f(dst as *mut c_void, src as *const c_void, n);
         return;
     }
@@ -95,16 +106,25 @@ unsafe fn raw_memmove_bytes(dst: *mut u8, src: *const u8, n: usize) {
     use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
     static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
     static RESOLVING: AtomicBool = AtomicBool::new(false);
-    
+
     let mut ptr = PTR.load(Ordering::Relaxed);
     if ptr.is_null() {
         if !RESOLVING.swap(true, Ordering::SeqCst) {
-            ptr = crate::dlfcn_abi::dlvsym_next(b"memmove\0".as_ptr().cast(), b"GLIBC_2.2.5\0".as_ptr().cast());
+            ptr = crate::dlfcn_abi::dlvsym_next(
+                b"memmove\0".as_ptr().cast(),
+                b"GLIBC_2.2.5\0".as_ptr().cast(),
+            );
             if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(b"memmove\0".as_ptr().cast(), b"GLIBC_2.14\0".as_ptr().cast());
+                ptr = crate::dlfcn_abi::dlvsym_next(
+                    b"memmove\0".as_ptr().cast(),
+                    b"GLIBC_2.14\0".as_ptr().cast(),
+                );
             }
             if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(b"memmove\0".as_ptr().cast(), b"GLIBC_2.17\0".as_ptr().cast());
+                ptr = crate::dlfcn_abi::dlvsym_next(
+                    b"memmove\0".as_ptr().cast(),
+                    b"GLIBC_2.17\0".as_ptr().cast(),
+                );
             }
             if !ptr.is_null() {
                 PTR.store(ptr, Ordering::Relaxed);
@@ -112,9 +132,10 @@ unsafe fn raw_memmove_bytes(dst: *mut u8, src: *const u8, n: usize) {
             RESOLVING.store(false, Ordering::SeqCst);
         }
     }
-    
+
     if !ptr.is_null() {
-        let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void = std::mem::transmute(ptr);
+        let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void =
+            std::mem::transmute(ptr);
         f(dst as *mut c_void, src as *const c_void, n);
         return;
     }
@@ -143,13 +164,19 @@ unsafe fn raw_memset_bytes(dst: *mut u8, value: u8, n: usize) {
     use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
     static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
     static RESOLVING: AtomicBool = AtomicBool::new(false);
-    
+
     let mut ptr = PTR.load(Ordering::Relaxed);
     if ptr.is_null() {
         if !RESOLVING.swap(true, Ordering::SeqCst) {
-            ptr = crate::dlfcn_abi::dlvsym_next(b"memset\0".as_ptr().cast(), b"GLIBC_2.2.5\0".as_ptr().cast());
+            ptr = crate::dlfcn_abi::dlvsym_next(
+                b"memset\0".as_ptr().cast(),
+                b"GLIBC_2.2.5\0".as_ptr().cast(),
+            );
             if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(b"memset\0".as_ptr().cast(), b"GLIBC_2.17\0".as_ptr().cast());
+                ptr = crate::dlfcn_abi::dlvsym_next(
+                    b"memset\0".as_ptr().cast(),
+                    b"GLIBC_2.17\0".as_ptr().cast(),
+                );
             }
             if !ptr.is_null() {
                 PTR.store(ptr, Ordering::Relaxed);
@@ -157,9 +184,10 @@ unsafe fn raw_memset_bytes(dst: *mut u8, value: u8, n: usize) {
             RESOLVING.store(false, Ordering::SeqCst);
         }
     }
-    
+
     if !ptr.is_null() {
-        let f: unsafe extern "C" fn(*mut c_void, c_int, usize) -> *mut c_void = std::mem::transmute(ptr);
+        let f: unsafe extern "C" fn(*mut c_void, c_int, usize) -> *mut c_void =
+            std::mem::transmute(ptr);
         f(dst as *mut c_void, value as c_int, n);
         return;
     }
@@ -291,13 +319,21 @@ unsafe fn scan_c_string(ptr: *const c_char, bound: Option<usize>) -> (usize, boo
 /// Caller must ensure `src` and `dst` are valid for `n` bytes and do not overlap.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
+    if n == 0 {
+        return dst;
+    }
+    if dst.is_null() || src.is_null() {
+        return std::ptr::null_mut();
+    }
+    if !matches!(runtime_policy::mode(), SafetyLevel::Off) {
+        // In strict/hardened runtime modes, use raw delegate copy to avoid
+        // recursive runtime-policy lock cycles from internal Rust/libc memcpy
+        // use under LD_PRELOAD.
+        unsafe { raw_memcpy_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
+        return dst;
+    }
+
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
-        if n == 0 {
-            return dst;
-        }
-        if dst.is_null() || src.is_null() {
-            return std::ptr::null_mut();
-        }
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memcpy semantics.
         unsafe {
             raw_memcpy_bytes(dst.cast::<u8>(), src.cast::<u8>(), n);
@@ -394,13 +430,19 @@ pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) 
 /// Caller must ensure `src` and `dst` are valid for `n` bytes.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
+    if n == 0 {
+        return dst;
+    }
+    if dst.is_null() || src.is_null() {
+        return std::ptr::null_mut();
+    }
+    if !matches!(runtime_policy::mode(), SafetyLevel::Off) {
+        // Mirror memcpy fast path for overlap-safe copies.
+        unsafe { raw_memmove_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
+        return dst;
+    }
+
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
-        if n == 0 {
-            return dst;
-        }
-        if dst.is_null() || src.is_null() {
-            return std::ptr::null_mut();
-        }
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memmove semantics.
         unsafe {
             raw_memmove_bytes(dst.cast::<u8>(), src.cast::<u8>(), n);
@@ -497,13 +539,19 @@ pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize)
 /// Caller must ensure `dst` is valid for `n` bytes.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void {
+    if n == 0 {
+        return dst;
+    }
+    if dst.is_null() {
+        return std::ptr::null_mut();
+    }
+    if !matches!(runtime_policy::mode(), SafetyLevel::Off) {
+        // Mirror memcpy/memmove fast path for memset.
+        unsafe { raw_memset_bytes(dst.cast::<u8>(), c as u8, n) };
+        return dst;
+    }
+
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
-        if n == 0 {
-            return dst;
-        }
-        if dst.is_null() {
-            return std::ptr::null_mut();
-        }
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memset semantics.
         unsafe {
             raw_memset_bytes(dst.cast::<u8>(), c as u8, n);
@@ -2729,7 +2777,11 @@ pub unsafe extern "C" fn strspn(s: *const c_char, accept: *const c_char) -> usiz
         let (s_len, s_terminated) = scan_c_string(s, s_bound);
         let (accept_len, accept_terminated) = scan_c_string(accept, accept_bound);
         let s_slice_len = if s_terminated { s_len + 1 } else { s_len };
-        let accept_slice_len = if accept_terminated { accept_len + 1 } else { accept_len };
+        let accept_slice_len = if accept_terminated {
+            accept_len + 1
+        } else {
+            accept_len
+        };
         let s_slice = std::slice::from_raw_parts(s.cast::<u8>(), s_slice_len);
         let accept_slice = std::slice::from_raw_parts(accept.cast::<u8>(), accept_slice_len);
         let r = frankenlibc_core::string::str::strspn(s_slice, accept_slice);
@@ -2810,7 +2862,11 @@ pub unsafe extern "C" fn strcspn(s: *const c_char, reject: *const c_char) -> usi
         let (s_len, s_terminated) = scan_c_string(s, s_bound);
         let (reject_len, reject_terminated) = scan_c_string(reject, reject_bound);
         let s_slice_len = if s_terminated { s_len + 1 } else { s_len };
-        let reject_slice_len = if reject_terminated { reject_len + 1 } else { reject_len };
+        let reject_slice_len = if reject_terminated {
+            reject_len + 1
+        } else {
+            reject_len
+        };
         let s_slice = std::slice::from_raw_parts(s.cast::<u8>(), s_slice_len);
         let reject_slice = std::slice::from_raw_parts(reject.cast::<u8>(), reject_slice_len);
         let r = frankenlibc_core::string::str::strcspn(s_slice, reject_slice);
@@ -2892,7 +2948,11 @@ pub unsafe extern "C" fn strpbrk(s: *const c_char, accept: *const c_char) -> *mu
         let (s_len, s_terminated) = scan_c_string(s, s_bound);
         let (accept_len, accept_terminated) = scan_c_string(accept, accept_bound);
         let s_slice_len = if s_terminated { s_len + 1 } else { s_len };
-        let accept_slice_len = if accept_terminated { accept_len + 1 } else { accept_len };
+        let accept_slice_len = if accept_terminated {
+            accept_len + 1
+        } else {
+            accept_len
+        };
         let s_slice = std::slice::from_raw_parts(s.cast::<u8>(), s_slice_len);
         let accept_slice = std::slice::from_raw_parts(accept.cast::<u8>(), accept_slice_len);
         match frankenlibc_core::string::str::strpbrk(s_slice, accept_slice) {
@@ -3378,7 +3438,11 @@ pub unsafe extern "C" fn strcasestr(haystack: *const c_char, needle: *const c_ch
         let (hay_len, hay_terminated) = scan_c_string(haystack, hay_bound);
         let (needle_len, needle_terminated) = scan_c_string(needle, needle_bound);
         let h_slice_len = if hay_terminated { hay_len + 1 } else { hay_len };
-        let n_slice_len = if needle_terminated { needle_len + 1 } else { needle_len };
+        let n_slice_len = if needle_terminated {
+            needle_len + 1
+        } else {
+            needle_len
+        };
         let h_slice = std::slice::from_raw_parts(haystack.cast::<u8>(), h_slice_len);
         let n_slice = std::slice::from_raw_parts(needle.cast::<u8>(), n_slice_len);
         match frankenlibc_core::string::str::strcasestr(h_slice, n_slice) {
@@ -4295,31 +4359,11 @@ pub unsafe extern "C" fn rindex(s: *const c_char, c: c_int) -> *mut c_char {
 }
 
 // ---------------------------------------------------------------------------
-// regex — GlibcCallThrough (POSIX regex.h)
+// regex — Implemented (native POSIX regex.h via frankenlibc-core)
 // ---------------------------------------------------------------------------
 
+// glob/globfree remain GlibcCallThrough
 unsafe extern "C" {
-    #[link_name = "regcomp"]
-    fn libc_regcomp(preg: *mut c_void, pattern: *const c_char, cflags: c_int) -> c_int;
-    #[link_name = "regexec"]
-    fn libc_regexec(
-        preg: *const c_void,
-        string: *const c_char,
-        nmatch: usize,
-        pmatch: *mut c_void,
-        eflags: c_int,
-    ) -> c_int;
-    #[link_name = "regfree"]
-    fn libc_regfree(preg: *mut c_void);
-    #[link_name = "regerror"]
-    fn libc_regerror(
-        errcode: c_int,
-        preg: *const c_void,
-        errbuf: *mut c_char,
-        errbuf_size: usize,
-    ) -> usize;
-    #[link_name = "fnmatch"]
-    fn libc_fnmatch(pattern: *const c_char, string: *const c_char, flags: c_int) -> c_int;
     #[link_name = "glob"]
     fn libc_glob(
         pattern: *const c_char,
@@ -4331,13 +4375,51 @@ unsafe extern "C" {
     fn libc_globfree(pglob: *mut c_void);
 }
 
+/// Magic value to identify our regex_t vs a glibc-compiled one.
+const FRANKEN_REGEX_MAGIC: u64 = 0x4652_4B4E_5245_4758; // "FRKNREGX"
+
+/// Layout of our regex_t: [magic: u64, ptr: *mut CompiledRegex, last_err: i32, pad...]
+/// Total must be <= 64 bytes (sizeof(regex_t) on glibc x86_64).
+
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn regcomp(
     preg: *mut c_void,
     pattern: *const c_char,
     cflags: c_int,
 ) -> c_int {
-    unsafe { libc_regcomp(preg, pattern, cflags) }
+    use frankenlibc_core::string::regex;
+
+    if preg.is_null() || pattern.is_null() {
+        return regex::REG_BADPAT;
+    }
+
+    // Read pattern as byte slice
+    let pat = unsafe { std::ffi::CStr::from_ptr(pattern) };
+    let pat_bytes = pat.to_bytes_with_nul();
+
+    match regex::regex_compile(pat_bytes, cflags) {
+        Ok(compiled) => {
+            let raw_ptr = Box::into_raw(compiled);
+            let preg_u8 = preg as *mut u8;
+            // Zero the entire 64-byte region first
+            unsafe {
+                core::ptr::write_bytes(preg_u8, 0, 64);
+            }
+            // Write magic at offset 0
+            unsafe {
+                core::ptr::write_unaligned(preg_u8 as *mut u64, FRANKEN_REGEX_MAGIC);
+            }
+            // Write CompiledRegex pointer at offset 8
+            unsafe {
+                core::ptr::write_unaligned(
+                    preg_u8.add(8) as *mut *mut regex::CompiledRegex,
+                    raw_ptr,
+                );
+            }
+            0
+        }
+        Err(code) => code,
+    }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -4348,31 +4430,341 @@ pub unsafe extern "C" fn regexec(
     pmatch: *mut c_void,
     eflags: c_int,
 ) -> c_int {
-    unsafe { libc_regexec(preg, string, nmatch, pmatch, eflags) }
+    use frankenlibc_core::string::regex;
+
+    if preg.is_null() || string.is_null() {
+        return regex::REG_NOMATCH;
+    }
+
+    let preg_u8 = preg as *const u8;
+    let magic = unsafe { core::ptr::read_unaligned(preg_u8 as *const u64) };
+    if magic != FRANKEN_REGEX_MAGIC {
+        return regex::REG_BADPAT;
+    }
+
+    let compiled_ptr =
+        unsafe { core::ptr::read_unaligned(preg_u8.add(8) as *const *const regex::CompiledRegex) };
+    if compiled_ptr.is_null() {
+        return regex::REG_BADPAT;
+    }
+
+    let compiled = unsafe { &*compiled_ptr };
+    let input = unsafe { std::ffi::CStr::from_ptr(string) };
+    let input_bytes = input.to_bytes_with_nul();
+
+    if nmatch == 0 || pmatch.is_null() {
+        // No submatch extraction needed
+        let mut dummy = [regex::RegMatch::default(); 1];
+        regex::regex_exec(compiled, input_bytes, &mut dummy, eflags)
+    } else {
+        // Map pmatch to our RegMatch slice
+        let pmatch_slice =
+            unsafe { core::slice::from_raw_parts_mut(pmatch as *mut regex::RegMatch, nmatch) };
+        regex::regex_exec(compiled, input_bytes, pmatch_slice, eflags)
+    }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn regfree(preg: *mut c_void) {
-    unsafe { libc_regfree(preg) }
+    use frankenlibc_core::string::regex;
+
+    if preg.is_null() {
+        return;
+    }
+
+    let preg_u8 = preg as *mut u8;
+    let magic = unsafe { core::ptr::read_unaligned(preg_u8 as *const u64) };
+    if magic != FRANKEN_REGEX_MAGIC {
+        return;
+    }
+
+    let compiled_ptr =
+        unsafe { core::ptr::read_unaligned(preg_u8.add(8) as *const *mut regex::CompiledRegex) };
+    if !compiled_ptr.is_null() {
+        // SAFETY: We created this via Box::into_raw in regcomp.
+        let _ = unsafe { Box::from_raw(compiled_ptr) };
+    }
+
+    // Clear the magic to prevent double-free
+    unsafe {
+        core::ptr::write_unaligned(preg_u8 as *mut u64, 0);
+    }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn regerror(
     errcode: c_int,
-    preg: *const c_void,
+    _preg: *const c_void,
     errbuf: *mut c_char,
     errbuf_size: usize,
 ) -> usize {
-    unsafe { libc_regerror(errcode, preg, errbuf, errbuf_size) }
+    use frankenlibc_core::string::regex;
+
+    let msg = regex::regex_error(errcode);
+    let msg_bytes = msg.as_bytes();
+    let needed = msg_bytes.len() + 1; // include null terminator
+
+    if !errbuf.is_null() && errbuf_size > 0 {
+        let copy_len = core::cmp::min(msg_bytes.len(), errbuf_size - 1);
+        unsafe {
+            core::ptr::copy_nonoverlapping(msg_bytes.as_ptr(), errbuf as *mut u8, copy_len);
+            *errbuf.add(copy_len) = 0; // null terminator
+        }
+    }
+
+    needed
 }
 
+// POSIX fnmatch flag constants
+const FNM_NOESCAPE: c_int = 1;
+const FNM_PATHNAME: c_int = 2;
+const FNM_PERIOD: c_int = 4;
+const FNM_CASEFOLD: c_int = 16; // GNU extension
+const FNM_NOMATCH: c_int = 1;
+
+/// Native POSIX `fnmatch` — match a filename against a shell wildcard pattern.
+///
+/// Supports `*`, `?`, `[...]` bracket expressions with ranges and negation.
+/// Flags: `FNM_NOESCAPE`, `FNM_PATHNAME`, `FNM_PERIOD`, `FNM_CASEFOLD`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn fnmatch(
     pattern: *const c_char,
     string: *const c_char,
     flags: c_int,
 ) -> c_int {
-    unsafe { libc_fnmatch(pattern, string, flags) }
+    if pattern.is_null() || string.is_null() {
+        return FNM_NOMATCH;
+    }
+
+    let pat = pattern as *const u8;
+    let str_ = string as *const u8;
+
+    if unsafe { fnmatch_impl(pat, 0, str_, 0, flags, true) } {
+        0
+    } else {
+        FNM_NOMATCH
+    }
+}
+
+/// Recursive fnmatch implementation operating on byte pointers + offsets.
+unsafe fn fnmatch_impl(
+    pat: *const u8,
+    mut pi: usize,
+    str_: *const u8,
+    mut si: usize,
+    flags: c_int,
+    at_start: bool,
+) -> bool {
+    let pathname = flags & FNM_PATHNAME != 0;
+    let period = flags & FNM_PERIOD != 0;
+    let noescape = flags & FNM_NOESCAPE != 0;
+    let casefold = flags & FNM_CASEFOLD != 0;
+
+    loop {
+        let pc = unsafe { *pat.add(pi) };
+        let sc = unsafe { *str_.add(si) };
+
+        if pc == 0 {
+            return sc == 0;
+        }
+
+        match pc {
+            b'?' => {
+                if sc == 0 {
+                    return false;
+                }
+                if pathname && sc == b'/' {
+                    return false;
+                }
+                if period
+                    && sc == b'.'
+                    && (at_start || (pathname && si > 0 && unsafe { *str_.add(si - 1) } == b'/'))
+                {
+                    return false;
+                }
+                pi += 1;
+                si += 1;
+            }
+            b'*' => {
+                // Skip consecutive *'s
+                while unsafe { *pat.add(pi) } == b'*' {
+                    pi += 1;
+                }
+
+                // Leading period check: * doesn't match leading .
+                if period
+                    && sc == b'.'
+                    && (at_start || (pathname && si > 0 && unsafe { *str_.add(si - 1) } == b'/'))
+                {
+                    return false;
+                }
+
+                // If pattern is exhausted after *, match rest of string
+                if unsafe { *pat.add(pi) } == 0 {
+                    if pathname {
+                        let mut j = si;
+                        while unsafe { *str_.add(j) } != 0 {
+                            if unsafe { *str_.add(j) } == b'/' {
+                                return false;
+                            }
+                            j += 1;
+                        }
+                    }
+                    return true;
+                }
+
+                // Try matching * against increasingly longer prefixes
+                let mut j = si;
+                loop {
+                    let ch = unsafe { *str_.add(j) };
+                    if unsafe { fnmatch_impl(pat, pi, str_, j, flags, false) } {
+                        return true;
+                    }
+                    if ch == 0 {
+                        break;
+                    }
+                    if pathname && ch == b'/' {
+                        break;
+                    }
+                    j += 1;
+                }
+                return false;
+            }
+            b'[' => {
+                if sc == 0 || (pathname && sc == b'/') {
+                    return false;
+                }
+                if period
+                    && sc == b'.'
+                    && (at_start || (pathname && si > 0 && unsafe { *str_.add(si - 1) } == b'/'))
+                {
+                    return false;
+                }
+
+                pi += 1; // skip '['
+                let negated = unsafe { *pat.add(pi) } == b'!' || unsafe { *pat.add(pi) } == b'^';
+                if negated {
+                    pi += 1;
+                }
+
+                let mut matched = false;
+                let mut first = true;
+                loop {
+                    let bc = unsafe { *pat.add(pi) };
+                    if bc == 0 {
+                        return false; // unterminated bracket
+                    }
+                    if bc == b']' && !first {
+                        break;
+                    }
+                    first = false;
+
+                    let mut low = bc;
+                    pi += 1;
+
+                    // Handle escape in bracket
+                    if low == b'\\' && !noescape {
+                        low = unsafe { *pat.add(pi) };
+                        if low == 0 {
+                            return false;
+                        }
+                        pi += 1;
+                    }
+
+                    // Check for range (a-z)
+                    if unsafe { *pat.add(pi) } == b'-'
+                        && unsafe { *pat.add(pi + 1) } != b']'
+                        && unsafe { *pat.add(pi + 1) } != 0
+                    {
+                        pi += 1; // skip '-'
+                        let mut high = unsafe { *pat.add(pi) };
+                        if high == b'\\' && !noescape {
+                            pi += 1;
+                            high = unsafe { *pat.add(pi) };
+                            if high == 0 {
+                                return false;
+                            }
+                        }
+                        pi += 1;
+
+                        let test_ch = if casefold {
+                            sc.to_ascii_lowercase()
+                        } else {
+                            sc
+                        };
+                        let low_cmp = if casefold {
+                            low.to_ascii_lowercase()
+                        } else {
+                            low
+                        };
+                        let high_cmp = if casefold {
+                            high.to_ascii_lowercase()
+                        } else {
+                            high
+                        };
+                        if test_ch >= low_cmp && test_ch <= high_cmp {
+                            matched = true;
+                        }
+                    } else {
+                        let test_ch = if casefold {
+                            sc.to_ascii_lowercase()
+                        } else {
+                            sc
+                        };
+                        let low_cmp = if casefold {
+                            low.to_ascii_lowercase()
+                        } else {
+                            low
+                        };
+                        if test_ch == low_cmp {
+                            matched = true;
+                        }
+                    }
+                }
+                pi += 1; // skip ']'
+
+                if negated {
+                    matched = !matched;
+                }
+                if !matched {
+                    return false;
+                }
+                si += 1;
+            }
+            b'\\' if !noescape => {
+                pi += 1;
+                let escaped = unsafe { *pat.add(pi) };
+                if escaped == 0 || sc == 0 {
+                    return false;
+                }
+                let eq = if casefold {
+                    escaped.to_ascii_lowercase() == sc.to_ascii_lowercase()
+                } else {
+                    escaped == sc
+                };
+                if !eq {
+                    return false;
+                }
+                pi += 1;
+                si += 1;
+            }
+            _ => {
+                if sc == 0 {
+                    return false;
+                }
+                let eq = if casefold {
+                    pc.to_ascii_lowercase() == sc.to_ascii_lowercase()
+                } else {
+                    pc == sc
+                };
+                if !eq {
+                    return false;
+                }
+                pi += 1;
+                si += 1;
+            }
+        }
+    }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

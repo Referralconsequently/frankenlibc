@@ -1150,7 +1150,7 @@ pub unsafe extern "C" fn lgammaf(x: f32) -> f32 {
     let out = unary_entry_f32(x, 10, frankenlibc_core::math::lgammaf);
     if x.is_finite() {
         if x <= 0.0 && x == x.floor() {
-            set_domain_errno();
+            set_range_errno();
         } else if out.is_infinite() {
             set_range_errno();
         }
@@ -1673,6 +1673,51 @@ mod tests {
     }
 
     #[test]
+    fn acoshf_less_than_one_sets_domain_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { acoshf(0.5f32) };
+        assert!(out.is_nan());
+        assert_eq!(abi_errno(), libc::EDOM);
+    }
+
+    #[test]
+    fn atanhf_out_of_domain_sets_domain_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { atanhf(2.0f32) };
+        assert!(out.is_nan());
+        assert_eq!(abi_errno(), libc::EDOM);
+    }
+
+    #[test]
+    fn atanhf_unity_sets_range_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { atanhf(1.0f32) };
+        assert!(out.is_infinite() && out.is_sign_positive());
+        assert_eq!(abi_errno(), libc::ERANGE);
+    }
+
+    #[test]
+    fn tanhf_finite_value_leaves_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { tanhf(2.0f32) };
+        assert!(out.is_finite());
+        assert_eq!(abi_errno(), 0);
+    }
+
+    #[test]
+    fn asinhf_finite_value_leaves_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { asinhf(-2.0f32) };
+        assert!(out.is_finite());
+        assert_eq!(abi_errno(), 0);
+    }
+
+    #[test]
     fn log_negative_sets_domain_errno() {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
@@ -1727,6 +1772,24 @@ mod tests {
     }
 
     #[test]
+    fn log1pf_less_than_negative_one_sets_domain_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { log1pf(-2.0f32) };
+        assert!(out.is_nan());
+        assert_eq!(abi_errno(), libc::EDOM);
+    }
+
+    #[test]
+    fn log1pf_negative_one_sets_range_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { log1pf(-1.0f32) };
+        assert!(out.is_infinite() && out.is_sign_negative());
+        assert_eq!(abi_errno(), libc::ERANGE);
+    }
+
+    #[test]
     fn exp_overflow_sets_range_errno() {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
@@ -1758,6 +1821,24 @@ mod tests {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
         let out = unsafe { exp2(-1075.0) };
+        assert_eq!(out, 0.0);
+        assert_eq!(abi_errno(), libc::ERANGE);
+    }
+
+    #[test]
+    fn exp2f_overflow_sets_range_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { exp2f(200.0f32) };
+        assert!(out.is_infinite());
+        assert_eq!(abi_errno(), libc::ERANGE);
+    }
+
+    #[test]
+    fn exp2f_underflow_sets_range_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { exp2f(-200.0f32) };
         assert_eq!(out, 0.0);
         assert_eq!(abi_errno(), libc::ERANGE);
     }
@@ -1863,11 +1944,30 @@ mod tests {
     }
 
     #[test]
+    fn cbrtf_negative_value_no_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { cbrtf(-8.0f32) };
+        assert_eq!(out, -2.0f32);
+        assert_eq!(abi_errno(), 0);
+    }
+
+    #[test]
     fn copysign_applies_sign_and_leaves_errno() {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
         let out = unsafe { copysign(3.0, -0.0) };
         assert_eq!(out, -3.0);
+        assert!(out.is_sign_negative());
+        assert_eq!(abi_errno(), 0);
+    }
+
+    #[test]
+    fn copysignf_applies_sign_and_leaves_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { copysignf(3.0f32, -0.0f32) };
+        assert_eq!(out, -3.0f32);
         assert!(out.is_sign_negative());
         assert_eq!(abi_errno(), 0);
     }
@@ -1887,6 +1987,15 @@ mod tests {
         // SAFETY: ABI entrypoint accepts plain f64 input.
         let out = unsafe { rint(2.0) };
         assert_eq!(out, 2.0);
+        assert_eq!(abi_errno(), 0);
+    }
+
+    #[test]
+    fn rintf_finite_value_leaves_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { rintf(2.0f32) };
+        assert_eq!(out, 2.0f32);
         assert_eq!(abi_errno(), 0);
     }
 
@@ -2000,10 +2109,37 @@ mod tests {
     }
 
     #[test]
+    fn remainderf_divide_by_zero_sets_domain_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { remainderf(1.0f32, 0.0f32) };
+        assert!(out.is_nan());
+        assert_eq!(abi_errno(), libc::EDOM);
+    }
+
+    #[test]
+    fn remainderf_infinite_dividend_sets_domain_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { remainderf(f32::INFINITY, 2.0f32) };
+        assert!(out.is_nan());
+        assert_eq!(abi_errno(), libc::EDOM);
+    }
+
+    #[test]
     fn hypot_finite_overflow_sets_range_errno() {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
         let out = unsafe { hypot(1.6e308, 1.6e308) };
+        assert!(out.is_infinite());
+        assert_eq!(abi_errno(), libc::ERANGE);
+    }
+
+    #[test]
+    fn hypotf_finite_overflow_sets_range_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { hypotf(f32::MAX, f32::MAX) };
         assert!(out.is_infinite());
         assert_eq!(abi_errno(), libc::ERANGE);
     }
@@ -2027,6 +2163,15 @@ mod tests {
     }
 
     #[test]
+    fn tgammaf_negative_integer_sets_domain_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { tgammaf(-1.0f32) };
+        assert!(out.is_nan());
+        assert_eq!(abi_errno(), libc::EDOM);
+    }
+
+    #[test]
     fn lgamma_zero_sets_range_errno() {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
@@ -2040,6 +2185,15 @@ mod tests {
         set_errno_for_test(0);
         // SAFETY: ABI entrypoint accepts plain f64 input.
         let out = unsafe { lgamma(-1.0) };
+        assert!(out.is_infinite());
+        assert_eq!(abi_errno(), libc::ERANGE);
+    }
+
+    #[test]
+    fn lgammaf_negative_integer_sets_range_errno() {
+        set_errno_for_test(0);
+        // SAFETY: ABI entrypoint accepts plain f32 input.
+        let out = unsafe { lgammaf(-1.0f32) };
         assert!(out.is_infinite());
         assert_eq!(abi_errno(), libc::ERANGE);
     }
@@ -2254,11 +2408,11 @@ mod tests {
     fn fpclassify_classifies_all_categories() {
         // SAFETY: classification functions accept any float.
         unsafe {
-            assert_eq!(__fpclassify(1.0), 4);       // FP_NORMAL
-            assert_eq!(__fpclassify(0.0), 2);       // FP_ZERO
-            assert_eq!(__fpclassify(f64::NAN), 0);  // FP_NAN
+            assert_eq!(__fpclassify(1.0), 4); // FP_NORMAL
+            assert_eq!(__fpclassify(0.0), 2); // FP_ZERO
+            assert_eq!(__fpclassify(f64::NAN), 0); // FP_NAN
             assert_eq!(__fpclassify(f64::INFINITY), 1); // FP_INFINITE
-            assert_eq!(__fpclassify(5e-324), 3);    // FP_SUBNORMAL
+            assert_eq!(__fpclassify(5e-324), 3); // FP_SUBNORMAL
         }
     }
 
