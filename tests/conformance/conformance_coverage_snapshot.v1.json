@@ -1,40 +1,55 @@
 {
   "schema_version": "v1",
   "bead": "bd-15n.3",
-  "generated_at": "2026-02-13T18:28:51Z",
+  "generated_at": "2026-02-25T20:09:02Z",
   "summary": {
-    "total_symbols": 250,
-    "symbols_with_fixtures": 161,
-    "coverage_pct": 64,
-    "total_fixture_files": 48,
-    "total_fixture_cases": 470,
-    "total_families": 39
+    "total_symbols": 1184,
+    "symbols_with_fixtures": 194,
+    "coverage_pct": 16,
+    "total_fixture_files": 50,
+    "total_fixture_cases": 514,
+    "total_families": 41
   },
   "module_coverage": {
+    "c11threads_abi": {
+      "total": 25,
+      "covered": 0,
+      "pct": 0
+    },
     "ctype_abi": {
-      "total": 11,
+      "total": 30,
       "covered": 11,
-      "pct": 100
+      "pct": 37
     },
     "dirent_abi": {
-      "total": 3,
+      "total": 12,
       "covered": 3,
-      "pct": 100
+      "pct": 25
     },
     "dlfcn_abi": {
-      "total": 4,
-      "covered": 4,
-      "pct": 100
+      "total": 6,
+      "covered": 5,
+      "pct": 83
+    },
+    "err_abi": {
+      "total": 8,
+      "covered": 0,
+      "pct": 0
     },
     "errno_abi": {
       "total": 1,
       "covered": 1,
       "pct": 100
     },
+    "fenv_abi": {
+      "total": 11,
+      "covered": 0,
+      "pct": 0
+    },
     "grp_abi": {
-      "total": 7,
+      "total": 8,
       "covered": 3,
-      "pct": 43
+      "pct": 38
     },
     "iconv_abi": {
       "total": 3,
@@ -42,74 +57,79 @@
       "pct": 100
     },
     "inet_abi": {
-      "total": 7,
+      "total": 17,
       "covered": 7,
-      "pct": 100
+      "pct": 41
     },
     "io_abi": {
-      "total": 4,
+      "total": 21,
       "covered": 1,
-      "pct": 25
+      "pct": 5
     },
     "locale_abi": {
-      "total": 2,
-      "covered": 2,
-      "pct": 100
+      "total": 12,
+      "covered": 3,
+      "pct": 25
     },
     "malloc_abi": {
-      "total": 7,
+      "total": 17,
       "covered": 4,
-      "pct": 57
+      "pct": 24
     },
     "math_abi": {
-      "total": 19,
+      "total": 152,
       "covered": 19,
-      "pct": 100
+      "pct": 12
     },
     "mmap_abi": {
-      "total": 5,
+      "total": 10,
       "covered": 4,
-      "pct": 80
+      "pct": 40
     },
     "poll_abi": {
-      "total": 4,
+      "total": 15,
       "covered": 2,
-      "pct": 50
+      "pct": 13
     },
     "process_abi": {
-      "total": 6,
-      "covered": 3,
-      "pct": 50
+      "total": 22,
+      "covered": 4,
+      "pct": 18
     },
     "pthread_abi": {
-      "total": 20,
-      "covered": 15,
-      "pct": 75
+      "total": 59,
+      "covered": 20,
+      "pct": 34
     },
     "pwd_abi": {
-      "total": 7,
+      "total": 8,
       "covered": 3,
-      "pct": 43
+      "pct": 38
     },
     "resolv_abi": {
-      "total": 4,
-      "covered": 1,
-      "pct": 25
+      "total": 10,
+      "covered": 2,
+      "pct": 20
     },
     "resource_abi": {
       "total": 2,
       "covered": 1,
       "pct": 50
     },
-    "signal_abi": {
-      "total": 4,
+    "setjmp_abi": {
+      "total": 6,
       "covered": 3,
-      "pct": 75
+      "pct": 50
+    },
+    "signal_abi": {
+      "total": 17,
+      "covered": 3,
+      "pct": 18
     },
     "socket_abi": {
-      "total": 14,
+      "total": 18,
       "covered": 5,
-      "pct": 36
+      "pct": 28
     },
     "startup_abi": {
       "total": 3,
@@ -117,19 +137,19 @@
       "pct": 100
     },
     "stdio_abi": {
-      "total": 30,
-      "covered": 4,
-      "pct": 13
+      "total": 77,
+      "covered": 9,
+      "pct": 12
     },
     "stdlib_abi": {
-      "total": 11,
-      "covered": 6,
-      "pct": 55
+      "total": 65,
+      "covered": 7,
+      "pct": 11
     },
     "string_abi": {
-      "total": 17,
-      "covered": 17,
-      "pct": 100
+      "total": 58,
+      "covered": 21,
+      "pct": 36
     },
     "termios_abi": {
       "total": 10,
@@ -137,19 +157,24 @@
       "pct": 50
     },
     "time_abi": {
-      "total": 4,
+      "total": 23,
       "covered": 4,
-      "pct": 100
+      "pct": 17
     },
     "unistd_abi": {
-      "total": 27,
-      "covered": 13,
-      "pct": 48
+      "total": 348,
+      "covered": 24,
+      "pct": 7
+    },
+    "unknown": {
+      "total": 41,
+      "covered": 0,
+      "pct": 0
     },
     "wchar_abi": {
-      "total": 14,
+      "total": 69,
       "covered": 14,
-      "pct": 100
+      "pct": 20
     }
   },
   "family_coverage": {
@@ -259,9 +284,10 @@
       ]
     },
     "locale": {
-      "function_count": 2,
+      "function_count": 3,
       "functions": [
         "localeconv",
+        "nl_langinfo",
         "setlocale"
       ]
     },
@@ -319,6 +345,13 @@
         "select"
       ]
     },
+    "pressure": {
+      "function_count": 2,
+      "functions": [
+        "PressureSensor::observe",
+        "SystemRegime::degradation_active"
+      ]
+    },
     "process": {
       "function_count": 4,
       "functions": [
@@ -372,13 +405,14 @@
       ]
     },
     "resolver": {
-      "function_count": 6,
+      "function_count": 7,
       "functions": [
         "DnsHeader::new_query",
         "ResolverConfig::default",
         "ResolverConfig::parse",
         "encode_domain_name",
         "getaddrinfo",
+        "gethostbyname",
         "lookup_hosts"
       ]
     },
@@ -403,6 +437,12 @@
         "_setjmp",
         "longjmp",
         "setjmp"
+      ]
+    },
+    "setjmp_nested_edges": {
+      "function_count": 1,
+      "functions": [
+        "setjmp_nested_edges"
       ]
     },
     "signal": {
@@ -440,11 +480,16 @@
       ]
     },
     "stdio": {
-      "function_count": 4,
+      "function_count": 9,
       "functions": [
         "fclose",
+        "fflush",
         "fopen",
         "fprintf",
+        "fread",
+        "fseek",
+        "ftell",
+        "fwrite",
         "snprintf"
       ]
     },
@@ -669,8 +714,8 @@
     },
     "grp_ops": {
       "file": "grp_ops.json",
-      "sha256": "55f05ee0a50d778b704dad10a1ce20c8b5d0489b7d3f2f3d2f9087533b117258",
-      "case_count": 7,
+      "sha256": "d024da84ffd3a64831aa394f12171fdb4f80f7644bc6123c893a12588f4d7f1e",
+      "case_count": 10,
       "functions": [
         "getgrgid",
         "getgrnam",
@@ -727,10 +772,11 @@
     },
     "locale_ops": {
       "file": "locale_ops.json",
-      "sha256": "bd50d1894efad5a824730bd60b1055e12a517478f09e9539ecb5409fa941697d",
-      "case_count": 6,
+      "sha256": "6c6079a7d2c8c9bb63abad1b11e942c507d262b0c306796cf023e9b04cb6cdcc",
+      "case_count": 9,
       "functions": [
         "localeconv",
+        "nl_langinfo",
         "setlocale"
       ],
       "families": [
@@ -816,6 +862,18 @@
         "poll"
       ]
     },
+    "pressure_sensing": {
+      "file": "pressure_sensing.json",
+      "sha256": "2682b7cc38cc7766b90365248250c991ad58dc066796d1408b8c4245a5332cff",
+      "case_count": 9,
+      "functions": [
+        "PressureSensor::observe",
+        "SystemRegime::degradation_active"
+      ],
+      "families": [
+        "pressure"
+      ]
+    },
     "process_ops": {
       "file": "process_ops.json",
       "sha256": "bc79f96c443c79982d5f6186a8033839d5893cd14b11adf1b98a97a5438de001",
@@ -893,8 +951,8 @@
     },
     "pwd_ops": {
       "file": "pwd_ops.json",
-      "sha256": "9534d1cb7976df7ccdf135aa8631a1281e877ad3980b719065cd5ffe92d46374",
-      "case_count": 7,
+      "sha256": "85970466e3e309e11b60b045b757e166b8baee8b9986c0b7e1a9d6488f5f6194",
+      "case_count": 10,
       "functions": [
         "getpwnam",
         "getpwuid",
@@ -920,14 +978,15 @@
     },
     "resolver": {
       "file": "resolver.json",
-      "sha256": "2f602aa67f0ff9ac5a105db276981be1ab0b33f3ab9baa2f9d1b0a6e7f58c4fe",
-      "case_count": 16,
+      "sha256": "c8dce7e2fd8f24c451bc9642fdec080f32a2de028f63597bfdd9ff389ca77e63",
+      "case_count": 23,
       "functions": [
         "DnsHeader::new_query",
         "ResolverConfig::default",
         "ResolverConfig::parse",
         "encode_domain_name",
         "getaddrinfo",
+        "gethostbyname",
         "lookup_hosts"
       ],
       "families": [
@@ -957,6 +1016,15 @@
       ],
       "families": [
         "session"
+      ]
+    },
+    "setjmp_nested_edges": {
+      "file": "setjmp_nested_edges.json",
+      "sha256": "f94c807549fa1a09b284a8488d34f7334b984446b884ae38db00ef1a2a61f3c2",
+      "case_count": 1,
+      "functions": [],
+      "families": [
+        "setjmp_nested_edges"
       ]
     },
     "setjmp_ops": {
@@ -1015,8 +1083,8 @@
     },
     "startup_ops": {
       "file": "startup_ops.json",
-      "sha256": "83a60908a531a7ea6950a0682bf888622b6abe9fca641cfbc5d7f3d9893b285c",
-      "case_count": 5,
+      "sha256": "34b8afb1bb08f6f08d2cceedfa655656cb4136afe4b2352a53cda57bfcc5b081",
+      "case_count": 16,
       "functions": [
         "__frankenlibc_startup_phase0",
         "__frankenlibc_startup_snapshot",
@@ -1028,12 +1096,17 @@
     },
     "stdio_file_ops": {
       "file": "stdio_file_ops.json",
-      "sha256": "c75ce4476ea7bf7034c48379f35bb4fdb19266236100dbd99e013a9b121b4293",
-      "case_count": 8,
+      "sha256": "825a9346a23c28573821b13f7dc4bf61e8d2635349314345684a5dac1ec8872c",
+      "case_count": 15,
       "functions": [
         "fclose",
+        "fflush",
         "fopen",
         "fprintf",
+        "fread",
+        "fseek",
+        "ftell",
+        "fwrite",
         "snprintf"
       ],
       "families": [

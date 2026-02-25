@@ -10135,9 +10135,10 @@ unsafe fn statfs_to_statvfs(sfs: *const libc::statfs, vfs: *mut libc::statvfs) {
     let fsid_ptr = &s.f_fsid as *const libc::fsid_t as *const i32;
     v.f_fsid = unsafe { *fsid_ptr } as u64;
     // f_flags not exposed in libc crate's statfs; read via byte offset
-    // kernel layout: ..., namelen(off=88), frsize(off=96), flags(off=104) — all c_long
+    // x86_64 kernel layout: type(0), bsize(8), blocks(16), bfree(24), bavail(32),
+    // files(40), ffree(48), fsid(56), namelen(64), frsize(72), flags(80), spare(88)
     let statfs_ptr = sfs as *const u8;
-    let flags_val = unsafe { *(statfs_ptr.add(104) as *const i64) };
+    let flags_val = unsafe { *(statfs_ptr.add(80) as *const i64) };
     v.f_flag = flags_val as u64;
     v.f_namemax = s.f_namelen as u64;
 }
