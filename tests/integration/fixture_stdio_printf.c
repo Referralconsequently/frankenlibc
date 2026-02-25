@@ -4,6 +4,7 @@
  */
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,30 @@ static int read_file_exact(const char *path, char *buf, size_t cap) {
     return (int)n;
 }
 
+static int call_vsnprintf(char *buf, size_t size, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rc = vsnprintf(buf, size, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+
+static int call_vsprintf(char *buf, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rc = vsprintf(buf, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+
+static int call_vdprintf(int fd, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rc = vdprintf(fd, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+
 static int test_snprintf_contracts(void) {
     char buf[5] = {0};
     int rc = snprintf(buf, sizeof(buf), "abcdef");
@@ -67,6 +92,40 @@ static int test_sprintf_contracts(void) {
     }
     if (strcmp(buf, "x=17 ok") != 0) {
         fprintf(stderr, "FAIL: sprintf output mismatch got '%s'\n", buf);
+        return 1;
+    }
+    return 0;
+}
+
+static int test_vsnprintf_contracts(void) {
+    char buf[6] = {0};
+    int rc = call_vsnprintf(buf, sizeof(buf), "v-%d-%s", 12, "xy");
+    if (rc != 7) {
+        fprintf(stderr, "FAIL: vsnprintf length expected 7 got %d\n", rc);
+        return 1;
+    }
+    if (strcmp(buf, "v-12-") != 0) {
+        fprintf(stderr, "FAIL: vsnprintf truncation mismatch got '%s'\n", buf);
+        return 1;
+    }
+
+    rc = call_vsnprintf(NULL, 0, "x=%d", 7);
+    if (rc != 3) {
+        fprintf(stderr, "FAIL: vsnprintf(NULL,0,...) expected 3 got %d\n", rc);
+        return 1;
+    }
+    return 0;
+}
+
+static int test_vsprintf_contracts(void) {
+    char buf[64] = {0};
+    int rc = call_vsprintf(buf, "vsprintf:%u:%c", 5u, 'Q');
+    if (rc != 12) {
+        fprintf(stderr, "FAIL: vsprintf length expected 12 got %d\n", rc);
+        return 1;
+    }
+    if (strcmp(buf, "vsprintf:5:Q") != 0) {
+        fprintf(stderr, "FAIL: vsprintf output mismatch got '%s'\n", buf);
         return 1;
     }
     return 0;
@@ -214,6 +273,43 @@ static int test_dprintf_contracts(void) {
     return 0;
 }
 
+static int test_vdprintf_contracts(void) {
+    char path[72];
+    if (make_temp_path(path) != 0) {
+        return 1;
+    }
+
+    int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    if (fd < 0) {
+        fprintf(stderr, "FAIL: open for vdprintf: %s\n", strerror(errno));
+        unlink(path);
+        return 1;
+    }
+
+    int rc = call_vdprintf(fd, "vdp-%u", 66u);
+    if (rc != 6) {
+        fprintf(stderr, "FAIL: vdprintf length expected 6 got %d\n", rc);
+        close(fd);
+        unlink(path);
+        return 1;
+    }
+    close(fd);
+
+    char out[32] = {0};
+    if (read_file_exact(path, out, sizeof(out)) < 0) {
+        unlink(path);
+        return 1;
+    }
+    if (strcmp(out, "vdp-66") != 0) {
+        fprintf(stderr, "FAIL: vdprintf output mismatch got '%s'\n", out);
+        unlink(path);
+        return 1;
+    }
+
+    unlink(path);
+    return 0;
+}
+
 static int test_asprintf_contracts(void) {
     char *out = NULL;
     int rc = asprintf(&out, "asprintf-%d:%s", 55, "ok");
@@ -239,15 +335,18 @@ int main(void) {
     int fails = 0;
     fails += test_snprintf_contracts();
     fails += test_sprintf_contracts();
+    fails += test_vsnprintf_contracts();
+    fails += test_vsprintf_contracts();
     fails += test_fprintf_contracts();
     fails += test_printf_redirect_contracts();
     fails += test_dprintf_contracts();
+    fails += test_vdprintf_contracts();
     fails += test_asprintf_contracts();
 
     if (fails) {
         fprintf(stderr, "fixture_stdio_printf: %d FAILED\n", fails);
         return 1;
     }
-    printf("fixture_stdio_printf: PASS (6 tests)\n");
+    printf("fixture_stdio_printf: PASS (9 tests)\n");
     return 0;
 }

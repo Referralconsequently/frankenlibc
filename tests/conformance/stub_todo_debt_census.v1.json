@@ -5,7 +5,7 @@
   "description": "Unified stub/TODO debt census combining exported taxonomy status with critical non-exported source debt and deterministic risk ranking.",
   "source": {
     "support_matrix_path": "support_matrix.json",
-    "support_matrix_sha256": "2d50a39dfd24ac4e79d5439bcd4a426ef82f5d5006f47342592ba7603aba91fe",
+    "support_matrix_sha256": "c6012e1a72f7de0c36b9b64622271359e7a8f7d3be1ca5b0b86cf7e1da1b0e81",
     "replacement_profile_path": "tests/conformance/replacement_profile.json",
     "replacement_profile_sha256": "c3e6cd96b1e6d03dbfaef86776145e4f9175abef0deccbf0c2a58ddbb1666837",
     "scan_roots": [
@@ -20,14 +20,14 @@
   },
   "exported_taxonomy_view": {
     "declared_summary": {
-      "total_exported": 929,
-      "implemented": 539,
+      "total_exported": 957,
+      "implemented": 567,
       "raw_syscall": 297,
       "glibc_call_through": 93,
       "stub": 0
     },
     "derived_summary": {
-      "Implemented": 539,
+      "Implemented": 567,
       "RawSyscall": 297,
       "GlibcCallThrough": 93,
       "Stub": 0,
@@ -37,8 +37,8 @@
       {
         "status": "Implemented",
         "declared": 0,
-        "derived": 539,
-        "delta_derived_minus_declared": 539
+        "derived": 567,
+        "delta_derived_minus_declared": 567
       },
       {
         "status": "RawSyscall",
@@ -65,8 +65,8 @@
         "delta_derived_minus_declared": 0
       }
     ],
-    "total_exported_declared": 929,
-    "total_exported_derived": 929,
+    "total_exported_declared": 957,
+    "total_exported_derived": 957,
     "stub_symbols": [],
     "non_implemented_exported_symbols": [
       {
@@ -4259,8 +4259,8 @@
       {
         "status": "Implemented",
         "declared": 0,
-        "derived": 539,
-        "delta_derived_minus_declared": 539
+        "derived": 567,
+        "delta_derived_minus_declared": 567
       },
       {
         "status": "RawSyscall",

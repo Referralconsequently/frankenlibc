@@ -10,6 +10,11 @@ cargo fmt --check
 echo "PASS"
 echo ""
 
+echo "--- separation logic annotation gate ---"
+scripts/check_separation_logic_annotations.sh --strict
+echo "PASS"
+echo ""
+
 echo "--- cargo check --workspace --all-targets ---"
 cargo check --workspace --all-targets
 echo "PASS"
@@ -252,6 +257,21 @@ if [[ "${FRANKENLIBC_EXTENDED_GATES:-0}" == "1" ]]; then
 
     echo "--- bd-13ya iconv deterministic table generation gate ---"
     scripts/check_iconv_table_generation.sh
+    echo "PASS"
+    echo ""
+
+    echo "--- unified stub/TODO debt census gate ---"
+    scripts/check_stub_todo_debt_census.sh
+    echo "PASS"
+    echo ""
+
+    echo "--- stub regression guard + waiver policy gate ---"
+    scripts/check_stub_regression_guard.sh
+    echo "PASS"
+    echo ""
+
+    echo "--- workload API wave plan + downgrade policy gate ---"
+    scripts/check_workload_api_wave_plan.sh
     echo "PASS"
     echo ""
 

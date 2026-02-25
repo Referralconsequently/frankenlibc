@@ -11,7 +11,7 @@
     },
     "support_matrix": {
       "path": "support_matrix.json",
-      "sha256": "2d50a39dfd24ac4e79d5439bcd4a426ef82f5d5006f47342592ba7603aba91fe"
+      "sha256": "c6012e1a72f7de0c36b9b64622271359e7a8f7d3be1ca5b0b86cf7e1da1b0e81"
     },
     "callthrough_census": {
       "path": "tests/conformance/callthrough_census.v1.json",
@@ -19,11 +19,11 @@
     },
     "stub_todo_debt_census": {
       "path": "tests/conformance/stub_todo_debt_census.v1.json",
-      "sha256": "5183e90d4e414fc0a0502af10a61213724ac83b948fe39c376d0c7caf462b74d"
+      "sha256": "cd751da131afc3c4de60e6a46e0f26c369be118f3e1e66cd9c124adeb740c814"
     },
     "stub_regression_waiver_policy": {
       "path": "tests/conformance/stub_regression_waiver_policy.v1.json",
-      "sha256": "c1dd6f4c248f760a09b64382f236f2763fdf79e85015ac206593ee1aeb626b09"
+      "sha256": "f8e76fcb7d1a5b1df9065b5e8e788367ef7d9a84572c244083256bce8f0afe7c"
     },
     "trace_fixtures_dir": {
       "path": "tests/conformance/fixtures",

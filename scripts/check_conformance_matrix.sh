@@ -20,6 +20,8 @@ fi
 echo "--- generating conformance matrix ---"
 cargo run -p frankenlibc-harness --bin harness -- conformance-matrix \
   --fixture "${ROOT}/tests/conformance/fixtures" \
+  --isolate \
+  --case-timeout-ms 5000 \
   --output "${CURRENT}" >/dev/null
 
 python3 - "${BASELINE}" "${CURRENT}" "${REPORT}" "${LOG}" <<'PY'

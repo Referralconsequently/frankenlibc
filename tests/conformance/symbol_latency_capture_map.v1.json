@@ -28,6 +28,141 @@
           ]
         }
       ]
+    },
+    {
+      "id": "thread_hotpath",
+      "line_prefix": "THREAD_CASE_BENCH",
+      "mode_key": "mode",
+      "bench_key": "case",
+      "percentile_keys": {
+        "p50": "p50_ns_case",
+        "p95": "p95_ns_case",
+        "p99": "p99_ns_case"
+      },
+      "bench_symbol_map": [
+        {
+          "bench": "fanout_fanin_single",
+          "symbols": [
+            "pthread_create",
+            "pthread_join"
+          ]
+        },
+        {
+          "bench": "create_join_churn",
+          "symbols": [
+            "pthread_create",
+            "pthread_join"
+          ]
+        },
+        {
+          "bench": "mixed_detach_join",
+          "symbols": [
+            "pthread_create",
+            "pthread_detach",
+            "pthread_join"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "condvar_perf",
+      "line_prefix": "CONDVAR_BENCH",
+      "mode_key": "mode",
+      "bench_key": "op",
+      "percentile_keys": {
+        "p50": "p50_ns",
+        "p95": "p95_ns",
+        "p99": "p99_ns"
+      },
+      "bench_symbol_map": [
+        {
+          "bench": "init_destroy",
+          "symbols": [
+            "pthread_cond_init",
+            "pthread_cond_destroy"
+          ]
+        },
+        {
+          "bench": "signal_no_waiters",
+          "symbols": [
+            "pthread_cond_signal"
+          ]
+        },
+        {
+          "bench": "broadcast_no_waiters",
+          "symbols": [
+            "pthread_cond_broadcast"
+          ]
+        },
+        {
+          "bench": "timedwait_past_deadline",
+          "symbols": [
+            "pthread_cond_timedwait"
+          ]
+        },
+        {
+          "bench": "wait_signal_roundtrip",
+          "symbols": [
+            "pthread_cond_wait"
+          ]
+        },
+        {
+          "bench": "broadcast_4_waiters",
+          "symbols": [
+            "pthread_cond_broadcast"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "condvar_hotpath_bench",
+      "line_prefix": "CONDVAR_BENCH",
+      "mode_key": "mode",
+      "bench_key": "bench",
+      "percentile_keys": {
+        "p50": "p50_ns_op",
+        "p95": "p95_ns_op",
+        "p99": "p99_ns_op"
+      },
+      "bench_symbol_map": [
+        {
+          "bench": "init_destroy",
+          "symbols": [
+            "pthread_cond_init",
+            "pthread_cond_destroy"
+          ]
+        },
+        {
+          "bench": "signal_no_waiters",
+          "symbols": [
+            "pthread_cond_signal"
+          ]
+        },
+        {
+          "bench": "broadcast_no_waiters",
+          "symbols": [
+            "pthread_cond_broadcast"
+          ]
+        },
+        {
+          "bench": "timedwait_past_deadline",
+          "symbols": [
+            "pthread_cond_timedwait"
+          ]
+        },
+        {
+          "bench": "wait_signal_roundtrip",
+          "symbols": [
+            "pthread_cond_wait"
+          ]
+        },
+        {
+          "bench": "broadcast_4_waiters",
+          "symbols": [
+            "pthread_cond_broadcast"
+          ]
+        }
+      ]
     }
   ]
 }
