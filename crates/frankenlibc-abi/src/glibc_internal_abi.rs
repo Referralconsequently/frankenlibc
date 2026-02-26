@@ -83,8 +83,7 @@ fn native_ldexp(x: f64, exp: c_int) -> f64 {
 // ==========================================================================
 // __pthread_* internal aliases (42 symbols)
 // ==========================================================================
-// __pthread_cleanup_routine: glibc internal cleanup handler — must delegate
-dlsym_passthrough!(fn __pthread_cleanup_routine(arg: *mut c_void));
+// __pthread_cleanup_routine: now exported from pthread_abi.rs (no-op stub)
 // __pthread_getspecific → pthread_getspecific
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_getspecific(key: c_uint) -> *mut c_void {
@@ -150,9 +149,7 @@ pub unsafe extern "C" fn __pthread_once(control: *mut c_void, init_routine: *mut
     };
     super::pthread_abi::pthread_once(control.cast(), routine)
 }
-// __pthread_register_cancel/defer: glibc internal cancellation — must delegate
-dlsym_passthrough!(fn __pthread_register_cancel(buf: *mut c_void));
-dlsym_passthrough!(fn __pthread_register_cancel_defer(buf: *mut c_void));
+// __pthread_register_cancel/defer: now exported from pthread_abi.rs (no-op stubs)
 // __pthread_rwlock_destroy → pthread_rwlock_destroy
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_rwlock_destroy(rwlock: *mut c_void) -> c_int {
@@ -193,10 +190,7 @@ pub unsafe extern "C" fn __pthread_rwlock_wrlock(rwlock: *mut c_void) -> c_int {
 pub unsafe extern "C" fn __pthread_setspecific(key: c_uint, val: *const c_void) -> c_int {
     super::pthread_abi::pthread_setspecific(key, val)
 }
-// __pthread_unregister_cancel/restore, __pthread_unwind_next: glibc internal — must delegate
-dlsym_passthrough!(fn __pthread_unregister_cancel(buf: *mut c_void));
-dlsym_passthrough!(fn __pthread_unregister_cancel_restore(buf: *mut c_void));
-dlsym_passthrough!(fn __pthread_unwind_next(buf: *mut c_void));
+// __pthread_unregister_cancel/restore, __pthread_unwind_next: now in pthread_abi.rs (no-op/abort stubs)
 
 // Pthread cleanup push/pop (4 symbols)
 dlsym_passthrough!(fn _pthread_cleanup_push(buf: *mut c_void, routine: *mut c_void, arg: *mut c_void));
@@ -2333,7 +2327,7 @@ pub unsafe extern "C" fn __readlinkat_chk(dirfd: c_int, path: *const c_char, buf
 // __syslog_chk: fortified syslog — flag validates priority, then forwards
 // Note: This is variadic in glibc but the passthrough only captures fmt
 // Keep as dlsym since we can't forward variadic args to our variadic syslog
-dlsym_passthrough!(fn __syslog_chk(priority: c_int, flag: c_int, fmt: *const c_char));
+// __syslog_chk: now exported from fortify_abi.rs (native, variadic)
 // __mq_open_2: fortified mq_open — aborts if O_CREAT set without mode/attr
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __mq_open_2(name: *const c_char, oflag: c_int) -> c_int {

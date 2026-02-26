@@ -894,7 +894,7 @@
     },
     {
       "symbol": "__syslog_chk",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "fortify_abi",
       "performance_class": "coldpath",
       "strict_semantics": "Checks destlen, aborts on overflow, delegates to underlying implementation",
@@ -17472,7 +17472,7 @@
     },
     {
       "symbol": "__pthread_cleanup_routine",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "source": "pthread_abi.rs"
     },
     {
@@ -17532,12 +17532,12 @@
     },
     {
       "symbol": "__pthread_register_cancel",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "source": "pthread_abi.rs"
     },
     {
       "symbol": "__pthread_register_cancel_defer",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "source": "pthread_abi.rs"
     },
     {
@@ -17582,17 +17582,17 @@
     },
     {
       "symbol": "__pthread_unregister_cancel",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "source": "pthread_abi.rs"
     },
     {
       "symbol": "__pthread_unregister_cancel_restore",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "source": "pthread_abi.rs"
     },
     {
       "symbol": "__pthread_unwind_next",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "source": "pthread_abi.rs"
     },
     {
