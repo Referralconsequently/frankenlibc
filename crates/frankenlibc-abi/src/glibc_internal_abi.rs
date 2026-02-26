@@ -1278,8 +1278,75 @@ pub unsafe extern "C" fn inet_network(cp: *const c_char) -> c_uint {
     }
     result
 }
-dlsym_passthrough!(fn inet_nsap_addr(cp: *const c_char, buf: *mut c_void, buflen: c_int) -> c_uint);
-dlsym_passthrough!(fn inet_nsap_ntoa(len: c_int, cp: *const c_void, buf: *mut c_char) -> *mut c_char);
+// inet_nsap_addr: convert hex NSAP address string to binary
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn inet_nsap_addr(cp: *const c_char, buf: *mut c_void, buflen: c_int) -> c_uint {
+    if cp.is_null() || buf.is_null() {
+        return 0;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(cp) }.to_bytes();
+    let dst = buf as *mut u8;
+    let mut i = 0usize; // index into source
+    let mut o = 0usize; // index into output
+    // Skip optional "0x" prefix
+    if s.len() >= 2 && s[0] == b'0' && (s[1] == b'x' || s[1] == b'X') {
+        i = 2;
+    }
+    while i < s.len() && (o as c_int) < buflen {
+        // Skip dots and whitespace
+        if s[i] == b'.' || s[i] == b' ' {
+            i += 1;
+            continue;
+        }
+        let hi = match s[i] {
+            b'0'..=b'9' => s[i] - b'0',
+            b'a'..=b'f' => s[i] - b'a' + 10,
+            b'A'..=b'F' => s[i] - b'A' + 10,
+            _ => return 0, // invalid hex char
+        };
+        i += 1;
+        if i >= s.len() {
+            return 0; // odd number of hex digits
+        }
+        let lo = match s[i] {
+            b'0'..=b'9' => s[i] - b'0',
+            b'a'..=b'f' => s[i] - b'a' + 10,
+            b'A'..=b'F' => s[i] - b'A' + 10,
+            _ => return 0,
+        };
+        i += 1;
+        unsafe { *dst.add(o) = (hi << 4) | lo };
+        o += 1;
+    }
+    o as c_uint
+}
+// inet_nsap_ntoa: convert binary NSAP address to hex string
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn inet_nsap_ntoa(len: c_int, cp: *const c_void, buf: *mut c_char) -> *mut c_char {
+    static NSAP_BUF: std::sync::Mutex<[u8; 512]> = std::sync::Mutex::new([0u8; 512]);
+    let dst = if buf.is_null() {
+        let mut b = NSAP_BUF.lock().unwrap();
+        b.as_mut_ptr() as *mut c_char
+    } else {
+        buf
+    };
+    let src = cp as *const u8;
+    let hex = b"0123456789abcdef";
+    let mut o = 0usize;
+    for i in 0..(len as usize) {
+        if i > 0 {
+            unsafe { *dst.add(o) = b'.' as c_char };
+            o += 1;
+        }
+        let byte = unsafe { *src.add(i) };
+        unsafe { *dst.add(o) = hex[(byte >> 4) as usize] as c_char };
+        o += 1;
+        unsafe { *dst.add(o) = hex[(byte & 0x0f) as usize] as c_char };
+        o += 1;
+    }
+    unsafe { *dst.add(o) = 0 };
+    dst
+}
 // __inet_ntop_chk: fortified inet_ntop with buffer size validation
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __inet_ntop_chk(
@@ -2208,7 +2275,15 @@ pub unsafe extern "C" fn __readlinkat_chk(dirfd: c_int, path: *const c_char, buf
 // Note: This is variadic in glibc but the passthrough only captures fmt
 // Keep as dlsym since we can't forward variadic args to our variadic syslog
 dlsym_passthrough!(fn __syslog_chk(priority: c_int, flag: c_int, fmt: *const c_char));
-dlsym_passthrough!(fn __mq_open_2(name: *const c_char, oflag: c_int) -> c_int);
+// __mq_open_2: fortified mq_open — aborts if O_CREAT set without mode/attr
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __mq_open_2(name: *const c_char, oflag: c_int) -> c_int {
+    if oflag & libc::O_CREAT != 0 {
+        // O_CREAT requires mode and attr args — missing is a bug
+        unsafe { libc::abort() };
+    }
+    unsafe { libc::mq_open(name, oflag) as c_int }
+}
 
 // ==========================================================================
 // argp globals (4 symbols)
@@ -2370,8 +2445,12 @@ pub static mut mallwatch: *mut c_void = std::ptr::null_mut();
 // _dl_*, _flushlbf, _libc_intl_domainname, getdate_err, _res (5 symbols)
 // ==========================================================================
 dlsym_passthrough!(fn _dl_find_object(address: *mut c_void, result: *mut c_void) -> c_int);
-dlsym_passthrough!(fn _dl_mcount_wrapper(selfpc: c_ulong));
-dlsym_passthrough!(fn _dl_mcount_wrapper_check(selfpc: c_ulong));
+// _dl_mcount_wrapper: profiling callback — no-op when profiling disabled
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _dl_mcount_wrapper(_selfpc: c_ulong) {}
+// _dl_mcount_wrapper_check: profiling callback — no-op when profiling disabled
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _dl_mcount_wrapper_check(_selfpc: c_ulong) {}
 // _flushlbf: native — flush all line-buffered streams
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _flushlbf() {
@@ -3247,7 +3326,60 @@ pub unsafe extern "C" fn scandirat64(
 ) -> c_int {
     unsafe { scandirat(dirfd, dirp, namelist, filter, compar) }
 }
-dlsym_passthrough!(fn sem_clockwait(sem: *mut c_void, clockid: c_int, abstime: *const c_void) -> c_int);
+// sem_clockwait: timed semaphore wait with specified clock
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sem_clockwait(sem: *mut c_void, clockid: c_int, abstime: *const c_void) -> c_int {
+    // Use futex FUTEX_WAIT_BITSET with clock selection
+    // sem_t is an int at offset 0; if value > 0, decrement and return
+    let sem_val = sem as *mut std::sync::atomic::AtomicI32;
+    loop {
+        let val = unsafe { (*sem_val).load(std::sync::atomic::Ordering::Acquire) };
+        if val > 0 {
+            if unsafe {
+                (*sem_val)
+                    .compare_exchange(
+                        val,
+                        val - 1,
+                        std::sync::atomic::Ordering::AcqRel,
+                        std::sync::atomic::Ordering::Relaxed,
+                    )
+                    .is_ok()
+            } {
+                return 0;
+            }
+            continue;
+        }
+        // Wait using futex with absolute timeout
+        let clock_flag = if clockid == libc::CLOCK_REALTIME {
+            0
+        } else {
+            libc::FUTEX_CLOCK_REALTIME // bit to NOT set for CLOCK_MONOTONIC
+        };
+        let _ = clock_flag;
+        let ts = abstime as *const libc::timespec;
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_futex,
+                sem_val as *mut c_void,
+                libc::FUTEX_WAIT_BITSET | libc::FUTEX_CLOCK_REALTIME * (if clockid == libc::CLOCK_REALTIME { 1 } else { 0 }),
+                val,
+                ts,
+                std::ptr::null::<c_void>(),
+                !0u32, // FUTEX_BITSET_MATCH_ANY
+            )
+        };
+        if rc == -1 {
+            let err = unsafe { *libc::__errno_location() };
+            if err == libc::ETIMEDOUT {
+                unsafe { *libc::__errno_location() = libc::ETIMEDOUT };
+                return -1;
+            }
+            if err != libc::EAGAIN && err != libc::EINTR {
+                return -1;
+            }
+        }
+    }
+}
 // setaliasent: mail alias — no-op (no /etc/aliases support)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn setaliasent() {}
@@ -3526,9 +3658,42 @@ pub unsafe extern "C" fn vtimes(current: *mut c_void, child: *mut c_void) -> c_i
     -1
 }
 
-// Legacy regex (4 symbols)
-dlsym_passthrough!(fn re_comp(pattern: *const c_char) -> *mut c_char);
-dlsym_passthrough!(fn re_exec(string: *const c_char) -> c_int);
+// Legacy BSD regex (2 symbols) — shared compiled pattern state
+static RE_COMPILED_BUF: std::sync::Mutex<[u8; 256]> = std::sync::Mutex::new([0u8; 256]);
+static RE_ERROR_BUF: std::sync::Mutex<[u8; 128]> = std::sync::Mutex::new([0u8; 128]);
+// re_comp: compile regex pattern, returns NULL on success or error string
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn re_comp(pattern: *const c_char) -> *mut c_char {
+    if pattern.is_null() {
+        return std::ptr::null_mut();
+    }
+    let mut buf = RE_COMPILED_BUF.lock().unwrap();
+    let mut err = RE_ERROR_BUF.lock().unwrap();
+    let regex_ptr = buf.as_mut_ptr() as *mut c_void;
+    let rc = unsafe {
+        super::string_abi::regcomp(regex_ptr, pattern, 0)
+    };
+    if rc == 0 {
+        std::ptr::null_mut()
+    } else {
+        let msg = b"Invalid regular expression\0";
+        err[..msg.len()].copy_from_slice(msg);
+        err.as_mut_ptr() as *mut c_char
+    }
+}
+// re_exec: execute last compiled regex against string, returns 1 on match
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn re_exec(string: *const c_char) -> c_int {
+    if string.is_null() {
+        return 0;
+    }
+    let buf = RE_COMPILED_BUF.lock().unwrap();
+    let regex_ptr = buf.as_ptr() as *const c_void;
+    let rc = unsafe {
+        super::string_abi::regexec(regex_ptr, string, 0, std::ptr::null_mut(), 0)
+    };
+    if rc == 0 { 1 } else { 0 }
+}
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub static mut re_syntax_options: c_ulong = 0;
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

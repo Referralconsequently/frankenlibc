@@ -17365,7 +17365,7 @@
     },
     {
       "symbol": "__mq_open_2",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -18326,12 +18326,12 @@
     },
     {
       "symbol": "_dl_mcount_wrapper",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_dl_mcount_wrapper_check",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -18977,12 +18977,12 @@
     },
     {
       "symbol": "inet_nsap_addr",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "inet_nsap_ntoa",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -19477,12 +19477,12 @@
     },
     {
       "symbol": "re_comp",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "re_exec",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -19649,7 +19649,7 @@
     },
     {
       "symbol": "sem_clockwait",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
