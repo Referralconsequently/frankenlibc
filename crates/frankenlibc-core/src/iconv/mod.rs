@@ -483,7 +483,9 @@ pub fn iconv_open_detailed(
 /// Equivalent to C `iconv_open`. Converts from `fromcode` encoding to
 /// `tocode` encoding. Returns `None` if the conversion is not supported.
 pub fn iconv_open(tocode: &[u8], fromcode: &[u8]) -> Option<IconvDescriptor> {
-    iconv_open_detailed(tocode, fromcode).ok().map(|(desc, _)| desc)
+    iconv_open_detailed(tocode, fromcode)
+        .ok()
+        .map(|(desc, _)| desc)
 }
 
 /// Performs character set conversion.

@@ -69,9 +69,9 @@ pub mod iconv_abi;
 #[cfg(not(test))]
 pub mod inet_abi;
 #[cfg(not(test))]
-pub mod isoc_abi;
-#[cfg(not(test))]
 pub mod io_abi;
+#[cfg(not(test))]
+pub mod isoc_abi;
 #[cfg(not(test))]
 pub mod mmap_abi;
 #[cfg(not(test))]

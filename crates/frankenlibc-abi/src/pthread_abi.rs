@@ -2986,7 +2986,11 @@ pub unsafe extern "C" fn pthread_atfork(
         Ok(r) => r,
         Err(_) => return libc::ENOMEM,
     };
-    reg.push(AtforkHandlers { prepare, parent, child });
+    reg.push(AtforkHandlers {
+        prepare,
+        parent,
+        child,
+    });
     0
 }
 
@@ -4172,7 +4176,9 @@ pub unsafe extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
                 // state transition, read by joiner after observing THREAD_FINISHED.
                 unsafe {
                     *(*handle_ptr).retval.get() = retval as usize;
-                    (*handle_ptr).state.store(THREAD_FINISHED, Ordering::Release);
+                    (*handle_ptr)
+                        .state
+                        .store(THREAD_FINISHED, Ordering::Release);
                 }
                 break;
             }
@@ -4372,7 +4378,8 @@ pub unsafe extern "C" fn __pthread_mutex_trylock(m: *mut libc::pthread_mutex_t) 
 /// `__pthread_mutex_init` — internal alias for pthread_mutex_init.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_mutex_init(
-    m: *mut libc::pthread_mutex_t, attr: *const libc::pthread_mutexattr_t,
+    m: *mut libc::pthread_mutex_t,
+    attr: *const libc::pthread_mutexattr_t,
 ) -> c_int {
     unsafe { pthread_mutex_init(m, attr) }
 }
@@ -4400,7 +4407,8 @@ pub unsafe extern "C" fn __pthread_mutexattr_destroy(
 /// `__pthread_mutexattr_settype` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_mutexattr_settype(
-    attr: *mut libc::pthread_mutexattr_t, kind: c_int,
+    attr: *mut libc::pthread_mutexattr_t,
+    kind: c_int,
 ) -> c_int {
     unsafe { pthread_mutexattr_settype(attr, kind) }
 }
@@ -4408,63 +4416,53 @@ pub unsafe extern "C" fn __pthread_mutexattr_settype(
 /// `__pthread_rwlock_init` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_rwlock_init(
-    rwlock: *mut libc::pthread_rwlock_t, attr: *const libc::pthread_rwlockattr_t,
+    rwlock: *mut libc::pthread_rwlock_t,
+    attr: *const libc::pthread_rwlockattr_t,
 ) -> c_int {
     unsafe { pthread_rwlock_init(rwlock, attr) }
 }
 
 /// `__pthread_rwlock_destroy` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_destroy(
-    rwlock: *mut libc::pthread_rwlock_t,
-) -> c_int {
+pub unsafe extern "C" fn __pthread_rwlock_destroy(rwlock: *mut libc::pthread_rwlock_t) -> c_int {
     unsafe { pthread_rwlock_destroy(rwlock) }
 }
 
 /// `__pthread_rwlock_rdlock` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_rdlock(
-    rwlock: *mut libc::pthread_rwlock_t,
-) -> c_int {
+pub unsafe extern "C" fn __pthread_rwlock_rdlock(rwlock: *mut libc::pthread_rwlock_t) -> c_int {
     unsafe { pthread_rwlock_rdlock(rwlock) }
 }
 
 /// `__pthread_rwlock_wrlock` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_wrlock(
-    rwlock: *mut libc::pthread_rwlock_t,
-) -> c_int {
+pub unsafe extern "C" fn __pthread_rwlock_wrlock(rwlock: *mut libc::pthread_rwlock_t) -> c_int {
     unsafe { pthread_rwlock_wrlock(rwlock) }
 }
 
 /// `__pthread_rwlock_unlock` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_unlock(
-    rwlock: *mut libc::pthread_rwlock_t,
-) -> c_int {
+pub unsafe extern "C" fn __pthread_rwlock_unlock(rwlock: *mut libc::pthread_rwlock_t) -> c_int {
     unsafe { pthread_rwlock_unlock(rwlock) }
 }
 
 /// `__pthread_rwlock_tryrdlock` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_tryrdlock(
-    rwlock: *mut libc::pthread_rwlock_t,
-) -> c_int {
+pub unsafe extern "C" fn __pthread_rwlock_tryrdlock(rwlock: *mut libc::pthread_rwlock_t) -> c_int {
     unsafe { pthread_rwlock_tryrdlock(rwlock) }
 }
 
 /// `__pthread_rwlock_trywrlock` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_trywrlock(
-    rwlock: *mut libc::pthread_rwlock_t,
-) -> c_int {
+pub unsafe extern "C" fn __pthread_rwlock_trywrlock(rwlock: *mut libc::pthread_rwlock_t) -> c_int {
     unsafe { pthread_rwlock_trywrlock(rwlock) }
 }
 
 /// `__pthread_once` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_once(
-    once: *mut libc::pthread_once_t, init: Option<unsafe extern "C" fn()>,
+    once: *mut libc::pthread_once_t,
+    init: Option<unsafe extern "C" fn()>,
 ) -> c_int {
     unsafe { pthread_once(once, init) }
 }
@@ -4472,7 +4470,8 @@ pub unsafe extern "C" fn __pthread_once(
 /// `__pthread_key_create` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_key_create(
-    key: *mut libc::pthread_key_t, dtor: Option<unsafe extern "C" fn(*mut c_void)>,
+    key: *mut libc::pthread_key_t,
+    dtor: Option<unsafe extern "C" fn(*mut c_void)>,
 ) -> c_int {
     unsafe { pthread_key_create(key, dtor) }
 }
@@ -4486,7 +4485,8 @@ pub unsafe extern "C" fn __pthread_getspecific(key: libc::pthread_key_t) -> *mut
 /// `__pthread_setspecific` — internal alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_setspecific(
-    key: libc::pthread_key_t, value: *const c_void,
+    key: libc::pthread_key_t,
+    value: *const c_void,
 ) -> c_int {
     unsafe { pthread_setspecific(key, value) }
 }

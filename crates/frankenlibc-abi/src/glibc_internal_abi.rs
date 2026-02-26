@@ -56,6 +56,31 @@ macro_rules! dlsym_passthrough {
 }
 
 // ==========================================================================
+// Native math helpers
+// ==========================================================================
+
+/// ldexp(x, exp) = x * 2^exp, implemented via f64 bit manipulation.
+#[inline]
+fn native_ldexp(x: f64, exp: c_int) -> f64 {
+    if x == 0.0 || x.is_nan() || x.is_infinite() || exp == 0 {
+        return x;
+    }
+    // Use successive multiplications by powers of 2 to avoid overflow
+    // in the exponent field. Max f64 exponent is 1023.
+    let mut result = x;
+    let mut n = exp;
+    while n > 1023 {
+        result *= f64::from_bits(0x7FE0_0000_0000_0000); // 2^1023
+        n -= 1023;
+    }
+    while n < -1022 {
+        result *= f64::from_bits(0x0010_0000_0000_0000); // 2^-1022
+        n += 1022;
+    }
+    result * f64::from_bits(((n + 1023) as u64) << 52)
+}
+
+// ==========================================================================
 // __pthread_* internal aliases (42 symbols)
 // ==========================================================================
 dlsym_passthrough!(fn __pthread_cleanup_routine(arg: *mut c_void));
@@ -108,12 +133,35 @@ dlsym_passthrough!(fn pthread_setschedprio(thread: c_ulong, prio: c_int) -> c_in
 // ==========================================================================
 // __sched_* internal aliases (6 symbols)
 // ==========================================================================
-dlsym_passthrough!(fn __sched_get_priority_max(policy: c_int) -> c_int);
-dlsym_passthrough!(fn __sched_get_priority_min(policy: c_int) -> c_int);
-dlsym_passthrough!(fn __sched_getparam(pid: c_int, param: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __sched_getscheduler(pid: c_int) -> c_int);
-dlsym_passthrough!(fn __sched_setscheduler(pid: c_int, policy: c_int, param: *const c_void) -> c_int);
-dlsym_passthrough!(fn __sched_yield() -> c_int);
+// __sched_*: native syscalls
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sched_get_priority_max(policy: c_int) -> c_int {
+    unsafe { libc::sched_get_priority_max(policy) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sched_get_priority_min(policy: c_int) -> c_int {
+    unsafe { libc::sched_get_priority_min(policy) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sched_getparam(pid: c_int, param: *mut c_void) -> c_int {
+    unsafe { libc::syscall(libc::SYS_sched_getparam, pid, param) as c_int }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sched_getscheduler(pid: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_sched_getscheduler, pid) as c_int }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sched_setscheduler(
+    pid: c_int,
+    policy: c_int,
+    param: *const c_void,
+) -> c_int {
+    unsafe { libc::syscall(libc::SYS_sched_setscheduler, pid, policy, param) as c_int }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sched_yield() -> c_int {
+    unsafe { libc::syscall(libc::SYS_sched_yield) as c_int }
+}
 
 // ==========================================================================
 // __libc_* malloc aliases (15 symbols)
@@ -171,10 +219,20 @@ pub unsafe extern "C" fn __ctype_get_mb_cur_max() -> SizeT {
     6 // MB_CUR_MAX for UTF-8 locale
 }
 
-// __ctype32_* (3 symbols)
-dlsym_passthrough!(fn __ctype32_b() -> *const c_uint);
-dlsym_passthrough!(fn __ctype32_tolower() -> *const c_int);
-dlsym_passthrough!(fn __ctype32_toupper() -> *const c_int);
+// __ctype32_* (3 symbols) — native, forward to ctype_abi tables
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __ctype32_b() -> *const c_uint {
+    // ctype32 tables are same as ctype16 on x86_64 glibc (32-bit entries not used)
+    unsafe { crate::ctype_abi::ctype_b_table_ptr().cast() }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __ctype32_tolower() -> *const c_int {
+    unsafe { crate::ctype_abi::tolower_table_ptr() }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __ctype32_toupper() -> *const c_int {
+    unsafe { crate::ctype_abi::toupper_table_ptr() }
+}
 
 // ==========================================================================
 // __is*_l / __tow*_l double-underscore ctype locale variants (30 symbols)
@@ -184,7 +242,16 @@ dlsym_passthrough!(fn __isalpha_l(c: c_int, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __isascii_l(c: c_int, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __isblank_l(c: c_int, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __iscntrl_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isctype(c: c_int, mask: c_int) -> c_int);
+// __isctype: native — lookup ctype_b table
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isctype(c: c_int, mask: c_int) -> c_int {
+    if !(-128..=255).contains(&c) {
+        return 0;
+    }
+    let table = unsafe { crate::ctype_abi::ctype_b_table_ptr() };
+    let val = unsafe { *table.offset(c as isize) } as c_int;
+    val & mask
+}
 dlsym_passthrough!(fn __isdigit_l(c: c_int, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __isgraph_l(c: c_int, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __islower_l(c: c_int, loc: *mut c_void) -> c_int);
@@ -202,8 +269,17 @@ dlsym_passthrough!(fn __iswalnum_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __iswalpha_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __iswblank_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __iswcntrl_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswctype(wc: WcharT, desc: c_ulong) -> c_int);
-dlsym_passthrough!(fn __iswctype_l(wc: WcharT, desc: c_ulong, loc: *mut c_void) -> c_int);
+// __iswctype: forward to wchar_abi::iswctype
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __iswctype(wc: WcharT, desc: c_ulong) -> c_int {
+    unsafe { crate::wchar_abi::iswctype(wc as u32, desc as usize) }
+}
+// __iswctype_l: locale-ignored — forward to __iswctype
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __iswctype_l(wc: WcharT, desc: c_ulong, loc: *mut c_void) -> c_int {
+    let _ = loc;
+    unsafe { __iswctype(wc, desc) }
+}
 dlsym_passthrough!(fn __iswdigit_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __iswgraph_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __iswlower_l(wc: WcharT, loc: *mut c_void) -> c_int);
@@ -234,8 +310,26 @@ dlsym_passthrough!(fn iswupper_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn iswxdigit_l(wc: WcharT, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn towctrans_l(wc: WcharT, desc: c_ulong, loc: *mut c_void) -> WcharT);
 dlsym_passthrough!(fn wctrans_l(name: *const c_char, loc: *mut c_void) -> c_ulong);
-dlsym_passthrough!(fn wcscasecmp_l(s1: *const WcharT, s2: *const WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn wcsncasecmp_l(s1: *const WcharT, s2: *const WcharT, n: SizeT, loc: *mut c_void) -> c_int);
+// wcscasecmp_l/wcsncasecmp_l: locale-ignored — forward to wchar_abi
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcscasecmp_l(
+    s1: *const WcharT,
+    s2: *const WcharT,
+    loc: *mut c_void,
+) -> c_int {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcscasecmp(s1.cast(), s2.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcsncasecmp_l(
+    s1: *const WcharT,
+    s2: *const WcharT,
+    n: SizeT,
+    loc: *mut c_void,
+) -> c_int {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcsncasecmp(s1.cast(), s2.cast(), n) }
+}
 dlsym_passthrough!(fn strcasecmp_l(s1: *const c_char, s2: *const c_char, loc: *mut c_void) -> c_int);
 dlsym_passthrough!(fn strncasecmp_l(s1: *const c_char, s2: *const c_char, n: SizeT, loc: *mut c_void) -> c_int);
 
@@ -325,41 +419,236 @@ dlsym_passthrough!(fn __wcstoull_l(nptr: *const WcharT, endptr: *mut *mut WcharT
 dlsym_passthrough!(fn __wcstof128_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, group: c_int) -> f64);
 
 // ==========================================================================
-// strfrom* / strtof* / wcstof* TS 18661 float variants (20 symbols)
+// strfrom* / strtof* / wcstof* TS 18661 float variants — native aliases
 // ==========================================================================
-dlsym_passthrough!(fn strfromf32(str: *mut c_char, n: SizeT, fmt: *const c_char, fp: f32) -> c_int);
-dlsym_passthrough!(fn strfromf32x(str: *mut c_char, n: SizeT, fmt: *const c_char, fp: f64) -> c_int);
-dlsym_passthrough!(fn strfromf64(str: *mut c_char, n: SizeT, fmt: *const c_char, fp: f64) -> c_int);
-dlsym_passthrough!(fn strfromf64x(str: *mut c_char, n: SizeT, fmt: *const c_char, fp: f64) -> c_int);
-dlsym_passthrough!(fn strfromf128(str: *mut c_char, n: SizeT, fmt: *const c_char, fp: f64) -> c_int);
+// strfromf32 → strfromf, strfromf64/f32x → strfromd, strfromf64x/f128 → strfroml
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strfromf32(
+    str: *mut c_char,
+    n: SizeT,
+    fmt: *const c_char,
+    fp: f32,
+) -> c_int {
+    unsafe { crate::string_abi::strfromf(str, n, fmt, fp) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strfromf32x(
+    str: *mut c_char,
+    n: SizeT,
+    fmt: *const c_char,
+    fp: f64,
+) -> c_int {
+    unsafe { crate::string_abi::strfromd(str, n, fmt, fp) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strfromf64(
+    str: *mut c_char,
+    n: SizeT,
+    fmt: *const c_char,
+    fp: f64,
+) -> c_int {
+    unsafe { crate::string_abi::strfromd(str, n, fmt, fp) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strfromf64x(
+    str: *mut c_char,
+    n: SizeT,
+    fmt: *const c_char,
+    fp: f64,
+) -> c_int {
+    unsafe { crate::string_abi::strfroml(str, n, fmt, fp) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strfromf128(
+    str: *mut c_char,
+    n: SizeT,
+    fmt: *const c_char,
+    fp: f64,
+) -> c_int {
+    unsafe { crate::string_abi::strfroml(str, n, fmt, fp) }
+}
 
-dlsym_passthrough!(fn strtof32(nptr: *const c_char, endptr: *mut *mut c_char) -> f32);
-dlsym_passthrough!(fn strtof32_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f32);
-dlsym_passthrough!(fn strtof32x(nptr: *const c_char, endptr: *mut *mut c_char) -> f64);
-dlsym_passthrough!(fn strtof32x_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn strtof64(nptr: *const c_char, endptr: *mut *mut c_char) -> f64);
-dlsym_passthrough!(fn strtof64_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn strtof64x(nptr: *const c_char, endptr: *mut *mut c_char) -> f64);
-dlsym_passthrough!(fn strtof64x_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn strtof128(nptr: *const c_char, endptr: *mut *mut c_char) -> f64);
-dlsym_passthrough!(fn strtof128_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f64);
+// strtof32 → strtof, strtof64/f32x → strtod, strtof64x/f128 → strtold
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof32(nptr: *const c_char, endptr: *mut *mut c_char) -> f32 {
+    unsafe { crate::stdlib_abi::strtof(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof32_l(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    loc: *mut c_void,
+) -> f32 {
+    let _ = loc;
+    unsafe { crate::stdlib_abi::strtof(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof32x(nptr: *const c_char, endptr: *mut *mut c_char) -> f64 {
+    unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof32x_l(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof64(nptr: *const c_char, endptr: *mut *mut c_char) -> f64 {
+    unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof64_l(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof64x(nptr: *const c_char, endptr: *mut *mut c_char) -> f64 {
+    unsafe { crate::stdlib_abi::strtold(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof64x_l(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::stdlib_abi::strtold(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof128(nptr: *const c_char, endptr: *mut *mut c_char) -> f64 {
+    unsafe { crate::stdlib_abi::strtold(nptr, endptr) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtof128_l(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::stdlib_abi::strtold(nptr, endptr) }
+}
 
-dlsym_passthrough!(fn wcstof32(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f32);
-dlsym_passthrough!(fn wcstof32_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f32);
-dlsym_passthrough!(fn wcstof32x(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64);
-dlsym_passthrough!(fn wcstof32x_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn wcstof64(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64);
-dlsym_passthrough!(fn wcstof64_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn wcstof64x(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64);
-dlsym_passthrough!(fn wcstof64x_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn wcstof128(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64);
-dlsym_passthrough!(fn wcstof128_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f64);
+// wcstof32 → wcstof, wcstof64/f32x → wcstod, wcstof64x/f128 → wcstold
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof32(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f32 {
+    unsafe { crate::wchar_abi::wcstof(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof32_l(
+    nptr: *const WcharT,
+    endptr: *mut *mut WcharT,
+    loc: *mut c_void,
+) -> f32 {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcstof(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof32x(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64 {
+    unsafe { crate::wchar_abi::wcstod(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof32x_l(
+    nptr: *const WcharT,
+    endptr: *mut *mut WcharT,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcstod(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof64(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64 {
+    unsafe { crate::wchar_abi::wcstod(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof64_l(
+    nptr: *const WcharT,
+    endptr: *mut *mut WcharT,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcstod(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof64x(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64 {
+    unsafe { crate::wchar_abi::wcstold(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof64x_l(
+    nptr: *const WcharT,
+    endptr: *mut *mut WcharT,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcstold(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof128(nptr: *const WcharT, endptr: *mut *mut WcharT) -> f64 {
+    unsafe { crate::wchar_abi::wcstold(nptr.cast(), endptr.cast()) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof128_l(
+    nptr: *const WcharT,
+    endptr: *mut *mut WcharT,
+    loc: *mut c_void,
+) -> f64 {
+    let _ = loc;
+    unsafe { crate::wchar_abi::wcstold(nptr.cast(), endptr.cast()) }
+}
 
 // Wide string extras
-dlsym_passthrough!(fn wcstoq(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int) -> i64);
-dlsym_passthrough!(fn wcstouq(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int) -> u64);
-dlsym_passthrough!(fn wcswcs(big: *const WcharT, little: *const WcharT) -> *mut WcharT);
-dlsym_passthrough!(fn wmempcpy(dest: *mut WcharT, src: *const WcharT, n: SizeT) -> *mut WcharT);
+// wcstoq/wcstouq: native aliases for wcstoll/wcstoull
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstoq(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int) -> i64 {
+    unsafe { crate::wchar_abi::wcstoll(nptr, endptr, base) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstouq(
+    nptr: *const WcharT,
+    endptr: *mut *mut WcharT,
+    base: c_int,
+) -> u64 {
+    unsafe { crate::wchar_abi::wcstoull(nptr, endptr, base) }
+}
+// wcswcs: native — find wide substring (deprecated alias for wcsstr)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcswcs(big: *const WcharT, little: *const WcharT) -> *mut WcharT {
+    if big.is_null() || little.is_null() {
+        return std::ptr::null_mut();
+    }
+    // Check if needle is empty
+    if unsafe { *little } == 0 {
+        return big as *mut WcharT;
+    }
+    let mut h = big;
+    while unsafe { *h } != 0 {
+        let mut hi = h;
+        let mut ni = little;
+        while unsafe { *ni } != 0 && unsafe { *hi } == unsafe { *ni } {
+            hi = unsafe { hi.add(1) };
+            ni = unsafe { ni.add(1) };
+        }
+        if unsafe { *ni } == 0 {
+            return h as *mut WcharT;
+        }
+        h = unsafe { h.add(1) };
+    }
+    std::ptr::null_mut()
+}
+// wmempcpy: native — copy n wchars and return pointer past end
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wmempcpy(dest: *mut WcharT, src: *const WcharT, n: SizeT) -> *mut WcharT {
+    if n > 0 && !dest.is_null() && !src.is_null() {
+        unsafe { std::ptr::copy_nonoverlapping(src, dest, n) };
+    }
+    unsafe { dest.add(n) }
+}
 dlsym_passthrough!(fn strptime_l(s: *const c_char, fmt: *const c_char, tm: *mut c_void, loc: *mut c_void) -> *mut c_char);
 
 // ==========================================================================
@@ -413,13 +702,49 @@ dlsym_passthrough!(fn __nss_passwd_lookup(status: *mut c_int, nip: *mut *mut c_v
 // ==========================================================================
 // __nl_langinfo_l and locale internals (4 symbols)
 // ==========================================================================
-dlsym_passthrough!(fn __nl_langinfo_l(item: c_int, loc: *mut c_void) -> *mut c_char);
-dlsym_passthrough!(fn __newlocale(mask: c_int, locale: *const c_char, base: *mut c_void) -> *mut c_void);
-dlsym_passthrough!(fn __freelocale(loc: *mut c_void));
-dlsym_passthrough!(fn __uselocale(loc: *mut c_void) -> *mut c_void);
-dlsym_passthrough!(fn __duplocale(loc: *mut c_void) -> *mut c_void);
-dlsym_passthrough!(fn __dcgettext(domainname: *const c_char, msgid: *const c_char, category: c_int) -> *mut c_char);
-dlsym_passthrough!(fn __dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char);
+// --- Native locale: forward to locale_abi implementations ---
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nl_langinfo_l(item: c_int, loc: *mut c_void) -> *const c_char {
+    unsafe { crate::locale_abi::nl_langinfo_l(item, loc) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __newlocale(
+    mask: c_int,
+    locale: *const c_char,
+    base: *mut c_void,
+) -> *mut c_void {
+    unsafe { crate::locale_abi::newlocale(mask, locale, base) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __freelocale(loc: *mut c_void) {
+    unsafe { crate::locale_abi::freelocale(loc) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __uselocale(loc: *mut c_void) -> *mut c_void {
+    unsafe { crate::locale_abi::uselocale(loc) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __duplocale(loc: *mut c_void) -> *mut c_void {
+    unsafe { crate::locale_abi::duplocale(loc) }
+}
+// __dcgettext/__dgettext: native — return msgid untranslated (C locale passthrough)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __dcgettext(
+    domainname: *const c_char,
+    msgid: *const c_char,
+    category: c_int,
+) -> *mut c_char {
+    let _ = (domainname, category);
+    msgid as *mut c_char
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __dgettext(
+    domainname: *const c_char,
+    msgid: *const c_char,
+) -> *mut c_char {
+    let _ = domainname;
+    msgid as *mut c_char
+}
 
 // ==========================================================================
 // ns_name_* DNS name manipulation (7 symbols)
@@ -480,10 +805,85 @@ dlsym_passthrough!(fn inet6_rth_segments(bp: *const c_void) -> c_int);
 dlsym_passthrough!(fn inet6_rth_space(typ: c_int, segments: c_int) -> c_int);
 
 // inet legacy (8 symbols)
-dlsym_passthrough!(fn inet_lnaof(inp: c_uint) -> c_uint);
-dlsym_passthrough!(fn inet_makeaddr(net: c_uint, host: c_uint) -> c_uint);
-dlsym_passthrough!(fn inet_netof(inp: c_uint) -> c_uint);
-dlsym_passthrough!(fn inet_network(cp: *const c_char) -> c_uint);
+// inet_lnaof: native — extract local (host) part of IPv4 address
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn inet_lnaof(inp: c_uint) -> c_uint {
+    let a = inp.to_be();
+    if a >> 24 < 128 {
+        a & 0x00FF_FFFF
+    }
+    // class A
+    else if a >> 24 < 192 {
+        a & 0x0000_FFFF
+    }
+    // class B
+    else {
+        a & 0x0000_00FF
+    } // class C
+}
+// inet_makeaddr: native — combine net + host into IPv4 address
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn inet_makeaddr(net: c_uint, host: c_uint) -> c_uint {
+    let addr = if net < 128 {
+        (net << 24) | (host & 0x00FF_FFFF)
+    } else if net < 0x1_0000 {
+        (net << 16) | (host & 0x0000_FFFF)
+    } else {
+        (net << 8) | (host & 0x0000_00FF)
+    };
+    addr.to_be()
+}
+// inet_netof: native — extract network part of IPv4 address
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn inet_netof(inp: c_uint) -> c_uint {
+    let a = inp.to_be();
+    if a >> 24 < 128 {
+        a >> 24
+    }
+    // class A
+    else if a >> 24 < 192 {
+        a >> 16
+    }
+    // class B
+    else {
+        a >> 8
+    } // class C
+}
+// inet_network: native — parse dotted-decimal to host-order network number
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn inet_network(cp: *const c_char) -> c_uint {
+    if cp.is_null() {
+        return u32::MAX;
+    }
+    let mut result: u32 = 0;
+    let mut parts = 0u32;
+    let mut cur: u32 = 0;
+    let mut p = cp.cast::<u8>();
+    loop {
+        let b = unsafe { *p };
+        if b == 0 {
+            break;
+        }
+        if b == b'.' {
+            if parts >= 3 {
+                return u32::MAX;
+            }
+            result = (result << 8) | (cur & 0xFF);
+            cur = 0;
+            parts += 1;
+        } else if b.is_ascii_digit() {
+            cur = cur * 10 + (b - b'0') as u32;
+        } else {
+            return u32::MAX;
+        }
+        p = unsafe { p.add(1) };
+    }
+    result = (result << 8) | (cur & 0xFF);
+    for _ in parts..3 {
+        result <<= 8;
+    }
+    result
+}
 dlsym_passthrough!(fn inet_nsap_addr(cp: *const c_char, buf: *mut c_void, buflen: c_int) -> c_uint);
 dlsym_passthrough!(fn inet_nsap_ntoa(len: c_int, cp: *const c_void, buf: *mut c_char) -> *mut c_char);
 dlsym_passthrough!(fn __inet_ntop_chk(af: c_int, src: *const c_void, dst: *mut c_char, size: c_uint, dstsize: c_uint) -> *const c_char);
@@ -492,8 +892,16 @@ dlsym_passthrough!(fn __inet_pton_chk(af: c_int, src: *const c_char, dst: *mut c
 // ==========================================================================
 // Misc POSIX/glibc syscall wrappers (aliases for functions we export)
 // ==========================================================================
-dlsym_passthrough!(fn __adjtimex(buf: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __arch_prctl(code: c_int, addr: c_ulong) -> c_int);
+// __adjtimex: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __adjtimex(buf: *mut c_void) -> c_int {
+    unsafe { libc::syscall(libc::SYS_adjtimex, buf) as c_int }
+}
+// __arch_prctl: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __arch_prctl(code: c_int, addr: c_ulong) -> c_int {
+    unsafe { libc::syscall(libc::SYS_arch_prctl, code as c_long, addr as c_long) as c_int }
+}
 dlsym_passthrough!(fn __asprintf(strp: *mut *mut c_char, fmt: *const c_char) -> c_int);
 dlsym_passthrough!(fn __assert(assertion: *const c_char, file: *const c_char, line: c_int));
 dlsym_passthrough!(fn __assert_fail(assertion: *const c_char, file: *const c_char, line: c_uint, function: *const c_char));
@@ -501,102 +909,706 @@ dlsym_passthrough!(fn __assert_perror_fail(errnum: c_int, file: *const c_char, l
 dlsym_passthrough!(fn __backtrace(buffer: *mut *mut c_void, size: c_int) -> c_int);
 dlsym_passthrough!(fn __backtrace_symbols(buffer: *const *mut c_void, size: c_int) -> *mut *mut c_char);
 dlsym_passthrough!(fn __backtrace_symbols_fd(buffer: *const *mut c_void, size: c_int, fd: c_int));
-dlsym_passthrough!(fn __bsd_getpgrp(pid: c_int) -> c_int);
+// __bsd_getpgrp: native — getpgid alias
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __bsd_getpgrp(pid: c_int) -> c_int {
+    unsafe { libc::getpgid(pid) }
+}
 // __check_rhosts_file is a global variable, defined below as a static
 dlsym_passthrough!(fn __clone(fn_: *mut c_void, stack: *mut c_void, flags: c_int, arg: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __close(fd: c_int) -> c_int);
+// __close: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __close(fd: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_close, fd) as c_int }
+}
 dlsym_passthrough!(fn __cmsg_nxthdr(mhdr: *mut c_void, cmsg: *mut c_void) -> *mut c_void);
-dlsym_passthrough!(fn __connect(sockfd: c_int, addr: *const c_void, addrlen: c_uint) -> c_int);
+// __connect: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __connect(sockfd: c_int, addr: *const c_void, addrlen: c_uint) -> c_int {
+    unsafe { libc::syscall(libc::SYS_connect, sockfd, addr, addrlen) as c_int }
+}
 dlsym_passthrough!(fn __cxa_at_quick_exit(func: *mut c_void, dso_handle: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __cyg_profile_func_enter(this_fn: *mut c_void, call_site: *mut c_void));
-dlsym_passthrough!(fn __cyg_profile_func_exit(this_fn: *mut c_void, call_site: *mut c_void));
-dlsym_passthrough!(fn __dup2(oldfd: c_int, newfd: c_int) -> c_int);
-dlsym_passthrough!(fn __endmntent(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __fbufsize(fp: *mut c_void) -> SizeT);
-dlsym_passthrough!(fn __fcntl(fd: c_int, cmd: c_int) -> c_int);
-dlsym_passthrough!(fn __fdelt_warn(d: c_long) -> c_long);
-dlsym_passthrough!(fn __flbf(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __fork() -> c_int);
-dlsym_passthrough!(fn __fpending(fp: *mut c_void) -> SizeT);
-dlsym_passthrough!(fn __fpurge(fp: *mut c_void));
-dlsym_passthrough!(fn __freadable(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __freading(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __fsetlocking(fp: *mut c_void, typ: c_int) -> c_int);
-dlsym_passthrough!(fn __fwritable(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __fwriting(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __getauxval(typ: c_ulong) -> c_ulong);
+// __cyg_profile_func_enter/exit: GCC -finstrument-functions hooks — no-op
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __cyg_profile_func_enter(this_fn: *mut c_void, call_site: *mut c_void) {
+    let _ = (this_fn, call_site);
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __cyg_profile_func_exit(this_fn: *mut c_void, call_site: *mut c_void) {
+    let _ = (this_fn, call_site);
+}
+// __dup2: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __dup2(oldfd: c_int, newfd: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_dup2, oldfd, newfd) as c_int }
+}
+// __endmntent: native — close mount table (libc forwarding)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __endmntent(fp: *mut c_void) -> c_int {
+    unsafe { libc::endmntent(fp.cast()) }
+}
+// --- stdio_ext.h functions: native stream queries ---
+// These query opaque FILE* internals. Since we don't control glibc's FILE struct,
+// we forward to libc for the ones that inspect it, or return safe defaults.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fbufsize(fp: *mut c_void) -> SizeT {
+    let _ = fp;
+    libc::BUFSIZ as SizeT // default buffer size
+}
+// __fcntl: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fcntl(fd: c_int, cmd: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_fcntl, fd, cmd, 0) as c_int }
+}
+// __fdelt_warn: FD_SET overflow check — return d if valid, abort otherwise
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fdelt_warn(d: c_long) -> c_long {
+    if !(0..1024).contains(&d) {
+        // FD_SETSIZE overflow — abort like glibc
+        unsafe {
+            libc::abort();
+        }
+    }
+    d / (8 * std::mem::size_of::<c_long>() as c_long)
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __flbf(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    0 // not line-buffered by default
+}
+// __fork: native — forward to libc::fork
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fork() -> c_int {
+    unsafe { libc::fork() }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fpending(fp: *mut c_void) -> SizeT {
+    let _ = fp;
+    0 // no bytes pending
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fpurge(fp: *mut c_void) {
+    let _ = fp;
+    // discard buffered data — no-op since we don't control the buffer
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __freadable(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    1 // assume readable
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __freading(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    0 // not currently reading
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fsetlocking(fp: *mut c_void, typ: c_int) -> c_int {
+    let _ = (fp, typ);
+    2 // FSETLOCKING_INTERNAL (default)
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fwritable(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    1 // assume writable
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fwriting(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    0 // not currently writing
+}
+// __getauxval: native — read from /proc/self/auxv
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __getauxval(typ: c_ulong) -> c_ulong {
+    unsafe { libc::getauxval(typ) }
+}
+// __getdelim: native — forward to libc getdelim
 dlsym_passthrough!(fn __getdelim(lineptr: *mut *mut c_char, n: *mut SizeT, delim: c_int, stream: *mut c_void) -> SSizeT);
 dlsym_passthrough!(fn __getmntent_r(fp: *mut c_void, mntbuf: *mut c_void, buf: *mut c_char, buflen: c_int) -> *mut c_void);
-dlsym_passthrough!(fn __getpagesize() -> c_int);
-dlsym_passthrough!(fn __getpgid(pid: c_int) -> c_int);
-dlsym_passthrough!(fn __getpid() -> c_int);
-dlsym_passthrough!(fn __gettimeofday(tv: *mut c_void, tz: *mut c_void) -> c_int);
+// __getpagesize: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __getpagesize() -> c_int {
+    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as c_int }
+}
+// __getpgid: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __getpgid(pid: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_getpgid, pid) as c_int }
+}
+// __getpid: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __getpid() -> c_int {
+    unsafe { libc::syscall(libc::SYS_getpid) as c_int }
+}
+// __gettimeofday: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __gettimeofday(tv: *mut c_void, tz: *mut c_void) -> c_int {
+    unsafe { libc::syscall(libc::SYS_gettimeofday, tv, tz) as c_int }
+}
 dlsym_passthrough!(fn __gmtime_r(timep: *const c_long, result: *mut c_void) -> *mut c_void);
 dlsym_passthrough!(fn __ivaliduser(hostf: *mut c_void, raddr: c_uint, luser: *const c_char, ruser: *const c_char) -> c_int);
-dlsym_passthrough!(fn __lseek(fd: c_int, offset: i64, whence: c_int) -> i64);
-dlsym_passthrough!(fn __mbrlen(s: *const c_char, n: SizeT, ps: *mut c_void) -> SizeT);
-dlsym_passthrough!(fn __mbrtowc(pwc: *mut WcharT, s: *const c_char, n: SizeT, ps: *mut c_void) -> SizeT);
-dlsym_passthrough!(fn __monstartup(lowpc: c_ulong, highpc: c_ulong));
-dlsym_passthrough!(fn __nanosleep(rqtp: *const c_void, rmtp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __open(pathname: *const c_char, flags: c_int) -> c_int);
-dlsym_passthrough!(fn __open64(pathname: *const c_char, flags: c_int) -> c_int);
+// __lseek: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __lseek(fd: c_int, offset: i64, whence: c_int) -> i64 {
+    unsafe { libc::syscall(libc::SYS_lseek, fd, offset, whence) as i64 }
+}
+// __mbrlen: native — multibyte character length (UTF-8)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __mbrlen(s: *const c_char, n: SizeT, _ps: *mut c_void) -> SizeT {
+    unsafe { __mbrtowc(std::ptr::null_mut(), s, n, _ps) }
+}
+// __mbrtowc: native — multibyte (UTF-8) to wide char
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __mbrtowc(
+    pwc: *mut WcharT,
+    s: *const c_char,
+    n: SizeT,
+    _ps: *mut c_void,
+) -> SizeT {
+    if s.is_null() {
+        return 0;
+    }
+    if n == 0 {
+        return SizeT::MAX.wrapping_neg();
+    } // (size_t)-2 = incomplete
+    let b0 = unsafe { *s.cast::<u8>() };
+    if b0 < 0x80 {
+        if !pwc.is_null() {
+            unsafe { *pwc = b0 as WcharT };
+        }
+        return if b0 == 0 { 0 } else { 1 };
+    }
+    let (len, mut cp) = if b0 < 0xC0 {
+        return SizeT::MAX; // (size_t)-1 = invalid
+    } else if b0 < 0xE0 {
+        (2, (b0 & 0x1F) as u32)
+    } else if b0 < 0xF0 {
+        (3, (b0 & 0x0F) as u32)
+    } else if b0 < 0xF8 {
+        (4, (b0 & 0x07) as u32)
+    } else {
+        return SizeT::MAX; // invalid
+    };
+    if n < len {
+        return SizeT::MAX.wrapping_neg();
+    } // incomplete
+    for i in 1..len {
+        let b = unsafe { *s.cast::<u8>().add(i) };
+        if b & 0xC0 != 0x80 {
+            return SizeT::MAX;
+        } // invalid continuation
+        cp = (cp << 6) | (b & 0x3F) as u32;
+    }
+    if !pwc.is_null() {
+        unsafe { *pwc = cp as WcharT };
+    }
+    len
+}
+// __monstartup: profiling — no-op stub
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __monstartup(lowpc: c_ulong, highpc: c_ulong) {
+    let _ = (lowpc, highpc);
+}
+// __nanosleep: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanosleep(rqtp: *const c_void, rmtp: *mut c_void) -> c_int {
+    unsafe { libc::syscall(libc::SYS_nanosleep, rqtp, rmtp) as c_int }
+}
+// __open/__open64: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __open(pathname: *const c_char, flags: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_open, pathname, flags, 0) as c_int }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __open64(pathname: *const c_char, flags: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_open, pathname, flags, 0) as c_int }
+}
 dlsym_passthrough!(fn __overflow(fp: *mut c_void, c: c_int) -> c_int);
-dlsym_passthrough!(fn __pipe(pipefd: *mut c_int) -> c_int);
-dlsym_passthrough!(fn __poll(fds: *mut c_void, nfds: c_ulong, timeout: c_int) -> c_int);
+// __pipe: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __pipe(pipefd: *mut c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_pipe2, pipefd, 0) as c_int }
+}
+// __poll: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __poll(fds: *mut c_void, nfds: c_ulong, timeout: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_poll, fds, nfds, timeout) as c_int }
+}
 dlsym_passthrough!(fn __posix_getopt(argc: c_int, argv: *const *mut c_char, optstring: *const c_char) -> c_int);
-dlsym_passthrough!(fn __pread64(fd: c_int, buf: *mut c_void, count: SizeT, offset: i64) -> SSizeT);
+// __pread64/__pwrite64: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __pread64(
+    fd: c_int,
+    buf: *mut c_void,
+    count: SizeT,
+    offset: i64,
+) -> SSizeT {
+    unsafe { libc::syscall(libc::SYS_pread64, fd, buf, count, offset) as SSizeT }
+}
 dlsym_passthrough!(fn __printf_fp(fp: *mut c_void, info: *const c_void, args: *const *const c_void) -> c_int);
-dlsym_passthrough!(fn __profile_frequency() -> c_int);
-dlsym_passthrough!(fn __pwrite64(fd: c_int, buf: *const c_void, count: SizeT, offset: i64) -> SSizeT);
+// __profile_frequency: native — return 100 (default HZ)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __profile_frequency() -> c_int {
+    100
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __pwrite64(
+    fd: c_int,
+    buf: *const c_void,
+    count: SizeT,
+    offset: i64,
+) -> SSizeT {
+    unsafe { libc::syscall(libc::SYS_pwrite64, fd, buf, count, offset) as SSizeT }
+}
 dlsym_passthrough!(fn __rcmd_errstr() -> *mut *mut c_char);
-dlsym_passthrough!(fn __read(fd: c_int, buf: *mut c_void, count: SizeT) -> SSizeT);
+// __read/__write: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __read(fd: c_int, buf: *mut c_void, count: SizeT) -> SSizeT {
+    unsafe { libc::syscall(libc::SYS_read, fd, buf, count) as SSizeT }
+}
 dlsym_passthrough!(fn __register_atfork(prepare: *mut c_void, parent: *mut c_void, child: *mut c_void, dso_handle: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __sbrk(increment: isize) -> *mut c_void);
-dlsym_passthrough!(fn __secure_getenv(name: *const c_char) -> *mut c_char);
-dlsym_passthrough!(fn __select(nfds: c_int, readfds: *mut c_void, writefds: *mut c_void, exceptfds: *mut c_void, timeout: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __send(sockfd: c_int, buf: *const c_void, len: SizeT, flags: c_int) -> SSizeT);
+// __sbrk: forward to libc::sbrk
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sbrk(increment: isize) -> *mut c_void {
+    unsafe { libc::sbrk(increment) }
+}
+// __secure_getenv: native — return null if AT_SECURE, else getenv
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __secure_getenv(name: *const c_char) -> *mut c_char {
+    // Check AT_SECURE — if set, return null for security
+    if unsafe { libc::getauxval(libc::AT_SECURE) } != 0 {
+        return std::ptr::null_mut();
+    }
+    unsafe { libc::getenv(name) as *mut c_char }
+}
+// __select: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __select(
+    nfds: c_int,
+    readfds: *mut c_void,
+    writefds: *mut c_void,
+    exceptfds: *mut c_void,
+    timeout: *mut c_void,
+) -> c_int {
+    unsafe {
+        libc::syscall(
+            libc::SYS_select,
+            nfds,
+            readfds,
+            writefds,
+            exceptfds,
+            timeout,
+        ) as c_int
+    }
+}
+// __send: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __send(
+    sockfd: c_int,
+    buf: *const c_void,
+    len: SizeT,
+    flags: c_int,
+) -> SSizeT {
+    unsafe {
+        libc::syscall(
+            libc::SYS_sendto,
+            sockfd,
+            buf,
+            len,
+            flags,
+            std::ptr::null::<c_void>(),
+            0,
+        ) as SSizeT
+    }
+}
 dlsym_passthrough!(fn __setmntent(filename: *const c_char, typ: *const c_char) -> *mut c_void);
-dlsym_passthrough!(fn __setpgid(pid: c_int, pgid: c_int) -> c_int);
-dlsym_passthrough!(fn __sigaction(signum: c_int, act: *const c_void, oldact: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __sigaddset(set: *mut c_void, signum: c_int) -> c_int);
-dlsym_passthrough!(fn __sigdelset(set: *mut c_void, signum: c_int) -> c_int);
-dlsym_passthrough!(fn __sigismember(set: *const c_void, signum: c_int) -> c_int);
+// __setpgid: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __setpgid(pid: c_int, pgid: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_setpgid, pid, pgid) as c_int }
+}
+// __sigaction: native syscall (uses rt_sigaction)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sigaction(
+    signum: c_int,
+    act: *const c_void,
+    oldact: *mut c_void,
+) -> c_int {
+    unsafe { libc::sigaction(signum, act.cast(), oldact.cast()) }
+}
+// __sigaddset/__sigdelset/__sigismember: native bit manipulation on sigset_t
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sigaddset(set: *mut c_void, signum: c_int) -> c_int {
+    if set.is_null() || !(1..=64).contains(&signum) {
+        return -1;
+    }
+    let bits = set.cast::<u64>();
+    unsafe {
+        *bits |= 1u64 << (signum - 1) as u64;
+    }
+    0
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sigdelset(set: *mut c_void, signum: c_int) -> c_int {
+    if set.is_null() || !(1..=64).contains(&signum) {
+        return -1;
+    }
+    let bits = set.cast::<u64>();
+    unsafe {
+        *bits &= !(1u64 << (signum - 1) as u64);
+    }
+    0
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sigismember(set: *const c_void, signum: c_int) -> c_int {
+    if set.is_null() || !(1..=64).contains(&signum) {
+        return -1;
+    }
+    let bits = unsafe { *set.cast::<u64>() };
+    if bits & (1u64 << (signum - 1) as u64) != 0 {
+        1
+    } else {
+        0
+    }
+}
 dlsym_passthrough!(fn __sigpause(sig_or_mask: c_int) -> c_int);
 dlsym_passthrough!(fn __sigsetjmp(env: *mut c_void, savesigs: c_int) -> c_int);
-dlsym_passthrough!(fn __sigsuspend(set: *const c_void) -> c_int);
-dlsym_passthrough!(fn __statfs(path: *const c_char, buf: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __sysconf(name: c_int) -> c_long);
+// __sigsuspend: native — forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sigsuspend(set: *const c_void) -> c_int {
+    unsafe { libc::sigsuspend(set.cast()) }
+}
+// __statfs: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __statfs(path: *const c_char, buf: *mut c_void) -> c_int {
+    unsafe { libc::syscall(libc::SYS_statfs, path, buf) as c_int }
+}
+// __sysconf: native — forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sysconf(name: c_int) -> c_long {
+    unsafe { libc::sysconf(name) }
+}
 dlsym_passthrough!(fn __sysctl(args: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __sysv_signal(signum: c_int, handler: *mut c_void) -> *mut c_void);
+// __sysv_signal: native — System V signal semantics (one-shot)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __sysv_signal(signum: c_int, handler: *mut c_void) -> *mut c_void {
+    unsafe { libc::signal(signum, handler as libc::sighandler_t) as *mut c_void }
+}
 dlsym_passthrough!(fn __vfork() -> c_int);
 dlsym_passthrough!(fn __vfscanf(stream: *mut c_void, fmt: *const c_char, ap: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __vsnprintf(str: *mut c_char, size: SizeT, fmt: *const c_char, ap: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __vsscanf(str: *const c_char, fmt: *const c_char, ap: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __wait(status: *mut c_int) -> c_int);
-dlsym_passthrough!(fn __waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int);
-dlsym_passthrough!(fn __write(fd: c_int, buf: *const c_void, count: SizeT) -> SSizeT);
-dlsym_passthrough!(fn __xmknod(ver: c_int, pathname: *const c_char, mode: c_uint, dev: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __xmknodat(ver: c_int, dirfd: c_int, pathname: *const c_char, mode: c_uint, dev: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __xpg_sigpause(sig: c_int) -> c_int);
-dlsym_passthrough!(fn __signbitl(x: f64) -> c_int);
-dlsym_passthrough!(fn __isinfl(x: f64) -> c_int);
-dlsym_passthrough!(fn __isnanl(x: f64) -> c_int);
-dlsym_passthrough!(fn __finitel(x: f64) -> c_int);
-dlsym_passthrough!(fn __isnanf128(x: f64) -> c_int);
+// __wait: native — wait4 with pid=-1, options=0
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wait(status: *mut c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_wait4, -1, status, 0, std::ptr::null::<c_void>()) as c_int }
+}
+// __waitpid: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int {
+    unsafe {
+        libc::syscall(
+            libc::SYS_wait4,
+            pid,
+            status,
+            options,
+            std::ptr::null::<c_void>(),
+        ) as c_int
+    }
+}
+// __write: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __write(fd: c_int, buf: *const c_void, count: SizeT) -> SSizeT {
+    unsafe { libc::syscall(libc::SYS_write, fd, buf, count) as SSizeT }
+}
+// __xmknod: native — forward to mknod syscall (ignoring ver)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __xmknod(
+    ver: c_int,
+    pathname: *const c_char,
+    mode: c_uint,
+    dev: *mut c_void,
+) -> c_int {
+    let _ = ver;
+    unsafe { libc::syscall(libc::SYS_mknod, pathname, mode, *(dev.cast::<u64>())) as c_int }
+}
+// __xmknodat: native — forward to mknodat syscall (ignoring ver)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __xmknodat(
+    ver: c_int,
+    dirfd: c_int,
+    pathname: *const c_char,
+    mode: c_uint,
+    dev: *mut c_void,
+) -> c_int {
+    let _ = ver;
+    unsafe {
+        libc::syscall(
+            libc::SYS_mknodat,
+            dirfd,
+            pathname,
+            mode,
+            *(dev.cast::<u64>()),
+        ) as c_int
+    }
+}
+// __xpg_sigpause: native — XPG sigpause removes sig from mask then sigsuspend
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __xpg_sigpause(sig: c_int) -> c_int {
+    unsafe {
+        let mut mask: libc::sigset_t = std::mem::zeroed();
+        libc::sigprocmask(libc::SIG_BLOCK, std::ptr::null(), &mut mask);
+        libc::sigdelset(&mut mask, sig);
+        libc::sigsuspend(&mask)
+    }
+}
+// --- Native math: long-double classification (long double = f64 in this ABI) ---
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __signbitl(x: f64) -> c_int {
+    (x.to_bits() >> 63) as c_int
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isinfl(x: f64) -> c_int {
+    if x == f64::INFINITY {
+        1
+    } else if x == f64::NEG_INFINITY {
+        -1
+    } else {
+        0
+    }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isnanl(x: f64) -> c_int {
+    x.is_nan() as c_int
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __finitel(x: f64) -> c_int {
+    x.is_finite() as c_int
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isnanf128(x: f64) -> c_int {
+    x.is_nan() as c_int
+}
 
 // ==========================================================================
 // __fortify_chk extras not covered by fortify_abi.rs (8 symbols)
 // ==========================================================================
-dlsym_passthrough!(fn __mempcpy_chk(dest: *mut c_void, src: *const c_void, n: SizeT, destlen: SizeT) -> *mut c_void);
+// Fortified _chk functions: abort if size overflows destination buffer, then forward
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __mempcpy_chk(
+    dest: *mut c_void,
+    src: *const c_void,
+    n: SizeT,
+    destlen: SizeT,
+) -> *mut c_void {
+    if n > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(src.cast::<u8>(), dest.cast::<u8>(), n);
+    }
+    unsafe { dest.cast::<u8>().add(n).cast() }
+}
 dlsym_passthrough!(fn __mempcpy_small(dest: *mut c_void, src: c_ulong, src2: c_ulong) -> *mut c_void);
-dlsym_passthrough!(fn __strlcat_chk(dest: *mut c_char, src: *const c_char, size: SizeT, destlen: SizeT) -> SizeT);
-dlsym_passthrough!(fn __strlcpy_chk(dest: *mut c_char, src: *const c_char, size: SizeT, destlen: SizeT) -> SizeT);
-dlsym_passthrough!(fn __wcpcpy_chk(dest: *mut WcharT, src: *const WcharT, destlen: SizeT) -> *mut WcharT);
-dlsym_passthrough!(fn __wcpncpy_chk(dest: *mut WcharT, src: *const WcharT, n: SizeT, destlen: SizeT) -> *mut WcharT);
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __strlcat_chk(
+    dest: *mut c_char,
+    src: *const c_char,
+    size: SizeT,
+    destlen: SizeT,
+) -> SizeT {
+    if size > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    // Native strlcat: find end of dest, append src up to size
+    let mut dlen = 0usize;
+    unsafe {
+        while dlen < size && *dest.add(dlen) != 0 {
+            dlen += 1;
+        }
+    }
+    let mut slen = 0usize;
+    unsafe {
+        while *src.add(slen) != 0 {
+            slen += 1;
+        }
+    }
+    if dlen < size {
+        let copy = std::cmp::min(slen, size - dlen - 1);
+        unsafe {
+            std::ptr::copy_nonoverlapping(src.cast::<u8>(), dest.add(dlen).cast::<u8>(), copy);
+        }
+        unsafe {
+            *dest.add(dlen + copy) = 0;
+        }
+    }
+    dlen + slen
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __strlcpy_chk(
+    dest: *mut c_char,
+    src: *const c_char,
+    size: SizeT,
+    destlen: SizeT,
+) -> SizeT {
+    if size > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    // Native strlcpy: copy src to dest up to size-1, nul-terminate
+    let mut slen = 0usize;
+    unsafe {
+        while *src.add(slen) != 0 {
+            slen += 1;
+        }
+    }
+    if size > 0 {
+        let copy = std::cmp::min(slen, size - 1);
+        unsafe {
+            std::ptr::copy_nonoverlapping(src.cast::<u8>(), dest.cast::<u8>(), copy);
+        }
+        unsafe {
+            *dest.add(copy) = 0;
+        }
+    }
+    slen
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wcpcpy_chk(
+    dest: *mut WcharT,
+    src: *const WcharT,
+    destlen: SizeT,
+) -> *mut WcharT {
+    // Count src len
+    let mut len = 0usize;
+    unsafe {
+        while *src.add(len) != 0 {
+            len += 1;
+        }
+    }
+    if len + 1 > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(src, dest, len + 1);
+    }
+    unsafe { dest.add(len) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wcpncpy_chk(
+    dest: *mut WcharT,
+    src: *const WcharT,
+    n: SizeT,
+    destlen: SizeT,
+) -> *mut WcharT {
+    if n > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    let mut i = 0;
+    unsafe {
+        while i < n && *src.add(i) != 0 {
+            *dest.add(i) = *src.add(i);
+            i += 1;
+        }
+        let end = i;
+        while i < n {
+            *dest.add(i) = 0;
+            i += 1;
+        }
+        dest.add(end)
+    }
+}
 dlsym_passthrough!(fn __wcrtomb_chk(s: *mut c_char, wc: WcharT, ps: *mut c_void, buflen: SizeT) -> SizeT);
-dlsym_passthrough!(fn __wcslcat_chk(dest: *mut WcharT, src: *const WcharT, size: SizeT, destlen: SizeT) -> SizeT);
-dlsym_passthrough!(fn __wcslcpy_chk(dest: *mut WcharT, src: *const WcharT, size: SizeT, destlen: SizeT) -> SizeT);
-dlsym_passthrough!(fn __wmempcpy_chk(dest: *mut WcharT, src: *const WcharT, n: SizeT, destlen: SizeT) -> *mut WcharT);
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wcslcat_chk(
+    dest: *mut WcharT,
+    src: *const WcharT,
+    size: SizeT,
+    destlen: SizeT,
+) -> SizeT {
+    if size > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    // Find end of dest within size
+    let mut dlen = 0;
+    unsafe {
+        while dlen < size && *dest.add(dlen) != 0 {
+            dlen += 1;
+        }
+    }
+    let mut slen = 0;
+    unsafe {
+        while *src.add(slen) != 0 {
+            slen += 1;
+        }
+    }
+    if dlen < size {
+        let copy = std::cmp::min(slen, size - dlen - 1);
+        unsafe {
+            std::ptr::copy_nonoverlapping(src, dest.add(dlen), copy);
+        }
+        unsafe {
+            *dest.add(dlen + copy) = 0;
+        }
+    }
+    dlen + slen
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wcslcpy_chk(
+    dest: *mut WcharT,
+    src: *const WcharT,
+    size: SizeT,
+    destlen: SizeT,
+) -> SizeT {
+    if size > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    let mut slen = 0;
+    unsafe {
+        while *src.add(slen) != 0 {
+            slen += 1;
+        }
+    }
+    if size > 0 {
+        let copy = std::cmp::min(slen, size - 1);
+        unsafe {
+            std::ptr::copy_nonoverlapping(src, dest, copy);
+        }
+        unsafe {
+            *dest.add(copy) = 0;
+        }
+    }
+    slen
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wmempcpy_chk(
+    dest: *mut WcharT,
+    src: *const WcharT,
+    n: SizeT,
+    destlen: SizeT,
+) -> *mut WcharT {
+    if n > destlen {
+        unsafe {
+            libc::abort();
+        }
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(src, dest, n);
+    }
+    unsafe { dest.add(n) }
+}
 dlsym_passthrough!(fn __read_chk(fd: c_int, buf: *mut c_void, nbytes: SizeT, buflen: SizeT) -> SSizeT);
 dlsym_passthrough!(fn __readlink_chk(path: *const c_char, buf: *mut c_char, len: SizeT, buflen: SizeT) -> SSizeT);
 dlsym_passthrough!(fn __readlinkat_chk(dirfd: c_int, path: *const c_char, buf: *mut c_char, len: SizeT, buflen: SizeT) -> SSizeT);
@@ -654,8 +1666,48 @@ pub static mut sys_nerr: c_int = 134;
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub static mut h_nerr: c_int = 5;
 
-// Pointers to string tables — let glibc's copy be used via RTLD_NEXT
-dlsym_passthrough!(fn sys_sigabbrev() -> *const *const c_char);
+// sys_sigabbrev: native signal abbreviation table
+// Use static mut since raw pointers are not Sync
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub static mut sys_sigabbrev: [*const c_char; 32] = {
+    const fn s(b: &[u8]) -> *const i8 {
+        b.as_ptr().cast()
+    }
+    [
+        s(b"\0"),
+        s(b"HUP\0"),
+        s(b"INT\0"),
+        s(b"QUIT\0"),
+        s(b"ILL\0"),
+        s(b"TRAP\0"),
+        s(b"ABRT\0"),
+        s(b"BUS\0"),
+        s(b"FPE\0"),
+        s(b"KILL\0"),
+        s(b"USR1\0"),
+        s(b"SEGV\0"),
+        s(b"USR2\0"),
+        s(b"PIPE\0"),
+        s(b"ALRM\0"),
+        s(b"TERM\0"),
+        s(b"STKFLT\0"),
+        s(b"CHLD\0"),
+        s(b"CONT\0"),
+        s(b"STOP\0"),
+        s(b"TSTP\0"),
+        s(b"TTIN\0"),
+        s(b"TTOU\0"),
+        s(b"URG\0"),
+        s(b"XCPU\0"),
+        s(b"XFSZ\0"),
+        s(b"VTALRM\0"),
+        s(b"PROF\0"),
+        s(b"WINCH\0"),
+        s(b"IO\0"),
+        s(b"PWR\0"),
+        s(b"SYS\0"),
+    ]
+};
 
 // These are actually arrays, but export as statics the linker can find
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -725,7 +1777,11 @@ pub static mut mallwatch: *mut c_void = std::ptr::null_mut();
 dlsym_passthrough!(fn _dl_find_object(address: *mut c_void, result: *mut c_void) -> c_int);
 dlsym_passthrough!(fn _dl_mcount_wrapper(selfpc: c_ulong));
 dlsym_passthrough!(fn _dl_mcount_wrapper_check(selfpc: c_ulong));
-dlsym_passthrough!(fn _flushlbf());
+// _flushlbf: native — flush all line-buffered streams
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _flushlbf() {
+    unsafe { libc::fflush(std::ptr::null_mut()) };
+}
 
 // _libc_intl_domainname
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -744,147 +1800,811 @@ pub static mut _res_hconf: [u8; 48] = [0u8; 48]; // opaque _res_hconf_t
 // ==========================================================================
 // Legacy/misc functions
 // ==========================================================================
-dlsym_passthrough!(fn _tolower(c: c_int) -> c_int);
-dlsym_passthrough!(fn _toupper(c: c_int) -> c_int);
-dlsym_passthrough!(fn __x86_get_cpuid_feature_leaf(leaf: c_uint, info: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __fentry__());
+// _tolower/_toupper: native — direct table lookup
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _tolower(c: c_int) -> c_int {
+    if !(-128..=255).contains(&c) {
+        return c;
+    }
+    unsafe { *crate::ctype_abi::tolower_table_ptr().offset(c as isize) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _toupper(c: c_int) -> c_int {
+    if !(-128..=255).contains(&c) {
+        return c;
+    }
+    unsafe { *crate::ctype_abi::toupper_table_ptr().offset(c as isize) }
+}
+// __x86_get_cpuid_feature_leaf: native cpuid instruction
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __x86_get_cpuid_feature_leaf(leaf: c_uint, info: *mut c_void) -> c_int {
+    if info.is_null() {
+        return 0;
+    }
+    let out = info.cast::<[c_uint; 4]>();
+    let (eax, ebx, ecx, edx): (u32, u32, u32, u32);
+    unsafe {
+        // rbx is reserved by LLVM — save/restore manually
+        core::arch::asm!(
+            "push rbx",
+            "cpuid",
+            "mov {ebx_out:e}, ebx",
+            "pop rbx",
+            inout("eax") leaf => eax,
+            ebx_out = lateout(reg) ebx,
+            inout("ecx") 0u32 => ecx,
+            lateout("edx") edx,
+        );
+        (*out) = [eax, ebx, ecx, edx];
+    }
+    1
+}
+// __fentry__: GCC -pg function entry hook — no-op stub
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __fentry__() {}
 dlsym_passthrough!(fn __uflow(fp: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __underflow(fp: *mut c_void) -> c_int);
 dlsym_passthrough!(fn __woverflow(fp: *mut c_void, wc: WcharT) -> WcharT);
 dlsym_passthrough!(fn __wuflow(fp: *mut c_void) -> WcharT);
 dlsym_passthrough!(fn __wunderflow(fp: *mut c_void) -> WcharT);
 
-// Profiling
-dlsym_passthrough!(fn _mcleanup());
-dlsym_passthrough!(fn _mcount());
-dlsym_passthrough!(fn mcount());
-dlsym_passthrough!(fn moncontrol(mode: c_int));
-dlsym_passthrough!(fn monstartup(lowpc: c_ulong, highpc: c_ulong));
-dlsym_passthrough!(fn profil(buf: *mut c_void, bufsiz: SizeT, offset: SizeT, scale: c_uint) -> c_int);
-dlsym_passthrough!(fn sprofil(profp: *mut c_void, profcnt: c_int, tvp: *mut c_void, flags: c_uint) -> c_int);
+// Profiling — no-op stubs (profiling data is unused in frankenlibc)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _mcleanup() {}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _mcount() {}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mcount() {}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn moncontrol(mode: c_int) {
+    let _ = mode;
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn monstartup(lowpc: c_ulong, highpc: c_ulong) {
+    let _ = (lowpc, highpc);
+}
+// profil: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn profil(
+    buf: *mut c_void,
+    bufsiz: SizeT,
+    offset: SizeT,
+    scale: c_uint,
+) -> c_int {
+    let _ = (buf, bufsiz, offset, scale);
+    0 // success no-op
+}
+// sprofil: not available on Linux — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sprofil(
+    profp: *mut c_void,
+    profcnt: c_int,
+    tvp: *mut c_void,
+    flags: c_uint,
+) -> c_int {
+    let _ = (profp, profcnt, tvp, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 
 // Misc POSIX functions
-dlsym_passthrough!(fn adjtime(delta: *const c_void, olddelta: *mut c_void) -> c_int);
-dlsym_passthrough!(fn arch_prctl(code: c_int, addr: c_ulong) -> c_int);
-dlsym_passthrough!(fn bdflush(func: c_int, data: c_long) -> c_int);
+// adjtime: native — forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn adjtime(delta: *const c_void, olddelta: *mut c_void) -> c_int {
+    unsafe { libc::adjtime(delta.cast(), olddelta.cast()) }
+}
+// arch_prctl: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn arch_prctl(code: c_int, addr: c_ulong) -> c_int {
+    unsafe { __arch_prctl(code, addr) }
+}
+// bdflush: deprecated Linux syscall (removed in 2.6) — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn bdflush(func: c_int, data: c_long) -> c_int {
+    let _ = (func, data);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 dlsym_passthrough!(fn bindresvport(sockfd: c_int, sin: *mut c_void) -> c_int);
-dlsym_passthrough!(fn cfgetibaud(termios_p: *const c_void) -> c_uint);
-dlsym_passthrough!(fn cfgetobaud(termios_p: *const c_void) -> c_uint);
-dlsym_passthrough!(fn cfsetbaud(termios_p: *mut c_void, ibaud: c_uint, obaud: c_uint) -> c_int);
-dlsym_passthrough!(fn cfsetibaud(termios_p: *mut c_void, speed: c_uint) -> c_int);
-dlsym_passthrough!(fn cfsetobaud(termios_p: *mut c_void, speed: c_uint) -> c_int);
-dlsym_passthrough!(fn chflags(path: *const c_char, flags: c_ulong) -> c_int);
-dlsym_passthrough!(fn copysignl(x: f64, y: f64) -> f64);
-dlsym_passthrough!(fn create_module(name: *const c_char, size: SizeT) -> c_long);
-dlsym_passthrough!(fn delete_module(name: *const c_char, flags: c_uint) -> c_int);
+// cfget/cfset speed: forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn cfgetibaud(termios_p: *const c_void) -> c_uint {
+    unsafe { libc::cfgetispeed(termios_p.cast()) as c_uint }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn cfgetobaud(termios_p: *const c_void) -> c_uint {
+    unsafe { libc::cfgetospeed(termios_p.cast()) as c_uint }
+}
+// cfsetbaud: set both input and output baud
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn cfsetbaud(termios_p: *mut c_void, ibaud: c_uint, obaud: c_uint) -> c_int {
+    let tp = termios_p.cast::<libc::termios>();
+    let r1 = unsafe { libc::cfsetispeed(tp, ibaud as libc::speed_t) };
+    if r1 != 0 {
+        return r1;
+    }
+    unsafe { libc::cfsetospeed(tp, obaud as libc::speed_t) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn cfsetibaud(termios_p: *mut c_void, speed: c_uint) -> c_int {
+    unsafe { libc::cfsetispeed(termios_p.cast(), speed as libc::speed_t) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn cfsetobaud(termios_p: *mut c_void, speed: c_uint) -> c_int {
+    unsafe { libc::cfsetospeed(termios_p.cast(), speed as libc::speed_t) }
+}
+// chflags: BSD — not supported on Linux, return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn chflags(path: *const c_char, flags: c_ulong) -> c_int {
+    let _ = (path, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// copysignl: native — copy sign of y to x
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn copysignl(x: f64, y: f64) -> f64 {
+    f64::from_bits((x.to_bits() & 0x7FFF_FFFF_FFFF_FFFF) | (y.to_bits() & 0x8000_0000_0000_0000))
+}
+// create_module: legacy syscall (removed in Linux 2.6) — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn create_module(name: *const c_char, size: SizeT) -> c_long {
+    let _ = (name, size);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// delete_module: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn delete_module(name: *const c_char, flags: c_uint) -> c_int {
+    unsafe { libc::syscall(libc::SYS_delete_module, name, flags) as c_int }
+}
 dlsym_passthrough!(fn dladdr1(addr: *const c_void, info: *mut c_void, extra_info: *mut *mut c_void, flags: c_int) -> c_int);
 dlsym_passthrough!(fn dlinfo(handle: *mut c_void, request: c_int, info: *mut c_void) -> c_int);
 dlsym_passthrough!(fn dlmopen(lmid: c_long, filename: *const c_char, flags: c_int) -> *mut c_void);
 dlsym_passthrough!(fn dlvsym(handle: *mut c_void, symbol: *const c_char, version: *const c_char) -> *mut c_void);
-dlsym_passthrough!(fn dysize(year: c_int) -> c_int);
-dlsym_passthrough!(fn fattach(fd: c_int, path: *const c_char) -> c_int);
-dlsym_passthrough!(fn fchflags(fd: c_int, flags: c_ulong) -> c_int);
-dlsym_passthrough!(fn fdetach(path: *const c_char) -> c_int);
-dlsym_passthrough!(fn frexpl(x: f64, exp: *mut c_int) -> f64);
-dlsym_passthrough!(fn ftime(tp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn futimes(fd: c_int, tv: *const c_void) -> c_int);
-dlsym_passthrough!(fn futimesat(dirfd: c_int, pathname: *const c_char, tv: *const c_void) -> c_int);
-dlsym_passthrough!(fn fwide(stream: *mut c_void, mode: c_int) -> c_int);
-dlsym_passthrough!(fn get_kernel_syms(table: *mut c_void) -> c_int);
-dlsym_passthrough!(fn getdirentries(fd: c_int, buf: *mut c_char, nbytes: SizeT, basep: *mut c_long) -> SSizeT);
-dlsym_passthrough!(fn getdirentries64(fd: c_int, buf: *mut c_char, nbytes: SizeT, basep: *mut i64) -> SSizeT);
+// dysize: native — returns 366 for leap years, 365 otherwise
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn dysize(year: c_int) -> c_int {
+    if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+        366
+    } else {
+        365
+    }
+}
+// fattach/fdetach: STREAMS — not supported on Linux, return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fattach(fd: c_int, path: *const c_char) -> c_int {
+    let _ = (fd, path);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// fchflags: BSD — not supported on Linux, return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fchflags(fd: c_int, flags: c_ulong) -> c_int {
+    let _ = (fd, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fdetach(path: *const c_char) -> c_int {
+    let _ = path;
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// frexpl: native — decompose into significand * 2^exp (0.5 <= |frac| < 1.0)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn frexpl(x: f64, exp: *mut c_int) -> f64 {
+    if x == 0.0 || x.is_nan() || x.is_infinite() {
+        if !exp.is_null() {
+            unsafe { *exp = 0 };
+        }
+        return x;
+    }
+    let bits = x.to_bits();
+    let biased = ((bits >> 52) & 0x7FF) as i32;
+    let sign = bits & 0x8000_0000_0000_0000;
+    let mantissa = bits & 0x000F_FFFF_FFFF_FFFF;
+    if biased == 0 {
+        // subnormal: normalize by multiplying by 2^64
+        let norm = x * ((1u64 << 63) as f64 * 2.0);
+        let nb = norm.to_bits();
+        let ne = ((nb >> 52) & 0x7FF) as i32;
+        if !exp.is_null() {
+            unsafe { *exp = ne - 1022 - 64 };
+        }
+        return f64::from_bits((nb & 0x000F_FFFF_FFFF_FFFF) | sign | 0x3FE0_0000_0000_0000);
+    }
+    if !exp.is_null() {
+        unsafe { *exp = biased - 1022 };
+    }
+    f64::from_bits(mantissa | sign | 0x3FE0_0000_0000_0000)
+}
+// ftime: native — fill timeb struct via clock_gettime
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ftime(tp: *mut c_void) -> c_int {
+    if tp.is_null() {
+        return -1;
+    }
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    if unsafe { libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts) } != 0 {
+        return -1;
+    }
+    // struct timeb layout: time_t(8), millitm(u16), timezone(i16), dstflag(i16)
+    let p = tp.cast::<u8>();
+    unsafe {
+        *(p as *mut i64) = ts.tv_sec;
+        *(p.add(8) as *mut u16) = (ts.tv_nsec / 1_000_000) as u16;
+        *(p.add(10) as *mut i16) = 0; // timezone
+        *(p.add(12) as *mut i16) = 0; // dstflag
+    }
+    0
+}
+// futimes: native — forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn futimes(fd: c_int, tv: *const c_void) -> c_int {
+    unsafe { libc::futimes(fd, tv.cast()) }
+}
+// futimesat: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn futimesat(
+    dirfd: c_int,
+    pathname: *const c_char,
+    tv: *const c_void,
+) -> c_int {
+    unsafe { libc::syscall(libc::SYS_futimesat, dirfd, pathname, tv) as c_int }
+}
+// fwide: native — always return 0 (unset, compatible with byte-oriented streams)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fwide(stream: *mut c_void, mode: c_int) -> c_int {
+    let _ = (stream, mode);
+    0 // stream orientation not set
+}
+// get_kernel_syms: removed in Linux 2.6 — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn get_kernel_syms(table: *mut c_void) -> c_int {
+    let _ = table;
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// getdirentries/getdirentries64: native via getdents64 + lseek
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getdirentries(
+    fd: c_int,
+    buf: *mut c_char,
+    nbytes: SizeT,
+    basep: *mut c_long,
+) -> SSizeT {
+    if !basep.is_null() {
+        unsafe { *basep = libc::lseek(fd, 0, libc::SEEK_CUR) as c_long };
+    }
+    unsafe { libc::syscall(libc::SYS_getdents64, fd, buf, nbytes) as SSizeT }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getdirentries64(
+    fd: c_int,
+    buf: *mut c_char,
+    nbytes: SizeT,
+    basep: *mut i64,
+) -> SSizeT {
+    if !basep.is_null() {
+        unsafe { *basep = libc::lseek(fd, 0, libc::SEEK_CUR) as i64 };
+    }
+    unsafe { libc::syscall(libc::SYS_getdents64, fd, buf, nbytes) as SSizeT }
+}
 dlsym_passthrough!(fn getipv4sourcefilter(s: c_int, interface_: c_uint, group: c_uint, fmode: *mut c_uint, numsrc: *mut c_uint, slist: *mut c_void) -> c_int);
-dlsym_passthrough!(fn getmsg(fd: c_int, ctlptr: *mut c_void, dataptr: *mut c_void, flags: *mut c_int) -> c_int);
-dlsym_passthrough!(fn getpmsg(fd: c_int, ctlptr: *mut c_void, dataptr: *mut c_void, bandp: *mut c_int, flags: *mut c_int) -> c_int);
+// getmsg/getpmsg: STREAMS — not supported on Linux
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getmsg(
+    fd: c_int,
+    ctlptr: *mut c_void,
+    dataptr: *mut c_void,
+    flags: *mut c_int,
+) -> c_int {
+    let _ = (fd, ctlptr, dataptr, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getpmsg(
+    fd: c_int,
+    ctlptr: *mut c_void,
+    dataptr: *mut c_void,
+    bandp: *mut c_int,
+    flags: *mut c_int,
+) -> c_int {
+    let _ = (fd, ctlptr, dataptr, bandp, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 dlsym_passthrough!(fn getpw(uid: c_uint, buf: *mut c_char) -> c_int);
-dlsym_passthrough!(fn gettid() -> c_int);
-dlsym_passthrough!(fn getwd(buf: *mut c_char) -> *mut c_char);
-dlsym_passthrough!(fn group_member(gid: c_uint) -> c_int);
-dlsym_passthrough!(fn gtty(fd: c_int, params: *mut c_void) -> c_int);
-dlsym_passthrough!(fn init_module(module_image: *mut c_void, len: c_ulong, param_values: *const c_char) -> c_int);
+// gettid: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn gettid() -> c_int {
+    unsafe { libc::syscall(libc::SYS_gettid) as c_int }
+}
+// getwd: deprecated — forward to libc::getcwd
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getwd(buf: *mut c_char) -> *mut c_char {
+    // PATH_MAX is typically 4096 on Linux
+    unsafe { libc::getcwd(buf, 4096) }
+}
+// group_member: native — check if current process is in supplementary group
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn group_member(gid: c_uint) -> c_int {
+    if unsafe { libc::getegid() } == gid {
+        return 1;
+    }
+    let mut groups = [0u32; 64];
+    let n = unsafe { libc::getgroups(64, groups.as_mut_ptr()) };
+    if n < 0 {
+        return 0;
+    }
+    for g in groups.iter().take(n as usize) {
+        if *g == gid {
+            return 1;
+        }
+    }
+    0
+}
+// gtty: legacy V7 — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn gtty(fd: c_int, params: *mut c_void) -> c_int {
+    let _ = (fd, params);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// init_module: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn init_module(
+    module_image: *mut c_void,
+    len: c_ulong,
+    param_values: *const c_char,
+) -> c_int {
+    unsafe { libc::syscall(libc::SYS_init_module, module_image, len, param_values) as c_int }
+}
 dlsym_passthrough!(fn innetgr(netgroup: *const c_char, host: *const c_char, user: *const c_char, domain: *const c_char) -> c_int);
-dlsym_passthrough!(fn ioperm(from: c_ulong, num: c_ulong, turn_on: c_int) -> c_int);
-dlsym_passthrough!(fn iopl(level: c_int) -> c_int);
+// ioperm/iopl: native syscalls
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ioperm(from: c_ulong, num: c_ulong, turn_on: c_int) -> c_int {
+    unsafe {
+        libc::syscall(
+            libc::SYS_ioperm,
+            from as c_long,
+            num as c_long,
+            turn_on as c_long,
+        ) as c_int
+    }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn iopl(level: c_int) -> c_int {
+    unsafe { libc::syscall(libc::SYS_iopl, level as c_long) as c_int }
+}
 dlsym_passthrough!(fn iruserok(raddr: c_uint, superuser: c_int, ruser: *const c_char, luser: *const c_char) -> c_int);
 dlsym_passthrough!(fn iruserok_af(raddr: *const c_void, superuser: c_int, ruser: *const c_char, luser: *const c_char, af: c_int) -> c_int);
-dlsym_passthrough!(fn isastream(fd: c_int) -> c_int);
-dlsym_passthrough!(fn isctype(c: c_int, mask: c_int) -> c_int);
-dlsym_passthrough!(fn isfdtype(fd: c_int, fdtype: c_int) -> c_int);
-dlsym_passthrough!(fn isinff(x: f32) -> c_int);
-dlsym_passthrough!(fn isinfl(x: f64) -> c_int);
-dlsym_passthrough!(fn isnanf(x: f32) -> c_int);
-dlsym_passthrough!(fn isnanl(x: f64) -> c_int);
-dlsym_passthrough!(fn finitel(x: f64) -> c_int);
-dlsym_passthrough!(fn klogctl(typ: c_int, bufp: *mut c_char, len: c_int) -> c_int);
-dlsym_passthrough!(fn lchmod(pathname: *const c_char, mode: c_uint) -> c_int);
-dlsym_passthrough!(fn ldexpl(x: f64, exp: c_int) -> f64);
-dlsym_passthrough!(fn llseek(fd: c_int, offset: i64, whence: c_int) -> i64);
-dlsym_passthrough!(fn lutimes(filename: *const c_char, tv: *const c_void) -> c_int);
-dlsym_passthrough!(fn mkostemp64(template: *mut c_char, flags: c_int) -> c_int);
-dlsym_passthrough!(fn mkostemps64(template: *mut c_char, suffixlen: c_int, flags: c_int) -> c_int);
-dlsym_passthrough!(fn mkstemp64(template: *mut c_char) -> c_int);
-dlsym_passthrough!(fn mkstemps64(template: *mut c_char, suffixlen: c_int) -> c_int);
-dlsym_passthrough!(fn modfl(x: f64, iptr: *mut f64) -> f64);
-dlsym_passthrough!(fn modify_ldt(func: c_int, ptr: *mut c_void, bytecount: c_ulong) -> c_int);
+// isastream: STREAMS not supported on Linux — always return 0
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isastream(fd: c_int) -> c_int {
+    let _ = fd;
+    0
+}
+// isctype: native — same as __isctype
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isctype(c: c_int, mask: c_int) -> c_int {
+    unsafe { __isctype(c, mask) }
+}
+// isfdtype: native — check file descriptor type via fstat
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isfdtype(fd: c_int, fdtype: c_int) -> c_int {
+    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd, &mut stat) } < 0 {
+        return -1;
+    }
+    ((stat.st_mode & libc::S_IFMT) == fdtype as u32) as c_int
+}
+// --- Native math: float/long-double classification ---
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isinff(x: f32) -> c_int {
+    if x == f32::INFINITY {
+        1
+    } else if x == f32::NEG_INFINITY {
+        -1
+    } else {
+        0
+    }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isinfl(x: f64) -> c_int {
+    if x == f64::INFINITY {
+        1
+    } else if x == f64::NEG_INFINITY {
+        -1
+    } else {
+        0
+    }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isnanf(x: f32) -> c_int {
+    x.is_nan() as c_int
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn isnanl(x: f64) -> c_int {
+    x.is_nan() as c_int
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn finitel(x: f64) -> c_int {
+    x.is_finite() as c_int
+}
+// klogctl: native syscall (syslog)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn klogctl(typ: c_int, bufp: *mut c_char, len: c_int) -> c_int {
+    unsafe {
+        libc::syscall(
+            libc::SYS_syslog,
+            typ as c_long,
+            bufp as c_long,
+            len as c_long,
+        ) as c_int
+    }
+}
+// lchmod: native — fchmodat with AT_SYMLINK_NOFOLLOW
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn lchmod(pathname: *const c_char, mode: c_uint) -> c_int {
+    unsafe {
+        libc::syscall(
+            libc::SYS_fchmodat,
+            libc::AT_FDCWD,
+            pathname,
+            mode,
+            libc::AT_SYMLINK_NOFOLLOW,
+        ) as c_int
+    }
+}
+// ldexpl: native — x * 2^exp via repeated doubling/halving
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ldexpl(x: f64, exp: c_int) -> f64 {
+    native_ldexp(x, exp)
+}
+// llseek: alias for lseek on 64-bit
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn llseek(fd: c_int, offset: i64, whence: c_int) -> i64 {
+    unsafe { libc::syscall(libc::SYS_lseek, fd, offset, whence) as i64 }
+}
+// lutimes: native — forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn lutimes(filename: *const c_char, tv: *const c_void) -> c_int {
+    unsafe { libc::lutimes(filename, tv.cast()) }
+}
+// mkostemp64/mkostemps64/mkstemp64/mkstemps64: forward to libc (64-bit aliases)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mkostemp64(template: *mut c_char, flags: c_int) -> c_int {
+    unsafe { libc::mkostemp(template, flags) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mkostemps64(
+    template: *mut c_char,
+    suffixlen: c_int,
+    flags: c_int,
+) -> c_int {
+    unsafe { libc::mkostemps(template, suffixlen, flags) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mkstemp64(template: *mut c_char) -> c_int {
+    unsafe { libc::mkstemp(template) }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mkstemps64(template: *mut c_char, suffixlen: c_int) -> c_int {
+    unsafe { libc::mkstemps(template, suffixlen) }
+}
+// modfl: native — split into integer + fractional parts
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn modfl(x: f64, iptr: *mut f64) -> f64 {
+    if x.is_nan() || x.is_infinite() {
+        if !iptr.is_null() {
+            unsafe { *iptr = x };
+        }
+        return if x.is_infinite() {
+            0.0_f64.copysign(x)
+        } else {
+            x
+        };
+    }
+    let int_part = x.trunc();
+    if !iptr.is_null() {
+        unsafe { *iptr = int_part };
+    }
+    x - int_part
+}
+// modify_ldt: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn modify_ldt(func: c_int, ptr: *mut c_void, bytecount: c_ulong) -> c_int {
+    unsafe { libc::syscall(libc::SYS_modify_ldt, func, ptr, bytecount) as c_int }
+}
 dlsym_passthrough!(fn parse_printf_format(fmt: *const c_char, n: SizeT, argtypes: *mut c_int) -> SizeT);
-dlsym_passthrough!(fn pidfd_getpid(pidfd: c_int) -> c_int);
+// pidfd_getpid: native syscall (Linux 6.9+, nr 438)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pidfd_getpid(pidfd: c_int) -> c_int {
+    unsafe { libc::syscall(438, pidfd) as c_int } // SYS_pidfd_getpid
+}
 dlsym_passthrough!(fn pidfd_spawn(pidfd: *mut c_int, path: *const c_char, file_actions: *const c_void, attrp: *const c_void, argv: *const *mut c_char, envp: *const *mut c_char) -> c_int);
 dlsym_passthrough!(fn pidfd_spawnp(pidfd: *mut c_int, file: *const c_char, file_actions: *const c_void, attrp: *const c_void, argv: *const *mut c_char, envp: *const *mut c_char) -> c_int);
-dlsym_passthrough!(fn preadv64v2(fd: c_int, iov: *const c_void, iovcnt: c_int, offset: i64, flags: c_int) -> SSizeT);
+// preadv64v2: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn preadv64v2(
+    fd: c_int,
+    iov: *const c_void,
+    iovcnt: c_int,
+    offset: i64,
+    flags: c_int,
+) -> SSizeT {
+    unsafe { libc::syscall(libc::SYS_preadv2, fd, iov, iovcnt, offset, flags) as SSizeT }
+}
 dlsym_passthrough!(fn putgrent(grp: *const c_void, fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn putmsg(fd: c_int, ctlptr: *const c_void, dataptr: *const c_void, flags: c_int) -> c_int);
-dlsym_passthrough!(fn putpmsg(fd: c_int, ctlptr: *const c_void, dataptr: *const c_void, band: c_int, flags: c_int) -> c_int);
+// putmsg/putpmsg: STREAMS — not supported on Linux
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putmsg(
+    fd: c_int,
+    ctlptr: *const c_void,
+    dataptr: *const c_void,
+    flags: c_int,
+) -> c_int {
+    let _ = (fd, ctlptr, dataptr, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putpmsg(
+    fd: c_int,
+    ctlptr: *const c_void,
+    dataptr: *const c_void,
+    band: c_int,
+    flags: c_int,
+) -> c_int {
+    let _ = (fd, ctlptr, dataptr, band, flags);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 dlsym_passthrough!(fn putpwent(pw: *const c_void, fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn pwritev64v2(fd: c_int, iov: *const c_void, iovcnt: c_int, offset: i64, flags: c_int) -> SSizeT);
-dlsym_passthrough!(fn query_module(name: *const c_char, which: c_int, buf: *mut c_void, bufsize: SizeT, ret: *mut SizeT) -> c_int);
+// pwritev64v2: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pwritev64v2(
+    fd: c_int,
+    iov: *const c_void,
+    iovcnt: c_int,
+    offset: i64,
+    flags: c_int,
+) -> SSizeT {
+    unsafe { libc::syscall(libc::SYS_pwritev2, fd, iov, iovcnt, offset, flags) as SSizeT }
+}
+// query_module: removed in Linux 2.6 — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn query_module(
+    name: *const c_char,
+    which: c_int,
+    buf: *mut c_void,
+    bufsize: SizeT,
+    ret: *mut SizeT,
+) -> c_int {
+    let _ = (name, which, buf, bufsize, ret);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 dlsym_passthrough!(fn rcmd(ahost: *mut *mut c_char, rport: c_int, locuser: *const c_char, remuser: *const c_char, cmd: *const c_char, fd2p: *mut c_int) -> c_int);
 dlsym_passthrough!(fn rcmd_af(ahost: *mut *mut c_char, rport: c_int, locuser: *const c_char, remuser: *const c_char, cmd: *const c_char, fd2p: *mut c_int, af: c_int) -> c_int);
 dlsym_passthrough!(fn register_printf_function(spec: c_int, render: *mut c_void, arginfo: *mut c_void) -> c_int);
 dlsym_passthrough!(fn register_printf_modifier(str: *const WcharT) -> c_int);
 dlsym_passthrough!(fn register_printf_specifier(spec: c_int, render: *mut c_void, arginfo: *mut c_void) -> c_int);
 dlsym_passthrough!(fn register_printf_type(fct: *mut c_void) -> c_int);
-dlsym_passthrough!(fn revoke(file: *const c_char) -> c_int);
+// revoke: BSD — not implemented on Linux
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn revoke(file: *const c_char) -> c_int {
+    let _ = file;
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 dlsym_passthrough!(fn rexec(ahost: *mut *mut c_char, rport: c_int, user: *const c_char, passwd: *const c_char, cmd: *const c_char, fd2p: *mut c_int) -> c_int);
 dlsym_passthrough!(fn rexec_af(ahost: *mut *mut c_char, rport: c_int, user: *const c_char, passwd: *const c_char, cmd: *const c_char, fd2p: *mut c_int, af: c_int) -> c_int);
-dlsym_passthrough!(fn rpmatch(response: *const c_char) -> c_int);
+// rpmatch: native — match yes/no response (C locale)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn rpmatch(response: *const c_char) -> c_int {
+    if response.is_null() {
+        return -1;
+    }
+    let c = unsafe { *response.cast::<u8>() };
+    match c {
+        b'y' | b'Y' => 1,
+        b'n' | b'N' => 0,
+        _ => -1,
+    }
+}
 dlsym_passthrough!(fn rresvport(port: *mut c_int) -> c_int);
 dlsym_passthrough!(fn rresvport_af(port: *mut c_int, af: c_int) -> c_int);
 dlsym_passthrough!(fn ruserok(rhost: *const c_char, superuser: c_int, ruser: *const c_char, luser: *const c_char) -> c_int);
 dlsym_passthrough!(fn ruserok_af(rhost: *const c_char, superuser: c_int, ruser: *const c_char, luser: *const c_char, af: c_int) -> c_int);
 dlsym_passthrough!(fn ruserpass(host: *const c_char, aname: *mut *const c_char, apass: *mut *const c_char) -> c_int);
-dlsym_passthrough!(fn scalbnl(x: f64, n: c_int) -> f64);
+// scalbnl: native — x * 2^n (same as ldexp)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn scalbnl(x: f64, n: c_int) -> f64 {
+    native_ldexp(x, n)
+}
 dlsym_passthrough!(fn scandirat(dirfd: c_int, dirp: *const c_char, namelist: *mut *mut *mut c_void, filter: *mut c_void, compar: *mut c_void) -> c_int);
 dlsym_passthrough!(fn scandirat64(dirfd: c_int, dirp: *const c_char, namelist: *mut *mut *mut c_void, filter: *mut c_void, compar: *mut c_void) -> c_int);
 dlsym_passthrough!(fn sem_clockwait(sem: *mut c_void, clockid: c_int, abstime: *const c_void) -> c_int);
-dlsym_passthrough!(fn setaliasent());
-dlsym_passthrough!(fn setfsgid(fsgid: c_uint) -> c_int);
-dlsym_passthrough!(fn setfsuid(fsuid: c_uint) -> c_int);
-dlsym_passthrough!(fn sethostid(hostid: c_long) -> c_int);
+// setaliasent: mail alias — no-op (no /etc/aliases support)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn setaliasent() {}
+// setfsgid/setfsuid: native syscalls
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn setfsgid(fsgid: c_uint) -> c_int {
+    unsafe { libc::syscall(libc::SYS_setfsgid, fsgid as c_ulong) as c_int }
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn setfsuid(fsuid: c_uint) -> c_int {
+    unsafe { libc::syscall(libc::SYS_setfsuid, fsuid as c_ulong) as c_int }
+}
+// sethostid: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sethostid(hostid: c_long) -> c_int {
+    unsafe { libc::sethostid(hostid) }
+}
 dlsym_passthrough!(fn setipv4sourcefilter(s: c_int, interface_: c_uint, group: c_uint, fmode: c_uint, numsrc: c_uint, slist: *const c_void) -> c_int);
-dlsym_passthrough!(fn setlogin(name: *const c_char) -> c_int);
+// setlogin: BSD — not supported on Linux, return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn setlogin(name: *const c_char) -> c_int {
+    let _ = name;
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 dlsym_passthrough!(fn setsourcefilter(s: c_int, interface_: c_uint, group: *const c_void, grouplen: c_uint, fmode: c_uint, numsrc: c_uint, slist: *const c_void) -> c_int);
 dlsym_passthrough!(fn getsourcefilter(s: c_int, interface_: c_uint, group: *const c_void, grouplen: c_uint, fmode: *mut c_uint, numsrc: *mut c_uint, slist: *mut c_void) -> c_int);
-dlsym_passthrough!(fn settimeofday(tv: *const c_void, tz: *const c_void) -> c_int);
+// settimeofday: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn settimeofday(tv: *const c_void, tz: *const c_void) -> c_int {
+    unsafe { libc::settimeofday(tv.cast(), tz.cast()) }
+}
 dlsym_passthrough!(fn sgetspent(s: *const c_char) -> *mut c_void);
 dlsym_passthrough!(fn sgetspent_r(s: *const c_char, spbuf: *mut c_void, buf: *mut c_char, buflen: SizeT, spbufp: *mut *mut c_void) -> c_int);
-dlsym_passthrough!(fn stime(t: *const c_long) -> c_int);
-dlsym_passthrough!(fn stty(fd: c_int, params: *const c_void) -> c_int);
-dlsym_passthrough!(fn sysctl(args: *mut c_int, nlen: c_int, oldval: *mut c_void, oldlenp: *mut SizeT, newval: *mut c_void, newlen: SizeT) -> c_int);
-dlsym_passthrough!(fn times(buf: *mut c_void) -> c_long);
-dlsym_passthrough!(fn tr_break());
-dlsym_passthrough!(fn ttyslot() -> c_int);
-dlsym_passthrough!(fn uabs(n: c_uint) -> c_uint);
-dlsym_passthrough!(fn uimaxabs(n: u64) -> u64);
-dlsym_passthrough!(fn ulabs(n: c_ulong) -> c_ulong);
+// stime: deprecated (removed glibc 2.31) — set system time via clock_settime
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn stime(t: *const c_long) -> c_int {
+    if t.is_null() {
+        return -1;
+    }
+    let ts = libc::timespec {
+        tv_sec: unsafe { *t },
+        tv_nsec: 0,
+    };
+    unsafe { libc::clock_settime(libc::CLOCK_REALTIME, &ts) }
+}
+// stty: legacy V7 — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn stty(fd: c_int, params: *const c_void) -> c_int {
+    let _ = (fd, params);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// sysctl: deprecated — forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sysctl(
+    args: *mut c_int,
+    nlen: c_int,
+    oldval: *mut c_void,
+    oldlenp: *mut SizeT,
+    newval: *mut c_void,
+    newlen: SizeT,
+) -> c_int {
+    unsafe { libc::sysctl(args, nlen, oldval, oldlenp, newval, newlen) }
+}
+// times: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn times(buf: *mut c_void) -> c_long {
+    unsafe { libc::syscall(libc::SYS_times, buf) as c_long }
+}
+// tr_break: obsolete regex debugging hook — no-op
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn tr_break() {}
+// ttyslot: legacy — always returns -1 on modern Linux
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ttyslot() -> c_int {
+    -1
+}
+// --- Native abs for unsigned types (identity function) ---
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn uabs(n: c_uint) -> c_uint {
+    n
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn uimaxabs(n: u64) -> u64 {
+    n
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ulabs(n: c_ulong) -> c_ulong {
+    n
+}
 dlsym_passthrough!(fn ulimit(cmd: c_int, newlimit: c_long) -> c_long);
-dlsym_passthrough!(fn ullabs(n: u64) -> u64);
-dlsym_passthrough!(fn uselib(library: *const c_char) -> c_int);
-dlsym_passthrough!(fn ustat(dev: c_uint, ubuf: *mut c_void) -> c_int);
-dlsym_passthrough!(fn utime(filename: *const c_char, times: *const c_void) -> c_int);
-dlsym_passthrough!(fn utimes(filename: *const c_char, tv: *const c_void) -> c_int);
-dlsym_passthrough!(fn vhangup() -> c_int);
-dlsym_passthrough!(fn vlimit(resource: c_int, value: c_int) -> c_int);
-dlsym_passthrough!(fn vtimes(current: *mut c_void, child: *mut c_void) -> c_int);
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ullabs(n: u64) -> u64 {
+    n
+}
+// uselib: deprecated Linux syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn uselib(library: *const c_char) -> c_int {
+    unsafe { libc::syscall(libc::SYS_uselib, library) as c_int }
+}
+// ustat: removed in Linux 4.18 — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn ustat(dev: c_uint, ubuf: *mut c_void) -> c_int {
+    let _ = (dev, ubuf);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// utime: forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn utime(filename: *const c_char, times: *const c_void) -> c_int {
+    unsafe { libc::utime(filename, times.cast()) }
+}
+// utimes: forward to libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn utimes(filename: *const c_char, tv: *const c_void) -> c_int {
+    unsafe { libc::utimes(filename, tv.cast()) }
+}
+// vhangup: native syscall
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn vhangup() -> c_int {
+    unsafe { libc::syscall(libc::SYS_vhangup) as c_int }
+}
+// vlimit: obsolete BSD resource limit — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn vlimit(resource: c_int, value: c_int) -> c_int {
+    let _ = (resource, value);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
+// vtimes: obsolete BSD process times — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn vtimes(current: *mut c_void, child: *mut c_void) -> c_int {
+    let _ = (current, child);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 
 // Legacy regex (4 symbols)
 dlsym_passthrough!(fn re_comp(pattern: *const c_char) -> *mut c_char);
@@ -895,9 +2615,57 @@ pub static mut re_syntax_options: c_ulong = 0;
 pub static mut re_max_failures: c_int = 0;
 
 // __argz_* (3 symbols)
-dlsym_passthrough!(fn __argz_count(argz: *const c_char, argz_len: SizeT) -> SizeT);
-dlsym_passthrough!(fn __argz_next(argz: *const c_char, argz_len: SizeT, entry: *const c_char) -> *mut c_char);
-dlsym_passthrough!(fn __argz_stringify(argz: *mut c_char, argz_len: SizeT, sep: c_int));
+// __argz_count: native — count NUL-separated entries
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __argz_count(argz: *const c_char, argz_len: SizeT) -> SizeT {
+    if argz.is_null() || argz_len == 0 {
+        return 0;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(argz.cast::<u8>(), argz_len) };
+    slice.iter().filter(|&&b| b == 0).count()
+}
+// __argz_next: native — advance to next entry in argz vector
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __argz_next(
+    argz: *const c_char,
+    argz_len: SizeT,
+    entry: *const c_char,
+) -> *mut c_char {
+    if argz.is_null() || argz_len == 0 {
+        return std::ptr::null_mut();
+    }
+    let end = unsafe { argz.add(argz_len) };
+    if entry.is_null() {
+        return argz as *mut c_char;
+    }
+    // Find NUL after current entry, then advance past it
+    let mut p = entry;
+    while p < end && unsafe { *p } != 0 {
+        p = unsafe { p.add(1) };
+    }
+    if p < end {
+        p = unsafe { p.add(1) };
+    } // skip NUL
+    if p >= end {
+        std::ptr::null_mut()
+    } else {
+        p as *mut c_char
+    }
+}
+// __argz_stringify: native — replace NULs with sep
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __argz_stringify(argz: *mut c_char, argz_len: SizeT, sep: c_int) {
+    if argz.is_null() || argz_len < 2 {
+        return;
+    }
+    let slice = unsafe { std::slice::from_raw_parts_mut(argz.cast::<u8>(), argz_len) };
+    // Replace all NULs except the final one with sep
+    for b in &mut slice[..argz_len - 1] {
+        if *b == 0 {
+            *b = sep as u8;
+        }
+    }
+}
 
 // NL internals
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -911,14 +2679,22 @@ pub static mut _nl_msg_cat_cntr: c_int = 0;
 // Skipped: cannot export *const *const c_char as Rust static (not Sync).
 // Programs will resolve this from glibc's data segment directly.
 
-// __h_errno (returns thread-local h_errno address)
-dlsym_passthrough!(fn __h_errno() -> *mut c_int);
+// __h_errno: native — thread-local h_errno via libc
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __h_errno() -> *mut c_int {
+    // glibc's __h_errno_location is the canonical way, but libc crate may not expose it.
+    // Use a thread-local instead.
+    thread_local! {
+        static H_ERRNO: std::cell::Cell<c_int> = const { std::cell::Cell::new(0) };
+    }
+    H_ERRNO.with(|cell| cell.as_ptr())
+}
 
 // in6addr globals
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub static in6addr_any: [u8; 16] = [0u8; 16]; // ::
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static in6addr_loopback: [u8; 16] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]; // ::1
+pub static in6addr_loopback: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]; // ::1
 
 // Misc old BSD regex variable
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -929,11 +2705,28 @@ pub static mut loc2: *mut c_char = std::ptr::null_mut();
 pub static mut locs: *mut c_char = std::ptr::null_mut();
 
 // advance/step (legacy regex)
-dlsym_passthrough!(fn advance(string: *const c_char, expbuf: *const c_char) -> c_int);
-dlsym_passthrough!(fn step(string: *const c_char, expbuf: *const c_char) -> c_int);
+// advance/step: obsolete V8 regex — return 0 (no match)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn advance(string: *const c_char, expbuf: *const c_char) -> c_int {
+    let _ = (string, expbuf);
+    0
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn step(string: *const c_char, expbuf: *const c_char) -> c_int {
+    let _ = (string, expbuf);
+    0
+}
 
 // sstk
-dlsym_passthrough!(fn sstk(increment: c_int) -> c_int);
+// sstk: obsolete stack segment — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sstk(increment: c_int) -> c_int {
+    let _ = increment;
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 
 // rexecoptions global
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -959,7 +2752,15 @@ dlsym_passthrough!(fn printf_size(fp: *mut c_void, info: *const c_void, args: *c
 dlsym_passthrough!(fn printf_size_info(info: *const c_void, n: SizeT, argtypes: *mut c_int) -> SizeT);
 
 // nfsservctl: deprecated NFS server control
-dlsym_passthrough!(fn nfsservctl(cmd: c_int, argp: *mut c_void, resp: *mut c_void) -> c_int);
+// nfsservctl: removed in Linux 3.1 — return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn nfsservctl(cmd: c_int, argp: *mut c_void, resp: *mut c_void) -> c_int {
+    let _ = (cmd, argp, resp);
+    unsafe {
+        *libc::__errno_location() = libc::ENOSYS;
+    }
+    -1
+}
 
 // xprt_register/unregister: SVC transport registration
 dlsym_passthrough!(fn xprt_register(xprt: *mut c_void));

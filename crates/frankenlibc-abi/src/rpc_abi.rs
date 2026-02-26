@@ -523,16 +523,13 @@ rpc_delegate!(key_setsecret(secretkey: *const c_char) -> c_int);
 use std::sync::atomic::AtomicPtr;
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static __key_decryptsession_pk_LOCAL: AtomicPtr<c_void> =
-    AtomicPtr::new(std::ptr::null_mut());
+pub static __key_decryptsession_pk_LOCAL: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static __key_encryptsession_pk_LOCAL: AtomicPtr<c_void> =
-    AtomicPtr::new(std::ptr::null_mut());
+pub static __key_encryptsession_pk_LOCAL: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static __key_gendes_LOCAL: AtomicPtr<c_void> =
-    AtomicPtr::new(std::ptr::null_mut());
+pub static __key_gendes_LOCAL: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 // ===========================================================================
 // Portmapper client (5 symbols)

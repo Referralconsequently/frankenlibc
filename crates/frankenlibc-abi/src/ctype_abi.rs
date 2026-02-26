@@ -134,18 +134,21 @@ static TOLOWER_TABLE: [i32; 384] = build_tolower_table();
 
 /// Return a pointer to the ctype B table at offset 128 (for legacy `__ctype_b`).
 /// SAFETY: caller must not write through the returned pointer.
+#[allow(dead_code)] // called from glibc_internal_abi (cfg(not(test)))
 pub(crate) unsafe fn ctype_b_table_ptr() -> *const u16 {
     unsafe { CTYPE_B_TABLE.as_ptr().add(128) }
 }
 
 /// Return a pointer to the tolower table at offset 128 (for legacy `__ctype_tolower`).
 /// SAFETY: caller must not write through the returned pointer.
+#[allow(dead_code)] // called from glibc_internal_abi (cfg(not(test)))
 pub(crate) unsafe fn tolower_table_ptr() -> *const i32 {
     unsafe { TOLOWER_TABLE.as_ptr().add(128) }
 }
 
 /// Return a pointer to the toupper table at offset 128 (for legacy `__ctype_toupper`).
 /// SAFETY: caller must not write through the returned pointer.
+#[allow(dead_code)] // called from glibc_internal_abi (cfg(not(test)))
 pub(crate) unsafe fn toupper_table_ptr() -> *const i32 {
     unsafe { TOUPPER_TABLE.as_ptr().add(128) }
 }

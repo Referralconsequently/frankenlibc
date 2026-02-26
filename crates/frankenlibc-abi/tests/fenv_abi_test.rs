@@ -90,19 +90,13 @@ fn exceptflag_round_trip_restores_flag_bits() {
         assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
         assert_eq!(feraiseexcept(FE_INVALID), 0);
 
-        let mut saved = [0_u8; 16];
-        assert_eq!(
-            fegetexceptflag(saved.as_mut_ptr().cast::<c_void>(), FE_INVALID),
-            0
-        );
+        let mut saved: u16 = 0;
+        assert_eq!(fegetexceptflag(&mut saved, FE_INVALID), 0);
 
         assert_eq!(feclearexcept(FE_INVALID), 0);
         assert_eq!(fetestexcept(FE_INVALID), 0);
 
-        assert_eq!(
-            fesetexceptflag(saved.as_ptr().cast::<c_void>(), FE_INVALID),
-            0
-        );
+        assert_eq!(fesetexceptflag(&saved, FE_INVALID), 0);
         let restored = fetestexcept(FE_INVALID);
         assert_ne!(restored & FE_INVALID, 0);
 
@@ -114,8 +108,11 @@ fn exceptflag_round_trip_restores_flag_bits() {
 fn null_pointer_contracts_are_enforced_for_pointer_outputs() {
     // SAFETY: null pointers should be rejected by ABI guard code.
     unsafe {
-        assert_eq!(fegetexceptflag(std::ptr::null_mut(), FE_ALL_EXCEPT), -1);
-        assert_eq!(fesetexceptflag(std::ptr::null(), FE_ALL_EXCEPT), -1);
+        assert_eq!(
+            fegetexceptflag(std::ptr::null_mut::<u16>(), FE_ALL_EXCEPT),
+            -1
+        );
+        assert_eq!(fesetexceptflag(std::ptr::null::<u16>(), FE_ALL_EXCEPT), -1);
         assert_eq!(fegetenv(std::ptr::null_mut()), -1);
         assert_eq!(feholdexcept(std::ptr::null_mut()), -1);
     }

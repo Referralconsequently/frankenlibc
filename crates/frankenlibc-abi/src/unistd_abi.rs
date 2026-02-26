@@ -14646,13 +14646,21 @@ pub unsafe extern "C" fn scalbf(x: f32, exp: f32) -> f32 {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __open(path: *const c_char, oflag: c_int, mut args: ...) -> c_int {
-    let mode: libc::mode_t = if oflag & libc::O_CREAT != 0 { unsafe { args.arg() } } else { 0 };
+    let mode: libc::mode_t = if oflag & libc::O_CREAT != 0 {
+        unsafe { args.arg() }
+    } else {
+        0
+    };
     unsafe { libc::open(path, oflag, mode) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __open64(path: *const c_char, oflag: c_int, mut args: ...) -> c_int {
-    let mode: libc::mode_t = if oflag & libc::O_CREAT != 0 { unsafe { args.arg() } } else { 0 };
+    let mode: libc::mode_t = if oflag & libc::O_CREAT != 0 {
+        unsafe { args.arg() }
+    } else {
+        0
+    };
     unsafe { libc::open(path, oflag | libc::O_LARGEFILE, mode) }
 }
 
@@ -14672,12 +14680,22 @@ pub unsafe extern "C" fn __write(fd: c_int, buf: *const c_void, count: usize) ->
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pread64(fd: c_int, buf: *mut c_void, count: usize, offset: i64) -> isize {
+pub unsafe extern "C" fn __pread64(
+    fd: c_int,
+    buf: *mut c_void,
+    count: usize,
+    offset: i64,
+) -> isize {
     unsafe { libc::pread64(fd, buf, count, offset) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pwrite64(fd: c_int, buf: *const c_void, count: usize, offset: i64) -> isize {
+pub unsafe extern "C" fn __pwrite64(
+    fd: c_int,
+    buf: *const c_void,
+    count: usize,
+    offset: i64,
+) -> isize {
     unsafe { libc::pwrite64(fd, buf, count, offset) }
 }
 
@@ -14707,33 +14725,49 @@ pub unsafe extern "C" fn __wait(status: *mut c_int) -> libc::pid_t {
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __waitpid(pid: libc::pid_t, status: *mut c_int, options: c_int) -> libc::pid_t {
+pub unsafe extern "C" fn __waitpid(
+    pid: libc::pid_t,
+    status: *mut c_int,
+    options: c_int,
+) -> libc::pid_t {
     unsafe { libc::waitpid(pid, status, options) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __poll(fds: *mut libc::pollfd, nfds: libc::nfds_t, timeout: c_int) -> c_int {
+pub unsafe extern "C" fn __poll(
+    fds: *mut libc::pollfd,
+    nfds: libc::nfds_t,
+    timeout: c_int,
+) -> c_int {
     unsafe { libc::poll(fds, nfds, timeout) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __select(
-    nfds: c_int, readfds: *mut libc::fd_set, writefds: *mut libc::fd_set,
-    exceptfds: *mut libc::fd_set, timeout: *mut libc::timeval,
+    nfds: c_int,
+    readfds: *mut libc::fd_set,
+    writefds: *mut libc::fd_set,
+    exceptfds: *mut libc::fd_set,
+    timeout: *mut libc::timeval,
 ) -> c_int {
     unsafe { libc::select(nfds, readfds, writefds, exceptfds, timeout) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __send(
-    sockfd: c_int, buf: *const c_void, len: usize, flags: c_int,
+    sockfd: c_int,
+    buf: *const c_void,
+    len: usize,
+    flags: c_int,
 ) -> isize {
     unsafe { libc::send(sockfd, buf, len, flags) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __connect(
-    sockfd: c_int, addr: *const libc::sockaddr, addrlen: libc::socklen_t,
+    sockfd: c_int,
+    addr: *const libc::sockaddr,
+    addrlen: libc::socklen_t,
 ) -> c_int {
     unsafe { libc::connect(sockfd, addr, addrlen) }
 }
@@ -14785,13 +14819,17 @@ pub unsafe extern "C" fn __gettimeofday(tv: *mut libc::timeval, tz: *mut c_void)
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __gmtime_r(time: *const libc::time_t, result: *mut libc::tm) -> *mut libc::tm {
+pub unsafe extern "C" fn __gmtime_r(
+    time: *const libc::time_t,
+    result: *mut libc::tm,
+) -> *mut libc::tm {
     unsafe { libc::gmtime_r(time, result) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __nanosleep(
-    req: *const libc::timespec, rem: *mut libc::timespec,
+    req: *const libc::timespec,
+    rem: *mut libc::timespec,
 ) -> c_int {
     unsafe { libc::nanosleep(req, rem) }
 }
@@ -14807,7 +14845,9 @@ pub unsafe extern "C" fn __secure_getenv(name: *const c_char) -> *mut c_char {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __posix_getopt(
-    argc: c_int, argv: *const *mut c_char, optstring: *const c_char,
+    argc: c_int,
+    argv: *const *mut c_char,
+    optstring: *const c_char,
 ) -> c_int {
     unsafe { libc::getopt(argc, argv, optstring) }
 }
@@ -14819,7 +14859,11 @@ pub unsafe extern "C" fn __bzero(s: *mut c_void, n: usize) {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ffs(i: c_int) -> c_int {
-    if i == 0 { 0 } else { i.trailing_zeros() as c_int + 1 }
+    if i == 0 {
+        0
+    } else {
+        i.trailing_zeros() as c_int + 1
+    }
 }
 
 // ── __sched_* aliases ───────────────────────────────────────────────────────
@@ -14840,7 +14884,10 @@ pub unsafe extern "C" fn __sched_get_priority_min(policy: c_int) -> c_int {
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_getparam(pid: libc::pid_t, param: *mut libc::sched_param) -> c_int {
+pub unsafe extern "C" fn __sched_getparam(
+    pid: libc::pid_t,
+    param: *mut libc::sched_param,
+) -> c_int {
     unsafe { libc::sched_getparam(pid, param) }
 }
 
@@ -14851,21 +14898,25 @@ pub unsafe extern "C" fn __sched_getscheduler(pid: libc::pid_t) -> c_int {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __sched_setscheduler(
-    pid: libc::pid_t, policy: c_int, param: *const libc::sched_param,
+    pid: libc::pid_t,
+    policy: c_int,
+    param: *const libc::sched_param,
 ) -> c_int {
     unsafe { libc::sched_setscheduler(pid, policy, param) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __sched_setparam(
-    pid: libc::pid_t, param: *const libc::sched_param,
+    pid: libc::pid_t,
+    param: *const libc::sched_param,
 ) -> c_int {
     unsafe { libc::sched_setparam(pid, param) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __sched_rr_get_interval(
-    pid: libc::pid_t, tp: *mut libc::timespec,
+    pid: libc::pid_t,
+    tp: *mut libc::timespec,
 ) -> c_int {
     unsafe { libc::sched_rr_get_interval(pid, tp) }
 }
@@ -14874,7 +14925,9 @@ pub unsafe extern "C" fn __sched_rr_get_interval(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __sigaction(
-    signum: c_int, act: *const libc::sigaction, oldact: *mut libc::sigaction,
+    signum: c_int,
+    act: *const libc::sigaction,
+    oldact: *mut libc::sigaction,
 ) -> c_int {
     unsafe { libc::sigaction(signum, act, oldact) }
 }
@@ -14903,4 +14956,3 @@ pub unsafe extern "C" fn __sigpause(sig: c_int) -> c_int {
 pub unsafe extern "C" fn __sigsuspend(set: *const libc::sigset_t) -> c_int {
     unsafe { libc::sigsuspend(set) }
 }
-

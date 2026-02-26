@@ -6151,7 +6151,8 @@ pub unsafe extern "C" fn __strcasecmp(s1: *const c_char, s2: *const c_char) -> c
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strcasestr(
-    haystack: *const c_char, needle: *const c_char,
+    haystack: *const c_char,
+    needle: *const c_char,
 ) -> *mut c_char {
     unsafe { strcasestr(haystack, needle) }
 }
@@ -6168,15 +6169,15 @@ pub unsafe extern "C" fn __strndup(s: *const c_char, n: usize) -> *mut c_char {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtok_r(
-    s: *mut c_char, delim: *const c_char, saveptr: *mut *mut c_char,
+    s: *mut c_char,
+    delim: *const c_char,
+    saveptr: *mut *mut c_char,
 ) -> *mut c_char {
     unsafe { strtok_r(s, delim, saveptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strerror_r(
-    errnum: c_int, buf: *mut c_char, buflen: usize,
-) -> c_int {
+pub unsafe extern "C" fn __strerror_r(errnum: c_int, buf: *mut c_char, buflen: usize) -> c_int {
     unsafe { strerror_r(errnum, buf, buflen) }
 }
 
@@ -6191,17 +6192,13 @@ pub unsafe extern "C" fn __rawmemchr(s: *const c_void, c: c_int) -> *mut c_void 
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __mempcpy(
-    dst: *mut c_void, src: *const c_void, n: usize,
-) -> *mut c_void {
+pub unsafe extern "C" fn __mempcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
     unsafe { mempcpy(dst, src, n) }
 }
 
 /// `__memcmpeq` — glibc internal: returns 0 if equal, non-zero otherwise.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __memcmpeq(
-    s1: *const c_void, s2: *const c_void, n: usize,
-) -> c_int {
+pub unsafe extern "C" fn __memcmpeq(s1: *const c_void, s2: *const c_void, n: usize) -> c_int {
     unsafe { memcmp(s1, s2, n) }
 }
 
@@ -6210,7 +6207,9 @@ pub unsafe extern "C" fn __memcmpeq(
 /// `strcasecmp_l` — locale-aware case-insensitive string compare.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn strcasecmp_l(
-    s1: *const c_char, s2: *const c_char, _locale: *mut c_void,
+    s1: *const c_char,
+    s2: *const c_char,
+    _locale: *mut c_void,
 ) -> c_int {
     unsafe { strcasecmp(s1, s2) }
 }
@@ -6218,35 +6217,48 @@ pub unsafe extern "C" fn strcasecmp_l(
 /// `strncasecmp_l` — locale-aware case-insensitive string compare with length.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn strncasecmp_l(
-    s1: *const c_char, s2: *const c_char, n: usize, _locale: *mut c_void,
+    s1: *const c_char,
+    s2: *const c_char,
+    n: usize,
+    _locale: *mut c_void,
 ) -> c_int {
     unsafe { strncasecmp(s1, s2, n) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strcasecmp_l(
-    s1: *const c_char, s2: *const c_char, l: *mut c_void,
+    s1: *const c_char,
+    s2: *const c_char,
+    l: *mut c_void,
 ) -> c_int {
     unsafe { strcasecmp_l(s1, s2, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strncasecmp_l(
-    s1: *const c_char, s2: *const c_char, n: usize, l: *mut c_void,
+    s1: *const c_char,
+    s2: *const c_char,
+    n: usize,
+    l: *mut c_void,
 ) -> c_int {
     unsafe { strncasecmp_l(s1, s2, n, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strcoll_l(
-    s1: *const c_char, s2: *const c_char, _l: *mut c_void,
+    s1: *const c_char,
+    s2: *const c_char,
+    _l: *mut c_void,
 ) -> c_int {
     unsafe { strcmp(s1, s2) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strxfrm_l(
-    dst: *mut c_char, src: *const c_char, n: usize, _l: *mut c_void,
+    dst: *mut c_char,
+    src: *const c_char,
+    n: usize,
+    _l: *mut c_void,
 ) -> usize {
     unsafe { strxfrm(dst, src, n) }
 }
@@ -6256,16 +6268,15 @@ pub unsafe extern "C" fn __strxfrm_l(
 /// `__strsep_g` — generic strsep (same as strsep).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strsep_g(
-    stringp: *mut *mut c_char, delim: *const c_char,
+    stringp: *mut *mut c_char,
+    delim: *const c_char,
 ) -> *mut c_char {
     unsafe { strsep(stringp, delim) }
 }
 
 /// `__strsep_1c` — strsep optimized for single-char delimiter.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strsep_1c(
-    stringp: *mut *mut c_char, delim: c_char,
-) -> *mut c_char {
+pub unsafe extern "C" fn __strsep_1c(stringp: *mut *mut c_char, delim: c_char) -> *mut c_char {
     let buf: [c_char; 2] = [delim, 0];
     unsafe { strsep(stringp, buf.as_ptr()) }
 }
@@ -6273,7 +6284,9 @@ pub unsafe extern "C" fn __strsep_1c(
 /// `__strsep_2c` — strsep optimized for two-char delimiter.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strsep_2c(
-    stringp: *mut *mut c_char, d1: c_char, d2: c_char,
+    stringp: *mut *mut c_char,
+    d1: c_char,
+    d2: c_char,
 ) -> *mut c_char {
     let buf: [c_char; 3] = [d1, d2, 0];
     unsafe { strsep(stringp, buf.as_ptr()) }
@@ -6282,7 +6295,10 @@ pub unsafe extern "C" fn __strsep_2c(
 /// `__strsep_3c` — strsep optimized for three-char delimiter.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strsep_3c(
-    stringp: *mut *mut c_char, d1: c_char, d2: c_char, d3: c_char,
+    stringp: *mut *mut c_char,
+    d1: c_char,
+    d2: c_char,
+    d3: c_char,
 ) -> *mut c_char {
     let buf: [c_char; 4] = [d1, d2, d3, 0];
     unsafe { strsep(stringp, buf.as_ptr()) }
@@ -6290,9 +6306,7 @@ pub unsafe extern "C" fn __strsep_3c(
 
 /// `__strpbrk_c2` — strpbrk optimized for 2-char accept set.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strpbrk_c2(
-    s: *const c_char, a1: c_int, a2: c_int,
-) -> *mut c_char {
+pub unsafe extern "C" fn __strpbrk_c2(s: *const c_char, a1: c_int, a2: c_int) -> *mut c_char {
     let accept: [c_char; 3] = [a1 as c_char, a2 as c_char, 0];
     unsafe { strpbrk(s, accept.as_ptr()) }
 }
@@ -6300,7 +6314,10 @@ pub unsafe extern "C" fn __strpbrk_c2(
 /// `__strpbrk_c3` — strpbrk optimized for 3-char accept set.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strpbrk_c3(
-    s: *const c_char, a1: c_int, a2: c_int, a3: c_int,
+    s: *const c_char,
+    a1: c_int,
+    a2: c_int,
+    a3: c_int,
 ) -> *mut c_char {
     let accept: [c_char; 4] = [a1 as c_char, a2 as c_char, a3 as c_char, 0];
     unsafe { strpbrk(s, accept.as_ptr()) }
@@ -6322,9 +6339,7 @@ pub unsafe extern "C" fn __strcspn_c2(s: *const c_char, r1: c_int, r2: c_int) ->
 
 /// `__strcspn_c3` — strcspn optimized for 3-char reject set.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcspn_c3(
-    s: *const c_char, r1: c_int, r2: c_int, r3: c_int,
-) -> usize {
+pub unsafe extern "C" fn __strcspn_c3(s: *const c_char, r1: c_int, r2: c_int, r3: c_int) -> usize {
     let reject: [c_char; 4] = [r1 as c_char, r2 as c_char, r3 as c_char, 0];
     unsafe { strcspn(s, reject.as_ptr()) }
 }
@@ -6345,9 +6360,7 @@ pub unsafe extern "C" fn __strspn_c2(s: *const c_char, a1: c_int, a2: c_int) -> 
 
 /// `__strspn_c3` — strspn optimized for 3-char accept set.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strspn_c3(
-    s: *const c_char, a1: c_int, a2: c_int, a3: c_int,
-) -> usize {
+pub unsafe extern "C" fn __strspn_c3(s: *const c_char, a1: c_int, a2: c_int, a3: c_int) -> usize {
     let accept: [c_char; 4] = [a1 as c_char, a2 as c_char, a3 as c_char, 0];
     unsafe { strspn(s, accept.as_ptr()) }
 }
@@ -6355,7 +6368,9 @@ pub unsafe extern "C" fn __strspn_c3(
 /// `__strtok_r_1c` — strtok_r optimized for single-char delimiter.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtok_r_1c(
-    s: *mut c_char, delim: c_char, saveptr: *mut *mut c_char,
+    s: *mut c_char,
+    delim: c_char,
+    saveptr: *mut *mut c_char,
 ) -> *mut c_char {
     let buf: [c_char; 2] = [delim, 0];
     unsafe { strtok_r(s, buf.as_ptr(), saveptr) }
@@ -6363,17 +6378,13 @@ pub unsafe extern "C" fn __strtok_r_1c(
 
 /// `__strcpy_small` — glibc internal memcpy-based strcpy for small strings.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcpy_small(
-    dst: *mut c_char, src: *const c_char,
-) -> *mut c_char {
+pub unsafe extern "C" fn __strcpy_small(dst: *mut c_char, src: *const c_char) -> *mut c_char {
     unsafe { strcpy(dst, src) }
 }
 
 /// `__stpcpy_small` — glibc internal stpcpy for small strings.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __stpcpy_small(
-    dst: *mut c_char, src: *const c_char,
-) -> *mut c_char {
+pub unsafe extern "C" fn __stpcpy_small(dst: *mut c_char, src: *const c_char) -> *mut c_char {
     unsafe { stpcpy(dst, src) }
 }
 
@@ -6381,49 +6392,67 @@ pub unsafe extern "C" fn __stpcpy_small(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtol_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    _group: c_int,
 ) -> c_long {
     unsafe { crate::stdlib_abi::strtol(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtoul_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    _group: c_int,
 ) -> c_ulong {
     unsafe { crate::stdlib_abi::strtoul(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtoll_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    _group: c_int,
 ) -> c_longlong {
     unsafe { crate::stdlib_abi::strtoll(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtoull_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    _group: c_int,
 ) -> c_ulonglong {
     unsafe { crate::stdlib_abi::strtoull(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtod_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    _group: c_int,
 ) -> f64 {
     unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtof_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    _group: c_int,
 ) -> f32 {
     unsafe { crate::stdlib_abi::strtof(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtold_internal(
-    nptr: *const c_char, endptr: *mut *mut c_char, _group: c_int,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    _group: c_int,
 ) -> f64 {
     // long double -> f64 on Rust (no f80 support)
     unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
@@ -6433,49 +6462,67 @@ pub unsafe extern "C" fn __strtold_internal(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtol_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_long {
     unsafe { crate::stdlib_abi::strtol_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtoul_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_ulong {
     unsafe { crate::stdlib_abi::strtoul_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtoll_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_longlong {
     unsafe { crate::stdlib_abi::strtoll_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtoull_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_ulonglong {
     unsafe { crate::stdlib_abi::strtoull_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtod_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, _l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    _l: *mut c_void,
 ) -> f64 {
     unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtof_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, _l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    _l: *mut c_void,
 ) -> f32 {
     unsafe { crate::stdlib_abi::strtof(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtold_l(
-    nptr: *const c_char, endptr: *mut *mut c_char, _l: *mut c_void,
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    _l: *mut c_void,
 ) -> f64 {
     unsafe { crate::stdlib_abi::strtod(nptr, endptr) }
 }
@@ -6483,7 +6530,11 @@ pub unsafe extern "C" fn __strtold_l(
 /// `__strftime_l` — locale-aware strftime forwarding.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strftime_l(
-    s: *mut c_char, max: usize, format: *const c_char, tm: *const c_void, _l: *mut c_void,
+    s: *mut c_char,
+    max: usize,
+    format: *const c_char,
+    tm: *const c_void,
+    _l: *mut c_void,
 ) -> usize {
     unsafe { crate::unistd_abi::strftime_l(s, max, format, tm, _l) }
 }
@@ -6491,7 +6542,11 @@ pub unsafe extern "C" fn __strftime_l(
 /// `__strfmon_l` — locale-aware strfmon forwarding.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strfmon_l(
-    s: *mut c_char, maxsize: usize, _l: *mut c_void, format: *const c_char, mut args: ...,
+    s: *mut c_char,
+    maxsize: usize,
+    _l: *mut c_void,
+    format: *const c_char,
+    mut args: ...
 ) -> isize {
     if s.is_null() || format.is_null() || maxsize == 0 {
         return -1;

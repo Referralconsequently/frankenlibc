@@ -4909,134 +4909,183 @@ pub unsafe extern "C" fn __towupper_l(wc: u32, l: *mut c_void) -> u32 {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcscasecmp_l(
-    s1: *const libc::wchar_t, s2: *const libc::wchar_t, _l: *mut c_void,
+    s1: *const libc::wchar_t,
+    s2: *const libc::wchar_t,
+    _l: *mut c_void,
 ) -> c_int {
     unsafe { wcscasecmp(s1 as *const u32, s2 as *const u32) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcsncasecmp_l(
-    s1: *const libc::wchar_t, s2: *const libc::wchar_t, n: usize, _l: *mut c_void,
+    s1: *const libc::wchar_t,
+    s2: *const libc::wchar_t,
+    n: usize,
+    _l: *mut c_void,
 ) -> c_int {
     unsafe { wcsncasecmp(s1 as *const u32, s2 as *const u32, n) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcscoll_l(
-    s1: *const libc::wchar_t, s2: *const libc::wchar_t, _l: *mut c_void,
+    s1: *const libc::wchar_t,
+    s2: *const libc::wchar_t,
+    _l: *mut c_void,
 ) -> c_int {
     unsafe { wcscmp(s1 as *const u32, s2 as *const u32) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcsxfrm_l(
-    dst: *mut libc::wchar_t, src: *const libc::wchar_t, n: usize, _l: *mut c_void,
+    dst: *mut libc::wchar_t,
+    src: *const libc::wchar_t,
+    n: usize,
+    _l: *mut c_void,
 ) -> usize {
     unsafe { wcsxfrm(dst, src, n) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstol_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_long {
     unsafe { wcstol_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstoul_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_ulong {
     unsafe { wcstoul_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstoll_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_longlong {
     unsafe { wcstoll_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstoull_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    l: *mut c_void,
 ) -> c_ulonglong {
     unsafe { wcstoull_l(nptr, endptr, base, l) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstod_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, _l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _l: *mut c_void,
 ) -> f64 {
     unsafe { wcstod(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstof_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, _l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _l: *mut c_void,
 ) -> f32 {
     unsafe { wcstof(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstold_l(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, _l: *mut c_void,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _l: *mut c_void,
 ) -> f64 {
     unsafe { wcstod(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstol_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _group: c_int,
 ) -> c_long {
     unsafe { wcstol(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstoul_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _group: c_int,
 ) -> c_ulong {
     unsafe { wcstoul(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstoll_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _group: c_int,
 ) -> c_longlong {
     unsafe { wcstoll(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstoull_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, base: c_int, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _group: c_int,
 ) -> c_ulonglong {
     unsafe { wcstoull(nptr, endptr, base) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstod_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _group: c_int,
 ) -> f64 {
     unsafe { wcstod(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstof_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _group: c_int,
 ) -> f32 {
     unsafe { wcstof(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcstold_internal(
-    nptr: *const libc::wchar_t, endptr: *mut *mut libc::wchar_t, _group: c_int,
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _group: c_int,
 ) -> f64 {
     unsafe { wcstod(nptr, endptr) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wcsftime_l(
-    s: *mut libc::wchar_t, max: usize, format: *const libc::wchar_t,
-    tm: *const c_void, _l: *mut c_void,
+    s: *mut libc::wchar_t,
+    max: usize,
+    format: *const libc::wchar_t,
+    tm: *const c_void,
+    _l: *mut c_void,
 ) -> usize {
     // Convert wide format to narrow, call strftime, then widen result
     let fmt_narrow = unsafe { wide_to_narrow(format) };
