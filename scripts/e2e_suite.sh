@@ -799,6 +799,33 @@ run_shadow_compare_case() {
     cmp -s "${baseline_stderr}" "${preloaded_stderr}" || mismatch=1
 
     if [[ "${mismatch}" -ne 0 ]]; then
+        local stdout_diff="${case_dir}/shadow.stdout.diff"
+        local stderr_diff="${case_dir}/shadow.stderr.diff"
+        local divergence_report="${case_dir}/shadow_divergence_report.txt"
+        diff -u "${baseline_stdout}" "${preloaded_stdout}" > "${stdout_diff}" || true
+        diff -u "${baseline_stderr}" "${preloaded_stderr}" > "${stderr_diff}" || true
+        local stdout_diff_lines=0
+        local stderr_diff_lines=0
+        if [[ -s "${stdout_diff}" ]]; then
+            stdout_diff_lines="$(wc -l < "${stdout_diff}" | tr -d '[:space:]')"
+        fi
+        if [[ -s "${stderr_diff}" ]]; then
+            stderr_diff_lines="$(wc -l < "${stderr_diff}" | tr -d '[:space:]')"
+        fi
+        cat > "${divergence_report}" <<EOF
+Shadow divergence report
+scenario: ${scenario}
+mode: ${mode}
+label: ${label}
+baseline_exit_code: 0
+stdout_diff_lines: ${stdout_diff_lines}
+stderr_diff_lines: ${stderr_diff_lines}
+baseline_stdout: ${baseline_stdout}
+preloaded_stdout: ${preloaded_stdout}
+baseline_stderr: ${baseline_stderr}
+preloaded_stderr: ${preloaded_stderr}
+EOF
+
         passes=$((passes - 1))
         fails=$((fails + 1))
         PACK_FAILS["${scenario}"]=$(( ${PACK_FAILS["${scenario}"]:-0} + 1 ))
@@ -810,8 +837,9 @@ run_shadow_compare_case() {
         else
             CASE_RESULT_BY_SCENARIO_MODE["${scenario_key}"]="fail|0|shadow_mismatch|${label}"
         fi
-        local diff_refs="[\"${scenario}/${mode}/${label}/baseline.stdout.txt\",\"${scenario}/${mode}/${label}/baseline.stderr.txt\",\"${scenario}/${mode}/${label}/stdout.txt\",\"${scenario}/${mode}/${label}/stderr.txt\"]"
-        emit_log "error" "shadow_diff_mismatch" "${mode}" "" "${label}" "fail" "" "\"scenario_pack\":\"${scenario}\",\"retry_count\":0,\"flake_score\":0.0,\"artifact_refs\":${diff_refs},\"verdict\":\"shadow_mismatch\",\"details\":{\"baseline_exit_code\":0}"
+        local diff_refs="[\"${scenario}/${mode}/${label}/baseline.stdout.txt\",\"${scenario}/${mode}/${label}/baseline.stderr.txt\",\"${scenario}/${mode}/${label}/stdout.txt\",\"${scenario}/${mode}/${label}/stderr.txt\",\"${scenario}/${mode}/${label}/shadow.stdout.diff\",\"${scenario}/${mode}/${label}/shadow.stderr.diff\",\"${scenario}/${mode}/${label}/shadow_divergence_report.txt\"]"
+        emit_log "error" "shadow_diff_mismatch" "${mode}" "" "${label}" "fail" "" "\"scenario_pack\":\"${scenario}\",\"retry_count\":0,\"flake_score\":0.0,\"artifact_refs\":${diff_refs},\"verdict\":\"shadow_mismatch\",\"details\":{\"baseline_exit_code\":0,\"stdout_diff_lines\":${stdout_diff_lines},\"stderr_diff_lines\":${stderr_diff_lines}}"
+        emit_log "info" "shadow_divergence_report" "${mode}" "" "${label}" "fail" "" "\"scenario_pack\":\"${scenario}\",\"retry_count\":0,\"flake_score\":0.0,\"artifact_refs\":${diff_refs},\"verdict\":\"shadow_mismatch_report\""
         echo "[FAIL] ${scenario}/${mode}/${label} (shadow diff mismatch)"
         return 1
     fi
@@ -879,6 +907,7 @@ EOF
     run_optional_shadow_compare_case "busybox" "${mode}" "smoke" "busybox_help" busybox --help || failed=1
     run_optional_shadow_compare_case "sqlite3" "${mode}" "smoke" "sqlite_memory_select" sqlite3 :memory: "select 41 + 1;" || failed=1
     run_optional_shadow_compare_case "redis-cli" "${mode}" "smoke" "redis_cli_version" redis-cli --version || failed=1
+    run_optional_shadow_compare_case "redis-server" "${mode}" "smoke" "redis_server_version" redis-server --version || failed=1
 
     return "${failed}"
 }

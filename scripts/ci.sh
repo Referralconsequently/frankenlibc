@@ -260,6 +260,11 @@ if [[ "${FRANKENLIBC_EXTENDED_GATES:-0}" == "1" ]]; then
     echo "PASS"
     echo ""
 
+    echo "--- bd-7cba iconv scope ledger drift gate ---"
+    scripts/check_iconv_codec_scope_ledger.sh
+    echo "PASS"
+    echo ""
+
     echo "--- unified stub/TODO debt census gate ---"
     scripts/check_stub_todo_debt_census.sh
     echo "PASS"

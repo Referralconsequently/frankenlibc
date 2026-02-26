@@ -19,6 +19,8 @@ VALGRIND_POLICY="${VALGRIND_POLICY:-auto}" # auto|off|required
 TRACE_FILE="${RUN_DIR}/trace.jsonl"
 CASE_TSV="${RUN_DIR}/abi_compat_cases.tsv"
 REPORT_FILE="${RUN_DIR}/abi_compat_report.json"
+TROUBLESHOOT_FILE="${RUN_DIR}/startup_troubleshooting.md"
+FAILURE_SIGNATURE_DENYLIST="${FAILURE_SIGNATURE_DENYLIST:-startup_timeout,startup_segv,startup_abort,startup_symbol_lookup_error,startup_loader_missing_library,startup_glibc_version_mismatch,startup_elf_class_mismatch}"
 
 LIB_CANDIDATES=(
   "${ROOT}/target/release/libfrankenlibc_abi.so"
@@ -35,7 +37,7 @@ done
 
 mkdir -p "${RUN_DIR}" "${BIN_DIR}"
 : > "${TRACE_FILE}"
-printf 'mode\tlabel\tstatus\tparity_required\tparity_pass\tperf_required\tperf_pass\tlatency_ratio_ppm\tbaseline_rc\tpreload_rc\tstdout_match\tstderr_match\tbaseline_latency_ns\tpreload_latency_ns\tvalgrind_checked\tvalgrind_pass\n' > "${CASE_TSV}"
+printf 'mode\tlabel\tstatus\tworkload\tstartup_path\tfailure_signature\tsignature_guard_triggered\tparity_required\tparity_pass\tperf_required\tperf_pass\tlatency_ratio_ppm\tbaseline_rc\tpreload_rc\tstdout_match\tstderr_match\tbaseline_latency_ns\tpreload_latency_ns\tvalgrind_checked\tvalgrind_pass\n' > "${CASE_TSV}"
 
 if [[ -z "${LIB_PATH}" ]]; then
   echo "ld_preload_smoke: building frankenlibc-abi release artifact..."
@@ -82,18 +84,137 @@ passes=0
 fails=0
 skips=0
 
-mode_requires_parity() {
-  local mode="$1"
+csv_has_token() {
+  local needle="$1"
   local csv="$2"
   local raw
   IFS=',' read -r -a raw <<< "${csv}"
   for token in "${raw[@]}"; do
     token="${token//[[:space:]]/}"
-    if [[ -n "${token}" && "${token}" == "${mode}" ]]; then
+    if [[ -n "${token}" && "${token}" == "${needle}" ]]; then
       return 0
     fi
   done
   return 1
+}
+
+mode_requires_parity() {
+  local mode="$1"
+  local csv="$2"
+  csv_has_token "${mode}" "${csv}"
+}
+
+case_workload() {
+  local label="$1"
+  case "${label}" in
+    integration_*|stress_link_*)
+      echo "integration"
+      ;;
+    stress_*)
+      echo "stress"
+      ;;
+    *)
+      echo "smoke"
+      ;;
+  esac
+}
+
+case_startup_path() {
+  local label="$1"
+  case "${label}" in
+    integration_*|stress_link_*)
+      echo "integration_c_fixture_startup"
+      ;;
+    python3_*|stress_python_*)
+      echo "python_runtime_startup"
+      ;;
+    busybox_*|sqlite_*|redis_*|nginx_*)
+      echo "dynamic_binary_startup"
+      ;;
+    *)
+      echo "coreutils_dynamic_startup"
+      ;;
+  esac
+}
+
+classify_failure_signature() {
+  local preload_rc="$1"
+  local preload_stderr="$2"
+  local parity_required="$3"
+  local parity_pass="$4"
+  local perf_required="$5"
+  local perf_pass="$6"
+  local valgrind_checked="$7"
+  local valgrind_pass="$8"
+
+  if [[ "${preload_rc}" -eq 124 || "${preload_rc}" -eq 125 ]]; then
+    echo "startup_timeout"
+    return 0
+  fi
+
+  if [[ "${preload_rc}" -ge 128 ]]; then
+    local signal_num=$((preload_rc - 128))
+    case "${signal_num}" in
+      11)
+        echo "startup_segv"
+        ;;
+      6)
+        echo "startup_abort"
+        ;;
+      4)
+        echo "startup_illegal_instruction"
+        ;;
+      7)
+        echo "startup_bus_error"
+        ;;
+      *)
+        echo "startup_signal_${signal_num}"
+        ;;
+    esac
+    return 0
+  fi
+
+  if [[ "${preload_rc}" -ne 0 ]]; then
+    if grep -qi 'symbol lookup error' "${preload_stderr}" 2>/dev/null; then
+      echo "startup_symbol_lookup_error"
+    elif grep -qi 'cannot open shared object file' "${preload_stderr}" 2>/dev/null; then
+      echo "startup_loader_missing_library"
+    elif grep -Eqi 'version .*GLIBC_.* not found' "${preload_stderr}" 2>/dev/null; then
+      echo "startup_glibc_version_mismatch"
+    elif grep -Eqi 'wrong ELF class|ELFCLASS' "${preload_stderr}" 2>/dev/null; then
+      echo "startup_elf_class_mismatch"
+    elif grep -qi 'undefined symbol' "${preload_stderr}" 2>/dev/null; then
+      echo "startup_undefined_symbol"
+    else
+      echo "startup_exit_nonzero_rc${preload_rc}"
+    fi
+    return 0
+  fi
+
+  if [[ "${parity_required}" -eq 1 && "${parity_pass}" -ne 1 ]]; then
+    echo "startup_strict_parity_mismatch"
+    return 0
+  fi
+
+  if [[ "${perf_required}" -eq 1 && "${perf_pass}" -ne 1 ]]; then
+    echo "startup_perf_regression"
+    return 0
+  fi
+
+  if [[ "${valgrind_checked}" -eq 1 && "${valgrind_pass}" -ne 1 ]]; then
+    echo "startup_valgrind_error"
+    return 0
+  fi
+
+  echo "none"
+}
+
+signature_is_guarded() {
+  local failure_signature="$1"
+  if [[ "${failure_signature}" == "none" ]]; then
+    return 1
+  fi
+  csv_has_token "${failure_signature}" "${FAILURE_SIGNATURE_DENYLIST}"
 }
 
 emit_trace() {
@@ -107,12 +228,16 @@ emit_trace() {
   local errno_value="${8:-0}"
   local latency_ns="${9:-0}"
   local artifact_refs_json="${10:-[]}"
-  local extra="${11:-}"
+  local workload="${11:-suite}"
+  local startup_path="${12:-orchestration}"
+  local failure_signature="${13:-none}"
+  local timing_json="${14:-{}}"
+  local extra="${15:-}"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   local trace_id="bd-18qq.6::${RUN_ID}::${mode}::${label}"
-  printf '{"timestamp":"%s","trace_id":"%s","level":"%s","event":"%s","bead_id":"bd-18qq.6","run_id":"%s","mode":"%s","case":"%s","status":"%s","api_family":"abi-interposition","symbol":"%s","decision_path":"%s","healing_action":"%s","errno":%s,"latency_ns":%s,"artifact_refs":%s%s}\n' \
+  printf '{"timestamp":"%s","trace_id":"%s","level":"%s","event":"%s","bead_id":"bd-18qq.6","run_id":"%s","mode":"%s","case":"%s","status":"%s","api_family":"abi-interposition","symbol":"%s","decision_path":"%s","healing_action":"%s","errno":%s,"latency_ns":%s,"artifact_refs":%s,"workload":"%s","startup_path":"%s","failure_signature":"%s","timing":%s%s}\n' \
     "${ts}" \
     "${trace_id}" \
     "${level}" \
@@ -127,6 +252,10 @@ emit_trace() {
     "${errno_value}" \
     "${latency_ns}" \
     "${artifact_refs_json}" \
+    "${workload}" \
+    "${startup_path}" \
+    "${failure_signature}" \
+    "${timing_json}" \
     "${extra}" \
     >> "${TRACE_FILE}"
 }

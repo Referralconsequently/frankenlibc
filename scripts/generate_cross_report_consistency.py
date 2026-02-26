@@ -33,6 +33,15 @@ def load_json_file(path):
         return json.load(f)
 
 
+def load_first_json(paths):
+    """Load the first existing JSON file from an ordered list of paths."""
+    for path in paths:
+        loaded = load_json_file(path)
+        if loaded is not None:
+            return loaded, path
+    return None, None
+
+
 # Severity levels for findings
 SEVERITY_CRITICAL = "critical"
 SEVERITY_ERROR = "error"
@@ -377,7 +386,10 @@ def main():
         root / "tests" / "conformance" / "replacement_levels.json")
     replacement_profile = load_json_file(
         root / "tests" / "conformance" / "replacement_profile.json")
-    stub_census = load_json_file(root / "stub_census.json")
+    stub_census, stub_census_path = load_first_json([
+        root / "tests" / "conformance" / "stub_census.json",
+        root / "stub_census.json",  # legacy fallback
+    ])
 
     # Run all consistency checks
     all_findings = []
@@ -409,6 +421,13 @@ def main():
         "replacement_profile": replacement_profile is not None,
         "stub_census": stub_census is not None,
     }
+    report_sources = {
+        "support_matrix": str(root / "support_matrix.json"),
+        "reality_report": str(root / "tests" / "conformance" / "reality_report.v1.json"),
+        "replacement_levels": str(root / "tests" / "conformance" / "replacement_levels.json"),
+        "replacement_profile": str(root / "tests" / "conformance" / "replacement_profile.json"),
+        "stub_census": str(stub_census_path) if stub_census_path else None,
+    }
 
     overall_pass = (by_severity.get(SEVERITY_CRITICAL, 0) == 0
                     and by_severity.get(SEVERITY_ERROR, 0) == 0)
@@ -429,6 +448,7 @@ def main():
             "reports_total": len(reports_loaded),
         },
         "reports_loaded": reports_loaded,
+        "report_sources": report_sources,
         "findings": all_findings,
         "consistency_rules": {
             "symbol_count": "Symbol totals must match across all reports",
