@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="640" viewBox="0 0 1160 640" role="img" aria-labelledby="title desc">
+  <title id="title">FrankenLibC TSM Decision Contract State Machine</title>
+  <desc id="desc">Safe, Suspicious, and Unsafe states with event-driven transitions for strict and hardened mode decision contract.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#273043" />
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 700 24px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 14px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #334155; }
+      .node-title { font: 700 20px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #0f172a; }
+      .node-text { font: 400 13px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #1e293b; }
+      .edge { stroke: #273043; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .edge-label { font: 600 12px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #0f172a; }
+      .safe { fill: #d1fae5; stroke: #047857; stroke-width: 2.5; }
+      .suspicious { fill: #fef3c7; stroke: #d97706; stroke-width: 2.5; }
+      .unsafe { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2.5; }
+      .legend-head { font: 700 13px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #0f172a; }
+      .legend-text { font: 400 12px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #1e293b; }
+      .footnote { font: 500 12px "DejaVu Sans", "Liberation Sans", sans-serif; fill: #334155; }
+      .small { font-size: 11px; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1160" height="640"/>
+  <text class="title" x="32" y="44">TSM Decision Contract (bd-3h1u.5)</text>
+  <text class="subtitle" x="32" y="68">States: Safe | Suspicious | Unsafe. Events: SoftAnomaly, HardViolation, CheckPass, RepairComplete, Timeout.</text>
+  <text class="subtitle" x="32" y="88">Source of truth: crates/frankenlibc-membrane/src/decision_contract.rs</text>
+
+  <!-- Nodes -->
+  <rect class="safe" x="90" y="190" width="270" height="170" rx="18"/>
+  <text class="node-title" x="120" y="230">Safe</text>
+  <text class="node-text" x="120" y="255">No active anomaly.</text>
+  <text class="node-text" x="120" y="278">Default steady state.</text>
+
+  <rect class="suspicious" x="445" y="190" width="270" height="170" rx="18"/>
+  <text class="node-title" x="475" y="230">Suspicious</text>
+  <text class="node-text" x="475" y="255">Soft anomaly observed.</text>
+  <text class="node-text" x="475" y="278">Monitoring elevated.</text>
+  <text class="node-text small" x="475" y="303">Clears after N consecutive CheckPass (default N=3).</text>
+
+  <rect class="unsafe" x="800" y="190" width="270" height="170" rx="18"/>
+  <text class="node-title" x="830" y="230">Unsafe</text>
+  <text class="node-text" x="830" y="255">Hard violation detected.</text>
+  <text class="node-text" x="830" y="278">Explicit repair required to return to Safe.</text>
+
+  <!-- Edges -->
+  <path class="edge" d="M 360 242 C 400 242, 405 242, 445 242"/>
+  <text class="edge-label" x="370" y="228">SoftAnomaly / IncrMonitor</text>
+
+  <path class="edge" d="M 360 270 C 560 80, 790 80, 800 242"/>
+  <text class="edge-label" x="485" y="116">HardViolation / Quarantine</text>
+
+  <path class="edge" d="M 715 270 C 760 270, 760 242, 800 242"/>
+  <text class="edge-label" x="724" y="228">HardViolation / Quarantine</text>
+
+  <path class="edge" d="M 715 318 C 760 375, 760 400, 580 400 C 470 400, 445 365, 445 330"/>
+  <text class="edge-label" x="560" y="430">CheckPass x N / ClearSuspicion</text>
+
+  <path class="edge" d="M 715 286 C 770 286, 770 318, 800 318"/>
+  <text class="edge-label" x="728" y="304">Timeout / Escalate</text>
+
+  <path class="edge" d="M 935 360 C 935 480, 225 480, 225 360"/>
+  <text class="edge-label" x="480" y="500">RepairComplete / ClearSuspicion (only Unsafe → Safe edge)</text>
+
+  <!-- Self loops -->
+  <path class="edge" d="M 180 190 C 140 135, 270 120, 260 190"/>
+  <text class="edge-label" x="85" y="150">CheckPass | Timeout | RepairComplete / Log</text>
+
+  <path class="edge" d="M 530 190 C 490 140, 620 120, 610 190"/>
+  <text class="edge-label" x="445" y="150">SoftAnomaly / IncrMonitor</text>
+
+  <path class="edge" d="M 885 190 C 845 140, 980 120, 970 190"/>
+  <text class="edge-label" x="810" y="150">SoftAnomaly | HardViolation | Timeout / Escalate</text>
+
+  <path class="edge" d="M 910 360 C 865 420, 1025 430, 1020 360"/>
+  <text class="edge-label" x="842" y="448">CheckPass / Repair</text>
+
+  <!-- Legend -->
+  <rect x="90" y="540" width="980" height="72" rx="10" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+  <text class="legend-head" x="110" y="565">Mode Action Projection</text>
+  <text class="legend-text" x="110" y="585">Strict/Off: state transitions are tracked but actions are projected to Log.</text>
+  <text class="legend-text" x="500" y="585">Hardened: full transition actions are preserved (monitor, quarantine, escalate, repair).</text>
+  <text class="footnote" x="110" y="605">Contract invariants: exhaustive 3x5 coverage, no deadlock path, and no Unsafe→Safe transition without RepairComplete.</text>
+</svg>

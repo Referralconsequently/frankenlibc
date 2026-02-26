@@ -12692,12 +12692,11 @@ pub unsafe extern "C" fn getrpcbynumber(number: c_int) -> *mut c_void {
         };
         let mut parts = stripped.split_whitespace();
         let _ = parts.next(); // name
-        if let Some(num_str) = parts.next() {
-            if let Ok(n) = num_str.parse::<c_int>() {
-                if n == number {
-                    return parse_rpc_line_to_static(line);
-                }
-            }
+        if let Some(num_str) = parts.next()
+            && let Ok(n) = num_str.parse::<c_int>()
+            && n == number
+        {
+            return parse_rpc_line_to_static(line);
         }
     }
     std::ptr::null_mut()
