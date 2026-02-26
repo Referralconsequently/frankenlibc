@@ -199,10 +199,22 @@ fn implemented_symbols_have_abi_exports() {
         let name = sym["symbol"].as_str().unwrap();
         let status = sym["status"].as_str().unwrap();
 
-        // Only check Implemented and RawSyscall — these MUST have ABI exports
+        // Only check Implemented and RawSyscall — these MUST have ABI exports.
+        // Some entries are exported globals/statics, not functions.
         if matches!(status, "Implemented" | "RawSyscall") {
-            // Some symbols are special (stdin/stdout/stderr are statics, not functions)
-            if matches!(name, "stdin" | "stdout" | "stderr") {
+            if matches!(
+                name,
+                "stdin"
+                    | "stdout"
+                    | "stderr"
+                    | "_IO_2_1_stdin_"
+                    | "_IO_2_1_stdout_"
+                    | "_IO_2_1_stderr_"
+                    | "__progname"
+                    | "__stack_chk_guard"
+                    | "program_invocation_name"
+                    | "program_invocation_short_name"
+            ) {
                 continue;
             }
             if !abi_fns.contains(name) {

@@ -292,6 +292,355 @@
       }
     },
     {
+      "id": "smoke.coreutils_cat_shadow",
+      "class": "smoke",
+      "label": "coreutils_cat_shadow",
+      "priority": 1,
+      "description": "Shadow-run parity check for cat over deterministic smoke fixture input.",
+      "command": [
+        "/bin/cat",
+        "${SMOKE_FIXTURE}"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Pinned smoke fixture file + static argv."
+      }
+    },
+    {
+      "id": "smoke.coreutils_sort",
+      "class": "smoke",
+      "label": "coreutils_sort",
+      "priority": 1,
+      "description": "Shadow-run parity check for locale-pinned sort over deterministic smoke fixture input.",
+      "command": [
+        "/usr/bin/env",
+        "LC_ALL=C",
+        "/bin/sort",
+        "${SMOKE_FIXTURE}"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Pinned smoke fixture file + LC_ALL=C."
+      }
+    },
+    {
+      "id": "smoke.coreutils_wc",
+      "class": "smoke",
+      "label": "coreutils_wc",
+      "priority": 1,
+      "description": "Shadow-run parity check for wc over deterministic smoke fixture input.",
+      "command": [
+        "/usr/bin/env",
+        "LC_ALL=C",
+        "/usr/bin/wc",
+        "-l",
+        "${SMOKE_FIXTURE}"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Pinned smoke fixture file + static argv."
+      }
+    },
+    {
+      "id": "smoke.busybox_help",
+      "class": "smoke",
+      "label": "busybox_help",
+      "priority": 2,
+      "description": "Optional shadow-run parity check for busybox --help output.",
+      "command": [
+        "busybox",
+        "--help"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Optional scenario only when busybox exists."
+      }
+    },
+    {
+      "id": "smoke.sqlite_memory_select",
+      "class": "smoke",
+      "label": "sqlite_memory_select",
+      "priority": 2,
+      "description": "Optional shadow-run parity check for sqlite3 in-memory arithmetic query.",
+      "command": [
+        "sqlite3",
+        ":memory:",
+        "select 41 + 1;"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Optional scenario only when sqlite3 exists."
+      }
+    },
+    {
+      "id": "smoke.redis_cli_version",
+      "class": "smoke",
+      "label": "redis_cli_version",
+      "priority": 2,
+      "description": "Optional shadow-run parity check for redis-cli --version output.",
+      "command": [
+        "redis-cli",
+        "--version"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Optional scenario only when redis-cli exists."
+      }
+    },
+    {
+      "id": "smoke.redis_server_version",
+      "class": "smoke",
+      "label": "redis_server_version",
+      "priority": 2,
+      "description": "Optional shadow-run parity check for redis-server --version output.",
+      "command": [
+        "redis-server",
+        "--version"
+      ],
+      "mode_expectations": {
+        "strict": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        },
+        "hardened": {
+          "expected_outcome": "pass",
+          "pass_condition": "exit_code == 0 and baseline_stdout == stdout and baseline_stderr == stderr",
+          "allowed_exit_codes": [
+            0
+          ]
+        }
+      },
+      "artifact_policy": {
+        "capture_stdout": true,
+        "capture_stderr": true,
+        "capture_env_on_failure": true,
+        "capture_bundle_on_failure": true,
+        "required_artifacts": [
+          "baseline.stdout.txt",
+          "baseline.stderr.txt",
+          "baseline.exit_code",
+          "stdout.txt",
+          "stderr.txt"
+        ]
+      },
+      "replay": {
+        "seed_key": "FRANKENLIBC_E2E_SEED",
+        "env_keys": [
+          "FRANKENLIBC_E2E_SEED",
+          "FRANKENLIBC_MODE",
+          "LD_PRELOAD"
+        ],
+        "deterministic_inputs": "Optional scenario only when redis-server exists."
+      }
+    },
+    {
       "id": "stress.repeated_link",
       "class": "stress",
       "label": "repeated_link",

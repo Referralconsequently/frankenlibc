@@ -1,0 +1,42 @@
+{
+  "index_version": 1,
+  "bead_id": "bd-7cba",
+  "generated_at": "2026-02-26T04:41:33Z",
+  "artifacts": [
+    {
+      "path": "scripts/check_iconv_codec_scope_ledger.sh",
+      "kind": "gate_script",
+      "sha256": "104adb544a51aa1b702d6070bf06efb2348580e713b5925dde7b0f4567cad3aa"
+    },
+    {
+      "path": "tests/conformance/iconv_codec_scope_ledger.v1.json",
+      "kind": "scope_ledger",
+      "sha256": "ac53c7c8210f2dec1be143a7f9f922dd3256f5373f71201c1b948eb7e7b7d4f9"
+    },
+    {
+      "path": "support_matrix.json",
+      "kind": "support_matrix",
+      "sha256": "51a014d794ef15bfdd100b1d5ec50e51b34d6b9e2a1bfd83da6218c62260b4bd"
+    },
+    {
+      "path": "crates/frankenlibc-core/src/iconv/mod.rs",
+      "kind": "phase1_core_contract",
+      "sha256": "502629d4ab4ffbf91ebe869f724cd6dec812471df4288019f8849ef5bc93f274"
+    },
+    {
+      "path": "target/conformance/iconv_codec_scope_ledger.report.json",
+      "kind": "report",
+      "sha256": "e1adf604b5d5cfdc98a83568745753fc48ec075cef7562ce38c71574ddb2f2c0"
+    },
+    {
+      "path": "target/conformance/iconv_codec_scope_ledger.log.jsonl",
+      "kind": "log",
+      "sha256": "71e03e4040261a9541f6b8679d72818d69ed1db302c5e7d0068701811ee78d86"
+    },
+    {
+      "path": "tests/cve_arena/results/bd-7cba/trace.jsonl",
+      "kind": "trace",
+      "sha256": "71e03e4040261a9541f6b8679d72818d69ed1db302c5e7d0068701811ee78d86"
+    }
+  ]
+}
