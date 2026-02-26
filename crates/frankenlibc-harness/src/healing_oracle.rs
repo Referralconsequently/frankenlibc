@@ -30,7 +30,7 @@ pub struct HealingOracleCase {
 }
 
 /// Classification of unsafe conditions to test.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum UnsafeCondition {
     /// Null pointer dereference attempt.
@@ -133,62 +133,104 @@ impl HealingOracleSuite {
     #[must_use]
     pub fn canonical() -> Self {
         let mut suite = Self::new();
-        suite.add(HealingOracleCase {
-            id: "null-pointer".to_string(),
-            condition: UnsafeCondition::NullPointer,
-            expected_healing: "ReturnSafeDefault".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "string".to_string(),
-            symbol: "strlen".to_string(),
-        });
-        suite.add(HealingOracleCase {
-            id: "use-after-free".to_string(),
-            condition: UnsafeCondition::UseAfterFree,
-            expected_healing: "ReturnSafeDefault".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "malloc".to_string(),
-            symbol: "free".to_string(),
-        });
-        suite.add(HealingOracleCase {
-            id: "double-free".to_string(),
-            condition: UnsafeCondition::DoubleFree,
-            expected_healing: "IgnoreDoubleFree".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "malloc".to_string(),
-            symbol: "free".to_string(),
-        });
-        suite.add(HealingOracleCase {
-            id: "buffer-overflow".to_string(),
-            condition: UnsafeCondition::BufferOverflow,
-            expected_healing: "TruncateWithNull".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "string".to_string(),
-            symbol: "strcpy".to_string(),
-        });
-        suite.add(HealingOracleCase {
-            id: "foreign-free".to_string(),
-            condition: UnsafeCondition::ForeignFree,
-            expected_healing: "IgnoreForeignFree".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "malloc".to_string(),
-            symbol: "free".to_string(),
-        });
-        suite.add(HealingOracleCase {
-            id: "bounds-exceeded".to_string(),
-            condition: UnsafeCondition::BoundsExceeded,
-            expected_healing: "ClampSize".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "string".to_string(),
-            symbol: "memmove".to_string(),
-        });
-        suite.add(HealingOracleCase {
-            id: "realloc-freed".to_string(),
-            condition: UnsafeCondition::ReallocFreed,
-            expected_healing: "ReallocAsMalloc".to_string(),
-            strict_expected: "None".to_string(),
-            api_family: "malloc".to_string(),
-            symbol: "realloc".to_string(),
-        });
+        let canonical_matrix = [
+            (
+                "null-pointer-strlen",
+                UnsafeCondition::NullPointer,
+                "string",
+                "strlen",
+            ),
+            (
+                "null-pointer-strcmp",
+                UnsafeCondition::NullPointer,
+                "string",
+                "strcmp",
+            ),
+            (
+                "use-after-free-free",
+                UnsafeCondition::UseAfterFree,
+                "malloc",
+                "free",
+            ),
+            (
+                "use-after-free-realloc",
+                UnsafeCondition::UseAfterFree,
+                "malloc",
+                "realloc",
+            ),
+            (
+                "double-free-free",
+                UnsafeCondition::DoubleFree,
+                "malloc",
+                "free",
+            ),
+            (
+                "double-free-cfree",
+                UnsafeCondition::DoubleFree,
+                "malloc",
+                "cfree",
+            ),
+            (
+                "buffer-overflow-strcpy",
+                UnsafeCondition::BufferOverflow,
+                "string",
+                "strcpy",
+            ),
+            (
+                "buffer-overflow-strncpy",
+                UnsafeCondition::BufferOverflow,
+                "string",
+                "strncpy",
+            ),
+            (
+                "foreign-free-free",
+                UnsafeCondition::ForeignFree,
+                "malloc",
+                "free",
+            ),
+            (
+                "foreign-free-cfree",
+                UnsafeCondition::ForeignFree,
+                "malloc",
+                "cfree",
+            ),
+            (
+                "bounds-exceeded-memmove",
+                UnsafeCondition::BoundsExceeded,
+                "string",
+                "memmove",
+            ),
+            (
+                "bounds-exceeded-memcpy",
+                UnsafeCondition::BoundsExceeded,
+                "string",
+                "memcpy",
+            ),
+            (
+                "realloc-freed-realloc",
+                UnsafeCondition::ReallocFreed,
+                "malloc",
+                "realloc",
+            ),
+            (
+                "realloc-freed-reallocarray",
+                UnsafeCondition::ReallocFreed,
+                "stdlib",
+                "reallocarray",
+            ),
+        ];
+
+        for (id, condition, api_family, symbol) in canonical_matrix {
+            suite.add(HealingOracleCase {
+                id: id.to_string(),
+                condition,
+                expected_healing: healing_action_name(&hardened_action_for_condition(condition))
+                    .to_string(),
+                strict_expected: "None".to_string(),
+                api_family: api_family.to_string(),
+                symbol: symbol.to_string(),
+            });
+        }
         suite
     }
 }
@@ -378,14 +420,20 @@ fn healing_action_name(action: &HealingAction) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
     fn canonical_suite_covers_all_conditions() {
         let suite = HealingOracleSuite::canonical();
+        let observed: BTreeSet<_> = suite.cases().iter().map(|case| case.condition).collect();
+        let expected: BTreeSet<_> = UnsafeCondition::all().iter().copied().collect();
         assert_eq!(
-            suite.cases().len(),
-            UnsafeCondition::all().len(),
-            "canonical suite should include one case per unsafe condition"
+            observed, expected,
+            "canonical suite should cover all conditions"
+        );
+        assert!(
+            suite.cases().len() >= UnsafeCondition::all().len() * 2,
+            "canonical suite should include multiple symbols per condition"
         );
     }
 
@@ -393,7 +441,10 @@ mod tests {
     fn strict_mode_has_no_repairs() {
         let suite = HealingOracleSuite::canonical();
         let report = build_healing_oracle_report(&suite, HealingOracleMode::Strict, "test");
-        assert_eq!(report.summary.total_cases, 7);
+        assert_eq!(
+            report.summary.total_cases,
+            u64::try_from(suite.cases().len()).unwrap_or(u64::MAX)
+        );
         assert_eq!(report.summary.repaired, 0);
         assert_eq!(report.summary.failed, 0);
         for row in &report.cases {
@@ -409,8 +460,9 @@ mod tests {
     fn hardened_mode_repairs_every_case() {
         let suite = HealingOracleSuite::canonical();
         let report = build_healing_oracle_report(&suite, HealingOracleMode::Hardened, "test");
-        assert_eq!(report.summary.total_cases, 7);
-        assert_eq!(report.summary.repaired, 7);
+        let expected = u64::try_from(suite.cases().len()).unwrap_or(u64::MAX);
+        assert_eq!(report.summary.total_cases, expected);
+        assert_eq!(report.summary.repaired, expected);
         assert_eq!(report.summary.failed, 0);
         for row in &report.cases {
             assert_eq!(row.mode, "hardened");
@@ -424,8 +476,15 @@ mod tests {
     fn both_mode_contains_strict_and_hardened_rows() {
         let suite = HealingOracleSuite::canonical();
         let report = build_healing_oracle_report(&suite, HealingOracleMode::Both, "test");
-        assert_eq!(report.summary.total_cases, 14);
-        assert_eq!(report.summary.passed, 14);
+        let base = suite.cases().len();
+        assert_eq!(
+            report.summary.total_cases,
+            u64::try_from(base * 2).unwrap_or(u64::MAX)
+        );
+        assert_eq!(
+            report.summary.passed,
+            u64::try_from(base * 2).unwrap_or(u64::MAX)
+        );
         assert_eq!(report.summary.failed, 0);
 
         let strict = report
@@ -438,7 +497,7 @@ mod tests {
             .iter()
             .filter(|row| row.mode == "hardened")
             .count();
-        assert_eq!(strict, 7);
-        assert_eq!(hardened, 7);
+        assert_eq!(strict, base);
+        assert_eq!(hardened, base);
     }
 }

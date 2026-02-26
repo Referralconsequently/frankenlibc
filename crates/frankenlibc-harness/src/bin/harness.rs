@@ -72,6 +72,24 @@ enum Command {
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Generate POSIX conformance coverage report across symbols.
+    PosixConformanceReport {
+        /// Input support matrix JSON path.
+        #[arg(long, default_value = "support_matrix.json")]
+        support_matrix: PathBuf,
+        /// Fixture directory path.
+        #[arg(long, default_value = "tests/conformance/fixtures")]
+        fixture: PathBuf,
+        /// Input conformance matrix JSON path.
+        #[arg(long, default_value = "tests/conformance/conformance_matrix.v1.json")]
+        conformance_matrix: PathBuf,
+        /// Output JSON report path.
+        #[arg(
+            long,
+            default_value = "target/conformance/posix_conformance_report.current.v1.json"
+        )]
+        output: PathBuf,
+    },
     /// Run membrane-specific verification tests.
     VerifyMembrane {
         /// Runtime mode to test (`strict`, `hardened`, or `both`).
@@ -455,6 +473,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 print!("{body}");
             }
+        }
+        Command::PosixConformanceReport {
+            support_matrix,
+            fixture,
+            conformance_matrix,
+            output,
+        } => {
+            let report = frankenlibc_harness::report::PosixConformanceReport::from_paths(
+                &support_matrix,
+                &fixture,
+                &conformance_matrix,
+            )
+            .map_err(|err| format!("failed generating POSIX conformance report: {err}"))?;
+
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&output, report.to_json())?;
+            eprintln!(
+                "Wrote POSIX conformance report to {} (eligible_symbols={}, symbols_with_cases={})",
+                output.display(),
+                report.summary.eligible_symbols,
+                report.summary.symbols_with_cases
+            );
         }
         Command::VerifyMembrane {
             mode,

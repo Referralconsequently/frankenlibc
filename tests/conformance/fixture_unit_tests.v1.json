@@ -1,15 +1,15 @@
 {
   "schema_version": "v1",
   "bead": "bd-2hh.5",
-  "generated_at": "2026-02-13T19:30:45Z",
+  "generated_at": "2026-02-26T00:34:50Z",
   "summary": {
-    "total_fixture_files": 49,
+    "total_fixture_files": 50,
     "valid_fixture_files": 49,
-    "total_cases": 479,
-    "total_issues": 0,
-    "total_warnings": 0,
-    "unique_families": 48,
-    "unique_symbols": 206,
+    "total_cases": 513,
+    "total_issues": 2,
+    "total_warnings": 2,
+    "unique_families": 49,
+    "unique_symbols": 213,
     "determinism_verified": true
   },
   "fixture_results": [
@@ -87,8 +87,8 @@
       "file": "grp_ops.json",
       "version": "v1",
       "family": "grp_ops",
-      "case_count": 7,
-      "fixture_hash": "7122a77bba736909",
+      "case_count": 10,
+      "fixture_hash": "279b68d06ddfc898",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -127,8 +127,8 @@
       "file": "locale_ops.json",
       "version": "v1",
       "family": "locale_ops",
-      "case_count": 6,
-      "fixture_hash": "c0bf57996da9588e",
+      "case_count": 9,
+      "fixture_hash": "f9611e920f108459",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -247,8 +247,8 @@
       "file": "pwd_ops.json",
       "version": "v1",
       "family": "pwd_ops",
-      "case_count": 7,
-      "fixture_hash": "87794147b2af3cc1",
+      "case_count": 10,
+      "fixture_hash": "898d1537fb8d7d03",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -267,8 +267,8 @@
       "file": "resolver.json",
       "version": "v1",
       "family": "resolv/dns",
-      "case_count": 16,
-      "fixture_hash": "d0e191def4c4cd44",
+      "case_count": 23,
+      "fixture_hash": "2faf293979e764f5",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -292,6 +292,22 @@
       "valid": true,
       "issues": [],
       "warnings": []
+    },
+    {
+      "file": "setjmp_nested_edges.json",
+      "version": "",
+      "family": "setjmp_nested_edges",
+      "case_count": 0,
+      "fixture_hash": "1567f09b74762383",
+      "valid": false,
+      "issues": [
+        "Missing top-level field: version",
+        "Missing top-level field: cases"
+      ],
+      "warnings": [
+        "Unexpected version: ",
+        "Empty cases array"
+      ]
     },
     {
       "file": "setjmp_ops.json",
@@ -337,8 +353,8 @@
       "file": "startup_ops.json",
       "version": "v1",
       "family": "startup_ops",
-      "case_count": 5,
-      "fixture_hash": "d23f8f0af5b43429",
+      "case_count": 16,
+      "fixture_hash": "c9eda25f37ddc3a8",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -347,8 +363,8 @@
       "file": "stdio_file_ops.json",
       "version": "v1",
       "family": "stdio_file_ops",
-      "case_count": 8,
-      "fixture_hash": "43ddbb5d54e910c2",
+      "case_count": 15,
+      "fixture_hash": "e5e91fc456042f51",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -505,8 +521,8 @@
     }
   ],
   "regression_baseline": {
-    "symbol_count": 206,
-    "total_cases": 479,
+    "symbol_count": 213,
+    "total_cases": 513,
     "symbols": {
       "DnsHeader::new_query": {
         "count": 1,
@@ -569,19 +585,19 @@
         ]
       },
       "__frankenlibc_startup_phase0": {
-        "count": 2,
+        "count": 8,
         "fixtures": [
           "startup_ops.json"
         ]
       },
       "__frankenlibc_startup_snapshot": {
-        "count": 2,
+        "count": 4,
         "fixtures": [
           "startup_ops.json"
         ]
       },
       "__libc_start_main": {
-        "count": 1,
+        "count": 4,
         "fixtures": [
           "startup_ops.json"
         ]
@@ -817,6 +833,12 @@
           "stdio_file_ops.json"
         ]
       },
+      "fflush": {
+        "count": 2,
+        "fixtures": [
+          "stdio_file_ops.json"
+        ]
+      },
       "floor": {
         "count": 2,
         "fixtures": [
@@ -853,14 +875,38 @@
           "stdio_file_ops.json"
         ]
       },
+      "fread": {
+        "count": 2,
+        "fixtures": [
+          "stdio_file_ops.json"
+        ]
+      },
       "free": {
         "count": 1,
         "fixtures": [
           "allocator.json"
         ]
       },
+      "fseek": {
+        "count": 1,
+        "fixtures": [
+          "stdio_file_ops.json"
+        ]
+      },
+      "ftell": {
+        "count": 1,
+        "fixtures": [
+          "stdio_file_ops.json"
+        ]
+      },
+      "fwrite": {
+        "count": 1,
+        "fixtures": [
+          "stdio_file_ops.json"
+        ]
+      },
       "getaddrinfo": {
-        "count": 3,
+        "count": 5,
         "fixtures": [
           "resolver.json"
         ]
@@ -890,15 +936,21 @@
         ]
       },
       "getgrgid": {
-        "count": 3,
+        "count": 4,
         "fixtures": [
           "grp_ops.json"
         ]
       },
       "getgrnam": {
-        "count": 3,
+        "count": 4,
         "fixtures": [
           "grp_ops.json"
+        ]
+      },
+      "gethostbyname": {
+        "count": 2,
+        "fixtures": [
+          "resolver.json"
         ]
       },
       "getlogin": {
@@ -928,13 +980,13 @@
         ]
       },
       "getpwnam": {
-        "count": 3,
+        "count": 4,
         "fixtures": [
           "pwd_ops.json"
         ]
       },
       "getpwuid": {
-        "count": 3,
+        "count": 4,
         "fixtures": [
           "pwd_ops.json"
         ]
@@ -1132,7 +1184,7 @@
         ]
       },
       "lookup_hosts": {
-        "count": 3,
+        "count": 6,
         "fixtures": [
           "resolver.json"
         ]
@@ -1223,6 +1275,12 @@
         "count": 1,
         "fixtures": [
           "virtual_memory_ops.json"
+        ]
+      },
+      "nl_langinfo": {
+        "count": 3,
+        "fixtures": [
+          "locale_ops.json"
         ]
       },
       "ntohl": {
@@ -1460,7 +1518,7 @@
         ]
       },
       "setgrent": {
-        "count": 1,
+        "count": 2,
         "fixtures": [
           "grp_ops.json"
         ]
@@ -1478,7 +1536,7 @@
         ]
       },
       "setpwent": {
-        "count": 1,
+        "count": 2,
         "fixtures": [
           "pwd_ops.json"
         ]
@@ -1781,11 +1839,11 @@
     "dlfcn_ops.json": "137631159d7d54df",
     "elf_loader.json": "f299aa5ce910bb8b",
     "errno_ops.json": "6aa46d1f231e16d3",
-    "grp_ops.json": "7122a77bba736909",
+    "grp_ops.json": "279b68d06ddfc898",
     "iconv_phase1.json": "bb2229c8ddbbc315",
     "inet_ops.json": "62799ba849186b2f",
     "loader_edges.json": "94470b86850542ab",
-    "locale_ops.json": "c0bf57996da9588e",
+    "locale_ops.json": "f9611e920f108459",
     "math_ops.json": "d8fa7f90d4c4e242",
     "membrane_mode_split.json": "bd8641139f333985",
     "memcpy_strict.json": "eef9a5b6413ab2fb",
@@ -1797,17 +1855,18 @@
     "pthread_mutex.json": "3e4572f2cebbff4e",
     "pthread_thread.json": "7e1c508cf49a09ef",
     "pthread_tls_keys.json": "be6e8e18f3c8f265",
-    "pwd_ops.json": "87794147b2af3cc1",
+    "pwd_ops.json": "898d1537fb8d7d03",
     "regex_glob_ops.json": "7ab27e21d7007486",
-    "resolver.json": "d0e191def4c4cd44",
+    "resolver.json": "2faf293979e764f5",
     "resource_ops.json": "3b779fa2599094c9",
     "session_ops.json": "5af770c141efd100",
+    "setjmp_nested_edges.json": "1567f09b74762383",
     "setjmp_ops.json": "5f4c3e9a87d89872",
     "signal_ops.json": "51213c6ed30f1f86",
     "socket_ops.json": "a7aff9da3b994a10",
     "spawn_exec_ops.json": "01c7e1a2984e37e9",
-    "startup_ops.json": "d23f8f0af5b43429",
-    "stdio_file_ops.json": "43ddbb5d54e910c2",
+    "startup_ops.json": "c9eda25f37ddc3a8",
+    "stdio_file_ops.json": "e5e91fc456042f51",
     "stdlib_conversion.json": "17f389b5edfb0577",
     "stdlib_numeric.json": "3dc93afa7d51bf38",
     "stdlib_sort.json": "90d0d3a6e451be81",

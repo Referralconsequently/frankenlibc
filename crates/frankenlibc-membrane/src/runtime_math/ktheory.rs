@@ -62,6 +62,18 @@ const DRIFT_THRESHOLD: f64 = 0.20;
 
 /// Transport distance threshold for compatibility fracture.
 const FRACTURE_THRESHOLD: f64 = 0.45;
+/// Normalized contract coordinate lower bound.
+const CONTRACT_COORD_MIN: f64 = 0.0;
+/// Normalized contract coordinate upper bound.
+const CONTRACT_COORD_MAX: f64 = 1.0;
+
+fn sanitize_contract_coordinate(coord: f64) -> f64 {
+    if !coord.is_finite() {
+        0.0
+    } else {
+        coord.clamp(CONTRACT_COORD_MIN, CONTRACT_COORD_MAX)
+    }
+}
 
 /// K-theory transport controller state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,7 +188,9 @@ impl KTheoryController {
 
         // Update observed contract coordinates via EWMA.
         for (i, coord) in coords.iter().enumerate().take(CONTRACT_RANK) {
-            bundle.observed[i] = bundle.observed[i].mul_add(1.0 - EWMA_ALPHA, EWMA_ALPHA * coord);
+            let sanitized = sanitize_contract_coordinate(*coord);
+            bundle.observed[i] =
+                bundle.observed[i].mul_add(1.0 - EWMA_ALPHA, EWMA_ALPHA * sanitized);
         }
 
         // Freeze baseline after calibration period.
@@ -387,5 +401,26 @@ mod tests {
         let mut ctrl = KTheoryController::new();
         ctrl.observe(999, [0.5, 0.5, 0.5, 0.5]);
         assert_eq!(ctrl.total_observations, 0);
+    }
+
+    #[test]
+    fn non_finite_and_out_of_range_coords_are_sanitized() {
+        let mut ctrl = KTheoryController::new();
+        ctrl.observe(0, [f64::NAN, f64::INFINITY, -4.0, 2.5]);
+        let bundle = &ctrl.bundles[0];
+        assert_eq!(bundle.observations, 1);
+        assert!(bundle.observed.iter().all(|v| v.is_finite()));
+        assert!(bundle.observed.iter().all(|v| *v >= 0.0 && *v <= 1.0));
+    }
+
+    #[test]
+    fn adversarial_input_stream_keeps_summary_finite() {
+        let mut ctrl = KTheoryController::new();
+        for _ in 0..256 {
+            ctrl.observe(0, [f64::NAN, f64::INFINITY, -100.0, 10.0]);
+        }
+        let summary = ctrl.summary();
+        assert!(summary.max_transport_distance.is_finite());
+        assert!(summary.total_observations >= 256);
     }
 }

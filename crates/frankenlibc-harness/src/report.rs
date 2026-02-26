@@ -1,10 +1,13 @@
 //! Report generation for conformance results.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::conformance_matrix::ConformanceMatrixReport;
 use crate::verify::VerificationSummary;
+use crate::{FixtureCase, FixtureSet};
 
 /// A conformance report combining verification and traceability data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,9 +311,427 @@ impl RealityReport {
     }
 }
 
+/// Per-category fixture-case counts used for POSIX conformance coverage quality.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PosixCaseCategoryCounts {
+    pub normal: u64,
+    pub boundary: u64,
+    pub error: u64,
+    pub other: u64,
+}
+
+impl PosixCaseCategoryCounts {
+    #[must_use]
+    pub const fn all_core_categories_present(&self) -> bool {
+        self.normal > 0 && self.boundary > 0 && self.error > 0
+    }
+
+    #[must_use]
+    pub const fn total(&self) -> u64 {
+        self.normal + self.boundary + self.error + self.other
+    }
+}
+
+/// Execution-status counts from conformance matrix rows.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PosixExecutionCounts {
+    pub total: u64,
+    pub pass: u64,
+    pub fail: u64,
+    pub error: u64,
+    pub timeout: u64,
+    pub crash: u64,
+}
+
+impl PosixExecutionCounts {
+    #[must_use]
+    pub const fn has_failures(&self) -> bool {
+        self.fail > 0 || self.error > 0 || self.timeout > 0 || self.crash > 0
+    }
+}
+
+/// Per-symbol POSIX conformance coverage row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixSymbolCoverageRow {
+    pub symbol: String,
+    pub status: String,
+    pub module: String,
+    pub case_count: u64,
+    pub strict_cases: u64,
+    pub hardened_cases: u64,
+    pub has_errno_case: bool,
+    pub spec_sections: Vec<String>,
+    pub categories: PosixCaseCategoryCounts,
+    pub execution: PosixExecutionCounts,
+    pub quality_flags: Vec<String>,
+}
+
+/// Summary section for POSIX conformance coverage report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixConformanceSummary {
+    pub total_exported: u64,
+    pub eligible_symbols: u64,
+    pub symbols_with_cases: u64,
+    pub symbols_with_all_core_categories: u64,
+    pub symbols_with_errno_case: u64,
+    pub symbols_with_missing_spec_traceability: u64,
+    pub symbols_with_execution_failures: u64,
+    pub total_fixture_cases: u64,
+    pub total_execution_cases: u64,
+}
+
+/// Machine-readable report for bd-18qq.7 POSIX conformance campaign.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixConformanceReport {
+    pub schema_version: String,
+    pub bead: String,
+    pub generated_at_utc: String,
+    pub summary: PosixConformanceSummary,
+    pub symbols: Vec<PosixSymbolCoverageRow>,
+}
+
+#[derive(Debug, Default)]
+struct FixtureSymbolAggregate {
+    case_count: u64,
+    strict_cases: u64,
+    hardened_cases: u64,
+    has_errno_case: bool,
+    spec_sections: BTreeSet<String>,
+    categories: PosixCaseCategoryCounts,
+}
+
+impl PosixConformanceReport {
+    /// Build report from on-disk support matrix + fixture directory + conformance matrix.
+    pub fn from_paths(
+        support_matrix_path: &Path,
+        fixture_dir: &Path,
+        conformance_matrix_path: &Path,
+    ) -> Result<Self, String> {
+        let support_matrix_json = std::fs::read_to_string(support_matrix_path).map_err(|err| {
+            format!(
+                "failed reading support matrix '{}': {err}",
+                support_matrix_path.display()
+            )
+        })?;
+        let conformance_matrix_json =
+            std::fs::read_to_string(conformance_matrix_path).map_err(|err| {
+                format!(
+                    "failed reading conformance matrix '{}': {err}",
+                    conformance_matrix_path.display()
+                )
+            })?;
+        let fixture_sets = load_fixture_sets_from_dir(fixture_dir)?;
+        Self::from_inputs(
+            &support_matrix_json,
+            &fixture_sets,
+            &conformance_matrix_json,
+        )
+    }
+
+    /// Build report from parsed fixture sets and raw JSON blobs.
+    pub fn from_inputs(
+        support_matrix_json: &str,
+        fixture_sets: &[FixtureSet],
+        conformance_matrix_json: &str,
+    ) -> Result<Self, String> {
+        let support_value: serde_json::Value = serde_json::from_str(support_matrix_json)
+            .map_err(|err| format!("invalid support matrix JSON: {err}"))?;
+        let generated_at_utc = support_value["generated_at_utc"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+        let total_exported = support_value["total_exported"]
+            .as_u64()
+            .ok_or("missing total_exported in support matrix")?;
+        let support_symbols = support_value["symbols"]
+            .as_array()
+            .ok_or("missing symbols[] in support matrix")?;
+
+        let mut eligible_symbols: Vec<(String, String, String)> = Vec::new();
+        for symbol_row in support_symbols {
+            let symbol = symbol_row["symbol"]
+                .as_str()
+                .ok_or("support matrix symbol row missing symbol")?;
+            let status = symbol_row["status"]
+                .as_str()
+                .ok_or("support matrix symbol row missing status")?;
+            let module = symbol_row["module"].as_str().unwrap_or("unknown");
+            if status == "Implemented" || status == "RawSyscall" {
+                eligible_symbols.push((symbol.to_string(), status.to_string(), module.to_string()));
+            }
+        }
+        eligible_symbols.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut fixture_by_symbol: BTreeMap<String, FixtureSymbolAggregate> = BTreeMap::new();
+        for fixture_set in fixture_sets {
+            for case in &fixture_set.cases {
+                let agg = fixture_by_symbol.entry(case.function.clone()).or_default();
+                agg.case_count = agg.case_count.saturating_add(1);
+                if case.mode.eq_ignore_ascii_case("strict")
+                    || case.mode.eq_ignore_ascii_case("both")
+                {
+                    agg.strict_cases = agg.strict_cases.saturating_add(1);
+                }
+                if case.mode.eq_ignore_ascii_case("hardened")
+                    || case.mode.eq_ignore_ascii_case("both")
+                {
+                    agg.hardened_cases = agg.hardened_cases.saturating_add(1);
+                }
+                if case.expected_errno != 0 {
+                    agg.has_errno_case = true;
+                }
+                let spec_section = case.spec_section.trim();
+                if !spec_section.is_empty() {
+                    agg.spec_sections.insert(spec_section.to_string());
+                }
+                match classify_posix_case(case) {
+                    PosixCaseClass::Normal => {
+                        agg.categories.normal = agg.categories.normal.saturating_add(1)
+                    }
+                    PosixCaseClass::Boundary => {
+                        agg.categories.boundary = agg.categories.boundary.saturating_add(1)
+                    }
+                    PosixCaseClass::Error => {
+                        agg.categories.error = agg.categories.error.saturating_add(1)
+                    }
+                    PosixCaseClass::Other => {
+                        agg.categories.other = agg.categories.other.saturating_add(1)
+                    }
+                }
+            }
+        }
+
+        let matrix: ConformanceMatrixReport = serde_json::from_str(conformance_matrix_json)
+            .map_err(|err| format!("invalid conformance matrix JSON: {err}"))?;
+        let mut execution_by_symbol: BTreeMap<String, PosixExecutionCounts> = BTreeMap::new();
+        for case in &matrix.cases {
+            let counts = execution_by_symbol.entry(case.symbol.clone()).or_default();
+            counts.total = counts.total.saturating_add(1);
+            match case.status.as_str() {
+                "pass" => counts.pass = counts.pass.saturating_add(1),
+                "fail" => counts.fail = counts.fail.saturating_add(1),
+                "error" => counts.error = counts.error.saturating_add(1),
+                "timeout" => counts.timeout = counts.timeout.saturating_add(1),
+                "crash" => counts.crash = counts.crash.saturating_add(1),
+                _ => {}
+            }
+        }
+
+        let mut rows = Vec::with_capacity(eligible_symbols.len());
+        for (symbol, status, module) in eligible_symbols {
+            let fixture = fixture_by_symbol.remove(&symbol).unwrap_or_default();
+            let execution = execution_by_symbol.remove(&symbol).unwrap_or_default();
+            let spec_sections: Vec<String> = fixture.spec_sections.into_iter().collect();
+
+            let mut quality_flags = Vec::new();
+            if fixture.case_count == 0 {
+                quality_flags.push(String::from("missing_fixture_cases"));
+            }
+            if fixture.strict_cases == 0 {
+                quality_flags.push(String::from("missing_strict_case"));
+            }
+            if fixture.hardened_cases == 0 {
+                quality_flags.push(String::from("missing_hardened_case"));
+            }
+            if fixture.categories.normal == 0 {
+                quality_flags.push(String::from("missing_normal_case"));
+            }
+            if fixture.categories.boundary == 0 {
+                quality_flags.push(String::from("missing_boundary_case"));
+            }
+            if fixture.categories.error == 0 {
+                quality_flags.push(String::from("missing_error_case"));
+            }
+            if !fixture.has_errno_case {
+                quality_flags.push(String::from("missing_errno_case"));
+            }
+            if spec_sections.is_empty() {
+                quality_flags.push(String::from("missing_spec_traceability"));
+            }
+            if execution.has_failures() {
+                quality_flags.push(String::from("execution_failures_present"));
+            }
+
+            rows.push(PosixSymbolCoverageRow {
+                symbol,
+                status,
+                module,
+                case_count: fixture.case_count,
+                strict_cases: fixture.strict_cases,
+                hardened_cases: fixture.hardened_cases,
+                has_errno_case: fixture.has_errno_case,
+                spec_sections,
+                categories: fixture.categories,
+                execution,
+                quality_flags,
+            });
+        }
+
+        rows.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+
+        let eligible_symbols =
+            u64::try_from(rows.len()).map_err(|_| "eligible symbol count overflow".to_string())?;
+        let symbols_with_cases =
+            u64::try_from(rows.iter().filter(|row| row.case_count > 0).count()).unwrap_or(0);
+        let symbols_with_all_core_categories = u64::try_from(
+            rows.iter()
+                .filter(|row| row.categories.all_core_categories_present())
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_with_errno_case =
+            u64::try_from(rows.iter().filter(|row| row.has_errno_case).count()).unwrap_or(0);
+        let symbols_with_missing_spec_traceability = u64::try_from(
+            rows.iter()
+                .filter(|row| row.spec_sections.is_empty())
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_with_execution_failures = u64::try_from(
+            rows.iter()
+                .filter(|row| row.execution.has_failures())
+                .count(),
+        )
+        .unwrap_or(0);
+        let total_fixture_cases = rows
+            .iter()
+            .fold(0u64, |acc, row| acc.saturating_add(row.case_count));
+        let total_execution_cases = rows
+            .iter()
+            .fold(0u64, |acc, row| acc.saturating_add(row.execution.total));
+
+        Ok(Self {
+            schema_version: "v1".to_string(),
+            bead: "bd-18qq.7".to_string(),
+            generated_at_utc,
+            summary: PosixConformanceSummary {
+                total_exported,
+                eligible_symbols,
+                symbols_with_cases,
+                symbols_with_all_core_categories,
+                symbols_with_errno_case,
+                symbols_with_missing_spec_traceability,
+                symbols_with_execution_failures,
+                total_fixture_cases,
+                total_execution_cases,
+            },
+            symbols: rows,
+        })
+    }
+
+    /// Render report as pretty JSON.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PosixCaseClass {
+    Normal,
+    Boundary,
+    Error,
+    Other,
+}
+
+fn classify_posix_case(case: &FixtureCase) -> PosixCaseClass {
+    if case.expected_errno != 0 {
+        return PosixCaseClass::Error;
+    }
+
+    let mut haystack = String::new();
+    haystack.push_str(&case.name.to_ascii_lowercase());
+    haystack.push('\n');
+    haystack.push_str(&case.spec_section.to_ascii_lowercase());
+    haystack.push('\n');
+    haystack.push_str(&case.expected_output.to_ascii_lowercase());
+    haystack.push('\n');
+    haystack.push_str(&case.inputs.to_string().to_ascii_lowercase());
+
+    let has_boundary_marker = [
+        "boundary",
+        "bound",
+        "limit",
+        "max",
+        "min",
+        "overflow",
+        "underflow",
+        "size_max",
+        "long_max",
+        "int_max",
+        "empty",
+        "zero",
+        "null",
+        "eof",
+    ]
+    .iter()
+    .any(|marker| haystack.contains(marker));
+    if has_boundary_marker {
+        return PosixCaseClass::Boundary;
+    }
+
+    let has_error_marker = [
+        "invalid",
+        "error",
+        "errno",
+        "efault",
+        "einval",
+        "failed",
+        "denied",
+        "uaf",
+        "double_free",
+    ]
+    .iter()
+    .any(|marker| haystack.contains(marker));
+    if has_error_marker {
+        return PosixCaseClass::Error;
+    }
+
+    if haystack.contains("normal") || haystack.contains("happy_path") || haystack.contains("basic")
+    {
+        return PosixCaseClass::Normal;
+    }
+
+    PosixCaseClass::Other
+}
+
+fn load_fixture_sets_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureSet>, String> {
+    let mut fixture_paths: Vec<_> = std::fs::read_dir(fixture_dir)
+        .map_err(|err| {
+            format!(
+                "failed reading fixture dir '{}': {err}",
+                fixture_dir.display()
+            )
+        })?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .collect();
+    fixture_paths.sort();
+
+    let mut sets = Vec::new();
+    for path in fixture_paths {
+        if let Ok(set) = FixtureSet::from_file(&path) {
+            sets.push(set);
+        }
+    }
+
+    if sets.is_empty() {
+        return Err(format!(
+            "no fixture sets could be parsed from '{}'",
+            fixture_dir.display()
+        ));
+    }
+
+    Ok(sets)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DecisionTraceReport, RealityCounts, RealityReport};
+    use super::{
+        DecisionTraceReport, PosixCaseCategoryCounts, PosixConformanceReport, RealityCounts,
+        RealityReport,
+    };
+    use crate::FixtureSet;
 
     fn sample_matrix(symbol_rows: &str, total_exported: u64) -> String {
         format!(
@@ -408,5 +829,118 @@ mod tests {
         assert_eq!(report.missing_explainability, 0);
         assert!(report.fully_explainable());
         assert!(report.findings.is_empty());
+    }
+
+    fn sample_fixture_set() -> FixtureSet {
+        FixtureSet::from_json(
+            r#"{
+  "version":"v1",
+  "family":"string",
+  "captured_at":"2026-02-26T00:00:00Z",
+  "cases":[
+    {
+      "name":"normal_strlen",
+      "function":"strlen",
+      "spec_section":"POSIX.1-2024 strlen",
+      "inputs":{"s":"abc"},
+      "expected_output":"3",
+      "expected_errno":0,
+      "mode":"strict"
+    },
+    {
+      "name":"boundary_strlen_size_max",
+      "function":"strlen",
+      "spec_section":"POSIX.1-2024 strlen boundary",
+      "inputs":{"s":"a"},
+      "expected_output":"1",
+      "expected_errno":0,
+      "mode":"hardened"
+    },
+    {
+      "name":"error_strlen_efault",
+      "function":"strlen",
+      "spec_section":"POSIX.1-2024 strlen errno",
+      "inputs":{"s":null},
+      "expected_output":"0",
+      "expected_errno":14,
+      "mode":"both"
+    }
+  ]
+}"#,
+        )
+        .expect("fixture set should parse")
+    }
+
+    #[test]
+    fn posix_conformance_report_builds_from_inputs() {
+        let support_matrix = r#"{
+  "generated_at_utc":"2026-02-26T00:00:00Z",
+  "total_exported":2,
+  "symbols":[
+    {"symbol":"strlen","status":"Implemented","module":"string_abi"},
+    {"symbol":"malloc","status":"RawSyscall","module":"malloc_abi"}
+  ]
+}"#;
+        let conformance_matrix = r#"{
+  "schema_version":"v1",
+  "bead":"bd-l93x.2",
+  "generated_at_utc":"2026-02-26T00:00:00Z",
+  "campaign":"test",
+  "mode":"both",
+  "total_fixture_sets":1,
+  "summary":{"total_cases":3,"passed":2,"failed":1,"errors":0,"pass_rate_percent":66.7},
+  "symbol_matrix":[],
+  "cases":[
+    {"trace_id":"t1","family":"string","symbol":"strlen","mode":"strict","case_name":"normal_strlen","spec_section":"POSIX","input_hex":"","expected_output":"3","actual_output":"3","host_output":"3","host_parity":true,"note":null,"status":"pass","passed":true,"error":null,"diff_offset":null},
+    {"trace_id":"t2","family":"string","symbol":"strlen","mode":"hardened","case_name":"boundary_strlen_size_max","spec_section":"POSIX","input_hex":"","expected_output":"1","actual_output":"1","host_output":"1","host_parity":true,"note":null,"status":"pass","passed":true,"error":null,"diff_offset":null},
+    {"trace_id":"t3","family":"string","symbol":"strlen","mode":"strict","case_name":"error_strlen_efault","spec_section":"POSIX","input_hex":"","expected_output":"0","actual_output":"-1","host_output":"-1","host_parity":false,"note":null,"status":"fail","passed":false,"error":null,"diff_offset":0}
+  ]
+}"#;
+
+        let fixture_set = sample_fixture_set();
+        let report =
+            PosixConformanceReport::from_inputs(support_matrix, &[fixture_set], conformance_matrix)
+                .expect("report should build");
+
+        assert_eq!(report.schema_version, "v1");
+        assert_eq!(report.bead, "bd-18qq.7");
+        assert_eq!(report.summary.total_exported, 2);
+        assert_eq!(report.summary.eligible_symbols, 2);
+        assert_eq!(report.summary.symbols_with_cases, 1);
+        assert_eq!(report.summary.symbols_with_all_core_categories, 1);
+
+        let strlen_row = report
+            .symbols
+            .iter()
+            .find(|row| row.symbol == "strlen")
+            .expect("strlen row");
+        assert!(strlen_row.has_errno_case);
+        assert_eq!(
+            strlen_row.categories,
+            PosixCaseCategoryCounts {
+                normal: 1,
+                boundary: 1,
+                error: 1,
+                other: 0
+            }
+        );
+        assert!(strlen_row.execution.has_failures());
+        assert!(
+            strlen_row
+                .quality_flags
+                .contains(&"execution_failures_present".to_string())
+        );
+
+        let malloc_row = report
+            .symbols
+            .iter()
+            .find(|row| row.symbol == "malloc")
+            .expect("malloc row");
+        assert_eq!(malloc_row.case_count, 0);
+        assert!(
+            malloc_row
+                .quality_flags
+                .contains(&"missing_fixture_cases".to_string())
+        );
     }
 }

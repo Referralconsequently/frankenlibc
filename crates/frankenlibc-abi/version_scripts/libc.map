@@ -11,8 +11,14 @@ GLIBC_2.2.5 {
         /* C++ ABI / stack protection */
         __cxa_atexit;
         __cxa_finalize;
+        __cxa_thread_atexit_impl;
         __stack_chk_fail;
         __stack_chk_guard;
+
+        /* program name globals */
+        program_invocation_name;
+        program_invocation_short_name;
+        __progname;
 
         /* string/memory operations */
         memcpy;
@@ -165,6 +171,16 @@ GLIBC_2.2.5 {
         wctomb;
         mbstowcs;
         wcstombs;
+        mbsinit;
+        mbrlen;
+        mbsnrtowcs;
+        wcsnrtombs;
+
+        /* C11 uchar.h */
+        c16rtomb;
+        c32rtomb;
+        mbrtoc16;
+        mbrtoc32;
 
         /* wide character classification (wctype.h) */
         iswalnum;
@@ -180,6 +196,20 @@ GLIBC_2.2.5 {
         wctype;
         towctrans;
         wctrans;
+        wctype_l;
+        iswctype_l;
+        towupper_l;
+        towlower_l;
+        wcscoll_l;
+        wcsxfrm_l;
+        wcsftime_l;
+        wcstol_l;
+        wcstoul_l;
+        wcstoll_l;
+        wcstoull_l;
+        wcstof_l;
+        wcstod_l;
+        wcstold_l;
 
         /* path utilities (libgen.h) */
         basename;
@@ -274,7 +304,13 @@ GLIBC_2.2.5 {
         quick_exit;
         getsubopt;
         gnu_get_libc_version;
+        gnu_get_libc_release;
         confstr;
+
+        /* ctype internal */
+        __ctype_b_loc;
+        __ctype_toupper_loc;
+        __ctype_tolower_loc;
 
         /* ctype */
         isalnum;
@@ -309,6 +345,17 @@ GLIBC_2.2.5 {
         isgraph_l;
         toupper_l;
         tolower_l;
+
+        /* stdio unlocked extras */
+        getchar_unlocked;
+        putchar_unlocked;
+        fread_unlocked;
+        fwrite_unlocked;
+        fgets_unlocked;
+        fputs_unlocked;
+        clearerr_unlocked;
+        fileno_unlocked;
+        setbuffer;
 
         /* stdio extras */
         tempnam;
@@ -389,6 +436,16 @@ GLIBC_2.2.5 {
         vscanf;
         vfscanf;
         vsscanf;
+        getw;
+        putw;
+
+        /* C99 scanf aliases */
+        __isoc99_scanf;
+        __isoc99_sscanf;
+        __isoc99_fscanf;
+        __isoc99_vscanf;
+        __isoc99_vsscanf;
+        __isoc99_vfscanf;
 
         /* math operations — double precision */
         sin;
@@ -568,15 +625,29 @@ GLIBC_2.2.5 {
         setlocale;
         localeconv;
         nl_langinfo;
+        nl_langinfo_l;
         newlocale;
         uselocale;
         freelocale;
         duplocale;
+        catopen;
+        catgets;
+        catclose;
 
         /* locale-aware string/time */
         strcoll_l;
         strxfrm_l;
         strftime_l;
+
+        /* locale-aware conversion */
+        strtod_l;
+        strtof_l;
+        strtold_l;
+        strtol_l;
+        strtoul_l;
+        strtoll_l;
+        strtoull_l;
+        __xpg_strerror_r;
 
         /* pthread */
         pthread_self;
@@ -695,6 +766,10 @@ GLIBC_2.2.5 {
         getservbyport;
         getprotobyname;
         getprotobynumber;
+
+        /* resolver internal */
+        __h_errno_location;
+        gethostbyname2_r;
 
         /* inet / network byte order */
         htons;
@@ -904,6 +979,11 @@ GLIBC_2.2.5 {
         fchownat;
         fchmodat;
         linkat;
+        mkfifoat;
+        mknodat;
+        utimensat;
+        futimens;
+        renameat2;
 
         /* process */
         fork;
@@ -1178,6 +1258,9 @@ GLIBC_2.2.5 {
         sethostname;
         setdomainname;
 
+        /* generic syscall */
+        syscall;
+
         /* misc POSIX */
         confstr;
         pathconf;
@@ -1220,6 +1303,18 @@ GLIBC_2.2.5 {
         posix_spawn_file_actions_addopen;
         posix_spawn_file_actions_addchdir_np;
         posix_spawn_file_actions_addfchdir_np;
+        posix_spawnattr_getflags;
+        posix_spawnattr_setflags;
+        posix_spawnattr_getsigdefault;
+        posix_spawnattr_setsigdefault;
+        posix_spawnattr_getsigmask;
+        posix_spawnattr_setsigmask;
+        posix_spawnattr_getpgroup;
+        posix_spawnattr_setpgroup;
+        posix_spawnattr_getschedparam;
+        posix_spawnattr_setschedparam;
+        posix_spawnattr_getschedpolicy;
+        posix_spawnattr_setschedpolicy;
 
         /* file tree walk */
         ftw;
@@ -1508,6 +1603,24 @@ GLIBC_2.2.5 {
         request_key;
         keyctl;
 
+        /* glibc stat compat */
+        __xstat;
+        __fxstat;
+        __lxstat;
+        __xstat64;
+        __fxstat64;
+        __lxstat64;
+        __fxstatat;
+        __fxstatat64;
+
+        /* ether helpers */
+        ether_ntohost;
+        ether_hostton;
+        ether_line;
+
+        /* versionsort 64-bit */
+        versionsort64;
+
         /* 64-bit LFS variants */
         open64;
         creat64;
@@ -1541,6 +1654,250 @@ GLIBC_2.2.5 {
         preadv64;
         pwritev64;
         readdir64_r;
+
+        /* pthread attr extensions */
+        pthread_attr_getinheritsched;
+        pthread_attr_setinheritsched;
+        pthread_attr_getschedparam;
+        pthread_attr_setschedparam;
+        pthread_attr_getschedpolicy;
+        pthread_attr_setschedpolicy;
+        pthread_attr_getscope;
+        pthread_attr_setscope;
+        pthread_attr_getstack;
+        pthread_attr_setstack;
+        pthread_attr_getstackaddr;
+        pthread_attr_setstackaddr;
+
+        /* pthread barrier attributes */
+        pthread_barrierattr_init;
+        pthread_barrierattr_destroy;
+        pthread_barrierattr_getpshared;
+        pthread_barrierattr_setpshared;
+
+        /* pthread condvar/mutex/rwlock attr extensions */
+        pthread_condattr_getpshared;
+        pthread_condattr_setpshared;
+        pthread_mutexattr_getprotocol;
+        pthread_mutexattr_setprotocol;
+        pthread_mutexattr_getpshared;
+        pthread_mutexattr_setpshared;
+        pthread_mutexattr_getrobust;
+        pthread_mutexattr_setrobust;
+        pthread_rwlockattr_getpshared;
+        pthread_rwlockattr_setpshared;
+
+        /* pthread timed/clock operations */
+        pthread_mutex_timedlock;
+        pthread_mutex_consistent;
+        pthread_mutex_clocklock;
+        pthread_rwlock_timedrdlock;
+        pthread_rwlock_timedwrlock;
+        pthread_rwlock_clockrdlock;
+        pthread_rwlock_clockwrlock;
+        pthread_cond_clockwait;
+
+        /* pthread join extensions (GNU) */
+        pthread_timedjoin_np;
+        pthread_tryjoin_np;
+        pthread_clockjoin_np;
+
+        /* pthread signals */
+        pthread_kill;
+        pthread_sigqueue;
+
+        /* pthread affinity (running thread) */
+        pthread_getaffinity_np;
+        pthread_setaffinity_np;
+
+        /* pthread obsolete compat */
+        pthread_setconcurrency;
+        pthread_getconcurrency;
+        pthread_yield;
+
+        /* signal extensions */
+        siginterrupt;
+        sighold;
+        sigrelse;
+        sigignore;
+        psiginfo;
+        sigabbrev_np;
+        sigdescr_np;
+        sigandset;
+        sigorset;
+        sigisemptyset;
+        __libc_current_sigrtmin;
+        __libc_current_sigrtmax;
+
+        /* System V IPC key */
+        ftok;
+
+        /* shadow password */
+        getspnam;
+        getspnam_r;
+        getspent;
+        getspent_r;
+        setspent;
+        endspent;
+        putspent;
+
+        /* malloc debugging stubs */
+        mcheck;
+        mcheck_pedantic;
+        mcheck_check_all;
+        mprobe;
+        mtrace;
+        muntrace;
+
+        /* GNU error reporting */
+        error;
+        error_at_line;
+
+        /* XSI fmtmsg */
+        fmtmsg;
+
+        /* utmpx session accounting */
+        setutxent;
+        endutxent;
+        getutxent;
+        getutxid;
+        getutxline;
+        pututxline;
+        utmpxname;
+
+        /* pthread extensions (GNU) */
+        pthread_exit;
+        pthread_getcpuclockid;
+        pthread_gettid_np;
+        pthread_attr_getsigmask_np;
+        pthread_attr_setsigmask_np;
+        pthread_getattr_default_np;
+        pthread_setattr_default_np;
+
+        /* process lifecycle extensions */
+        execv;
+        fexecve;
+        clone;
+        eaccess;
+        euidaccess;
+        closefrom;
+        bsd_signal;
+
+        /* clock extensions */
+        clock_getcpuclockid;
+        clock_adjtime;
+
+        /* GNU dev_t helpers */
+        gnu_dev_major;
+        gnu_dev_minor;
+        gnu_dev_makedev;
+
+        /* DNS resolver helpers */
+        dn_comp;
+        dn_expand;
+        dn_skipname;
+
+        /* alias database */
+        endaliasent;
+        getaliasbyname;
+        getaliasbyname_r;
+        getaliasent;
+        getaliasent_r;
+
+        /* filesystem/shell database */
+        endfsent;
+        endttyent;
+
+        /* netgroup database */
+        endnetgrent;
+        setnetgrent;
+        getnetgrent;
+        getnetgrent_r;
+
+        /* RPC database */
+        endrpcent;
+        setrpcent;
+        getrpcbyname;
+        getrpcbyname_r;
+        getrpcbynumber;
+        getrpcbynumber_r;
+        getrpcent;
+        getrpcent_r;
+
+        /* shadow/pwd/grp file parsing */
+        fgetspent;
+        fgetspent_r;
+        fgetpwent_r;
+        fgetgrent_r;
+
+        /* syslog extension */
+        addseverity;
+
+        /* POSIX AIO 64-bit LFS */
+        aio_cancel64;
+        aio_error64;
+        aio_fsync64;
+        aio_init;
+        aio_read64;
+        aio_return64;
+        aio_suspend64;
+        aio_write64;
+        lio_listio64;
+
+        /* LFS 64-bit extensions */
+        ftw64;
+        posix_fallocate64;
+        openat64;
+
+        /* FTS 64-bit file hierarchy traversal */
+        fts64_open;
+        fts64_read;
+        fts64_close;
+        fts64_children;
+        fts64_set;
+
+        /* argp argument parsing */
+        argp_parse;
+        argp_help;
+        argp_usage;
+        argp_error;
+        argp_failure;
+        argp_state_help;
+
+        /* obstack */
+        obstack_free;
+        obstack_printf;
+        obstack_vprintf;
+
+        /* POSIX ucontext */
+        getcontext;
+        setcontext;
+        makecontext;
+        swapcontext;
+
+        /* wide string extensions */
+        wcschrnul;
+        wcslcat;
+        wcslcpy;
+        wcstoimax;
+        wcstoumax;
+        open_wmemstream;
+        getwc;
+        putwc;
+
+        /* wide I/O unlocked */
+        fgetwc_unlocked;
+        fgetws_unlocked;
+        fputwc_unlocked;
+        fputws_unlocked;
+        getwc_unlocked;
+        getwchar_unlocked;
+        putwc_unlocked;
+        putwchar_unlocked;
+
+        /* directory extensions */
+        fdopendir;
+        dirfd;
 
     local:
         *;

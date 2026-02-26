@@ -1,17 +1,17 @@
 {
   "schema_version": "v1",
   "bead": "bd-2hh.1",
-  "generated_at": "2026-02-25T20:14:45Z",
+  "generated_at": "2026-02-26T00:34:50Z",
   "summary": {
     "total_fixture_files": 50,
     "total_fixture_cases": 513,
     "unique_symbols_in_fixtures": 213,
-    "implemented_symbols": 1168,
-    "symbols_with_fixtures": 190,
+    "implemented_symbols": 1258,
+    "symbols_with_fixtures": 193,
     "symbols_at_threshold": 0,
-    "symbols_below_threshold": 1168,
-    "symbols_with_zero_fixtures": 978,
-    "coverage_pct": 16.3,
+    "symbols_below_threshold": 1258,
+    "symbols_with_zero_fixtures": 1065,
+    "coverage_pct": 15.3,
     "threshold_pct": 0.0,
     "min_cases_threshold": 10,
     "fixture_format_issues": 2
@@ -172,11 +172,11 @@
     },
     {
       "module": "pwd_abi",
-      "total_symbols": 8,
+      "total_symbols": 14,
       "covered_symbols": 3,
       "at_threshold": 0,
       "total_cases": 10,
-      "coverage_pct": 37.5,
+      "coverage_pct": 21.4,
       "threshold_pct": 0.0
     },
     {
@@ -195,6 +195,15 @@
       "at_threshold": 0,
       "total_cases": 5,
       "coverage_pct": 50.0,
+      "threshold_pct": 0.0
+    },
+    {
+      "module": "search_abi",
+      "total_symbols": 2,
+      "covered_symbols": 0,
+      "at_threshold": 0,
+      "total_cases": 0,
+      "coverage_pct": 0.0,
       "threshold_pct": 0.0
     },
     {
@@ -235,29 +244,29 @@
     },
     {
       "module": "stdio_abi",
-      "total_symbols": 77,
+      "total_symbols": 82,
       "covered_symbols": 9,
       "at_threshold": 0,
       "total_cases": 15,
-      "coverage_pct": 11.7,
+      "coverage_pct": 11.0,
       "threshold_pct": 0.0
     },
     {
       "module": "stdlib_abi",
-      "total_symbols": 65,
+      "total_symbols": 89,
       "covered_symbols": 7,
       "at_threshold": 0,
       "total_cases": 22,
-      "coverage_pct": 10.8,
+      "coverage_pct": 7.9,
       "threshold_pct": 0.0
     },
     {
       "module": "string_abi",
-      "total_symbols": 58,
+      "total_symbols": 81,
       "covered_symbols": 21,
       "at_threshold": 0,
       "total_cases": 67,
-      "coverage_pct": 36.2,
+      "coverage_pct": 25.9,
       "threshold_pct": 0.0
     },
     {
@@ -280,11 +289,11 @@
     },
     {
       "module": "unistd_abi",
-      "total_symbols": 348,
-      "covered_symbols": 24,
+      "total_symbols": 378,
+      "covered_symbols": 27,
       "at_threshold": 0,
-      "total_cases": 34,
-      "coverage_pct": 6.9,
+      "total_cases": 39,
+      "coverage_pct": 7.1,
       "threshold_pct": 0.0
     },
     {
@@ -580,6 +589,14 @@
       "gap": 10
     },
     {
+      "symbol": "addmntent",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "aio_cancel",
       "module": "unistd_abi",
       "status": "Implemented",
@@ -686,6 +703,102 @@
     {
       "symbol": "arc4random_uniform",
       "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_add",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_add_sep",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_append",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_count",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_create",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_create_sep",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_delete",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_extract",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_insert",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_next",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_replace",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "argz_stringify",
+      "module": "string_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -844,6 +957,30 @@
       "gap": 10
     },
     {
+      "symbol": "backtrace",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 3,
+      "meets_threshold": false,
+      "gap": 7
+    },
+    {
+      "symbol": "backtrace_symbols",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 1,
+      "meets_threshold": false,
+      "gap": 9
+    },
+    {
+      "symbol": "backtrace_symbols_fd",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 1,
+      "meets_threshold": false,
+      "gap": 9
+    },
+    {
       "symbol": "basename",
       "module": "unknown",
       "status": "Implemented",
@@ -874,6 +1011,14 @@
       "fixture_cases": 1,
       "meets_threshold": false,
       "gap": 9
+    },
+    {
+      "symbol": "bind_textdomain_codeset",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
     },
     {
       "symbol": "bindtextdomain",
@@ -1004,6 +1149,14 @@
       "gap": 9
     },
     {
+      "symbol": "cfmakeraw",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "cfree",
       "module": "malloc_abi",
       "status": "Implemented",
@@ -1026,6 +1179,14 @@
       "fixture_cases": 1,
       "meets_threshold": false,
       "gap": 9
+    },
+    {
+      "symbol": "cfsetspeed",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
     },
     {
       "symbol": "chdir",
@@ -1524,8 +1685,72 @@
       "gap": 10
     },
     {
+      "symbol": "endspent",
+      "module": "pwd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "endusershell",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "endutent",
       "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "envz_add",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "envz_entry",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "envz_get",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "envz_merge",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "envz_remove",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "envz_strip",
+      "module": "string_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -1622,6 +1847,22 @@
     {
       "symbol": "err",
       "module": "err_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "error",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "error_at_line",
+      "module": "stdlib_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -1860,6 +2101,14 @@
       "gap": 10
     },
     {
+      "symbol": "fallocate64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "fanotify_init",
       "module": "unknown",
       "status": "RawSyscall",
@@ -1924,9 +2173,25 @@
       "gap": 9
     },
     {
+      "symbol": "fcloseall",
+      "module": "stdio_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "fcntl",
       "module": "io_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fcntl64",
+      "module": "unistd_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -1980,7 +2245,23 @@
       "gap": 10
     },
     {
+      "symbol": "feof_unlocked",
+      "module": "stdio_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "ferror",
+      "module": "stdio_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "ferror_unlocked",
       "module": "stdio_abi",
       "status": "Implemented",
       "fixture_cases": 0,
@@ -1994,6 +2275,14 @@
       "fixture_cases": 2,
       "meets_threshold": false,
       "gap": 8
+    },
+    {
+      "symbol": "fflush_unlocked",
+      "module": "stdio_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
     },
     {
       "symbol": "ffs",
@@ -2516,9 +2805,25 @@
       "gap": 10
     },
     {
+      "symbol": "fstatfs64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "fstatvfs",
       "module": "unistd_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fstatvfs64",
+      "module": "unistd_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -2574,6 +2879,46 @@
     {
       "symbol": "ftrylockfile",
       "module": "stdio_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fts_children",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fts_close",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fts_open",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fts_read",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "fts_set",
+      "module": "unistd_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -2706,6 +3051,14 @@
       "fixture_cases": 5,
       "meets_threshold": false,
       "gap": 5
+    },
+    {
+      "symbol": "getauxval",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
     },
     {
       "symbol": "getc",
@@ -2964,6 +3317,14 @@
       "gap": 10
     },
     {
+      "symbol": "getloadavg",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "getlogin",
       "module": "unistd_abi",
       "status": "Implemented",
@@ -2981,6 +3342,14 @@
     },
     {
       "symbol": "getmntent",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "getmntent_r",
       "module": "unistd_abi",
       "status": "Implemented",
       "fixture_cases": 0,
@@ -3029,6 +3398,14 @@
     },
     {
       "symbol": "getopt_long",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "getopt_long_only",
       "module": "unistd_abi",
       "status": "Implemented",
       "fixture_cases": 0,
@@ -3212,9 +3589,25 @@
       "gap": 5
     },
     {
+      "symbol": "getrlimit64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "getrusage",
       "module": "unistd_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "gets",
+      "module": "stdlib_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -3284,6 +3677,38 @@
       "gap": 10
     },
     {
+      "symbol": "getspent",
+      "module": "pwd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "getspent_r",
+      "module": "pwd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "getspnam",
+      "module": "pwd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "getspnam_r",
+      "module": "pwd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "getsubopt",
       "module": "stdlib_abi",
       "status": "Implemented",
@@ -3314,6 +3739,14 @@
       "fixture_cases": 1,
       "meets_threshold": false,
       "gap": 9
+    },
+    {
+      "symbol": "getusershell",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
     },
     {
       "symbol": "getutent",
@@ -3412,8 +3845,56 @@
       "gap": 10
     },
     {
+      "symbol": "hcreate",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "hcreate_r",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "hdestroy",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "hdestroy_r",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "herror",
       "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "hsearch",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "hsearch_r",
+      "module": "stdlib_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -3623,6 +4104,14 @@
       "symbol": "inotify_rm_watch",
       "module": "unistd_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "insque",
+      "module": "search_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -4196,6 +4685,14 @@
       "gap": 10
     },
     {
+      "symbol": "lfind",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "lgamma",
       "module": "math_abi",
       "status": "Implemented",
@@ -4364,6 +4861,14 @@
       "gap": 10
     },
     {
+      "symbol": "lockf64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "log",
       "module": "math_abi",
       "status": "Implemented",
@@ -4510,6 +5015,14 @@
     {
       "symbol": "lroundf",
       "module": "math_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "lsearch",
+      "module": "stdlib_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -4852,6 +5365,14 @@
       "gap": 10
     },
     {
+      "symbol": "mktemp",
+      "module": "stdio_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "mktime",
       "module": "time_abi",
       "status": "Implemented",
@@ -4948,6 +5469,14 @@
       "gap": 10
     },
     {
+      "symbol": "mq_notify",
+      "module": "unistd_abi",
+      "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "mq_open",
       "module": "unistd_abi",
       "status": "RawSyscall",
@@ -4973,6 +5502,22 @@
     },
     {
       "symbol": "mq_setattr",
+      "module": "unistd_abi",
+      "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "mq_timedreceive",
+      "module": "unistd_abi",
+      "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "mq_timedsend",
       "module": "unistd_abi",
       "status": "RawSyscall",
       "fixture_cases": 0,
@@ -5380,6 +5925,14 @@
       "gap": 10
     },
     {
+      "symbol": "personality",
+      "module": "unistd_abi",
+      "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "pidfd_getfd",
       "module": "unistd_abi",
       "status": "RawSyscall",
@@ -5684,6 +6237,14 @@
       "gap": 10
     },
     {
+      "symbol": "preadv64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "printf",
       "module": "stdio_abi",
       "status": "Implemented",
@@ -5701,6 +6262,22 @@
     },
     {
       "symbol": "prlimit64",
+      "module": "unistd_abi",
+      "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "process_madvise",
+      "module": "unistd_abi",
+      "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "process_mrelease",
       "module": "unistd_abi",
       "status": "RawSyscall",
       "fixture_cases": 0,
@@ -6348,6 +6925,14 @@
       "gap": 10
     },
     {
+      "symbol": "pwritev64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "qsort",
       "module": "stdlib_abi",
       "status": "Implemented",
@@ -6446,6 +7031,14 @@
     {
       "symbol": "readdir64",
       "module": "dirent_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "readdir64_r",
+      "module": "unistd_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -6615,6 +7208,14 @@
       "symbol": "removexattr",
       "module": "unistd_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "remque",
+      "module": "search_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -7324,6 +7925,14 @@
       "gap": 10
     },
     {
+      "symbol": "setrlimit64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "setservent",
       "module": "unistd_abi",
       "status": "Implemented",
@@ -7348,6 +7957,14 @@
       "gap": 10
     },
     {
+      "symbol": "setspent",
+      "module": "pwd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "setstate",
       "module": "stdlib_abi",
       "status": "Implemented",
@@ -7359,6 +7976,14 @@
       "symbol": "setuid",
       "module": "unistd_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "setusershell",
+      "module": "stdlib_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -7780,9 +8405,25 @@
       "gap": 10
     },
     {
+      "symbol": "statfs64",
+      "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "statvfs",
       "module": "unistd_abi",
       "status": "RawSyscall",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "statvfs64",
+      "module": "unistd_abi",
+      "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
       "gap": 10
@@ -7941,6 +8582,46 @@
     },
     {
       "symbol": "strerror_r",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "strerrordesc_np",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "strerrorname_np",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "strfromd",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "strfromf",
+      "module": "string_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "strfroml",
       "module": "string_abi",
       "status": "Implemented",
       "fixture_cases": 0,
@@ -8428,6 +9109,22 @@
       "gap": 10
     },
     {
+      "symbol": "tdelete",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "tdestroy",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "tee",
       "module": "io_abi",
       "status": "RawSyscall",
@@ -8454,6 +9151,14 @@
     {
       "symbol": "textdomain",
       "module": "locale_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "tfind",
+      "module": "stdlib_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -8676,6 +9381,14 @@
       "gap": 10
     },
     {
+      "symbol": "tmpnam_r",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "toascii",
       "module": "ctype_abi",
       "status": "Implemented",
@@ -8772,6 +9485,14 @@
       "gap": 10
     },
     {
+      "symbol": "tsearch",
+      "module": "stdlib_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
       "symbol": "tss_create",
       "module": "c11threads_abi",
       "status": "Implemented",
@@ -8814,6 +9535,14 @@
     {
       "symbol": "ttyname_r",
       "module": "unistd_abi",
+      "status": "Implemented",
+      "fixture_cases": 0,
+      "meets_threshold": false,
+      "gap": 10
+    },
+    {
+      "symbol": "twalk",
+      "module": "stdlib_abi",
       "status": "Implemented",
       "fixture_cases": 0,
       "meets_threshold": false,
@@ -10381,18 +11110,6 @@
     },
     {
       "symbol": "SystemRegime::degradation_active",
-      "fixture_cases": 1
-    },
-    {
-      "symbol": "backtrace",
-      "fixture_cases": 3
-    },
-    {
-      "symbol": "backtrace_symbols",
-      "fixture_cases": 1
-    },
-    {
-      "symbol": "backtrace_symbols_fd",
       "fixture_cases": 1
     },
     {

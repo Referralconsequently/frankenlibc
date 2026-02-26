@@ -21,8 +21,9 @@ use frankenlibc_core::pthread::tls::{
     pthread_setspecific as core_pthread_setspecific,
 };
 use frankenlibc_core::pthread::{
-    CondvarData, PTHREAD_COND_CLOCK_REALTIME, THREAD_DETACHED, THREAD_RUNNING, THREAD_STARTING,
-    ThreadHandle, condvar_broadcast as core_condvar_broadcast,
+    CondvarData, PTHREAD_COND_CLOCK_REALTIME, THREAD_DETACHED, THREAD_FINISHED, THREAD_JOINED,
+    THREAD_RUNNING, THREAD_STARTING, ThreadHandle,
+    condvar_broadcast as core_condvar_broadcast,
     condvar_destroy as core_condvar_destroy, condvar_init as core_condvar_init,
     condvar_signal as core_condvar_signal, condvar_timedwait as core_condvar_timedwait,
     condvar_wait as core_condvar_wait, create_thread as core_create_thread,
@@ -585,6 +586,80 @@ fn native_pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_int {
     if a == b { 1 } else { 0 }
 }
 
+/// Resolve a `pthread_t` handle to the kernel thread ID (TID).
+///
+/// Looks up the handle in `THREAD_HANDLE_REGISTRY`. For threads created by
+/// our `pthread_create`, this returns the TID stored in the `ThreadHandle`.
+/// For unrecognised handles (e.g. glibc-created threads), returns `None`.
+fn resolve_thread_tid(thread: libc::pthread_t) -> Option<i32> {
+    let thread_key = thread as usize;
+    let registry = THREAD_HANDLE_REGISTRY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(&raw) = registry.get(&thread_key) {
+        let handle_ptr = raw as *mut ThreadHandle;
+        // SAFETY: registry only stores live handles from `core_create_thread`.
+        let tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
+        if tid > 0 {
+            return Some(tid);
+        }
+        // Thread may not have published its TID yet; fall back to self_tid.
+        let self_tid = unsafe { (*handle_ptr).self_tid.load(Ordering::Acquire) };
+        if self_tid > 0 {
+            return Some(self_tid);
+        }
+    }
+    // For threads not in our registry, the pthread_t may be the TID itself
+    // (our native_pthread_self returns tid as pthread_t).
+    let candidate = thread_key as i32;
+    if candidate > 0 {
+        return Some(candidate);
+    }
+    None
+}
+
+/// Convert an absolute `timespec` deadline from `clockid` to `CLOCK_REALTIME`.
+fn clock_convert_to_realtime(clockid: c_int, abstime: *const libc::timespec) -> libc::timespec {
+    let mut clock_now: libc::timespec = unsafe { std::mem::zeroed() };
+    let mut real_now: libc::timespec = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::syscall(libc::SYS_clock_gettime, clockid, &mut clock_now);
+        libc::syscall(libc::SYS_clock_gettime, libc::CLOCK_REALTIME, &mut real_now);
+    }
+    let deadline = unsafe { &*abstime };
+    let mut result = libc::timespec {
+        tv_sec: real_now.tv_sec + (deadline.tv_sec - clock_now.tv_sec),
+        tv_nsec: real_now.tv_nsec + (deadline.tv_nsec - clock_now.tv_nsec),
+    };
+    if result.tv_nsec >= 1_000_000_000 {
+        result.tv_sec += 1;
+        result.tv_nsec -= 1_000_000_000;
+    } else if result.tv_nsec < 0 {
+        result.tv_sec -= 1;
+        result.tv_nsec += 1_000_000_000;
+    }
+    result
+}
+
+/// Futex wait with absolute timeout (CLOCK_REALTIME).
+#[cfg(target_os = "linux")]
+fn futex_wait_timed_private(
+    word: &AtomicI32,
+    expected: i32,
+    abstime: *const libc::timespec,
+) -> c_int {
+    // SAFETY: Linux futex syscall with valid userspace address and timeout.
+    unsafe {
+        libc::syscall(
+            libc::SYS_futex,
+            word as *const AtomicI32 as *const i32,
+            libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG,
+            expected,
+            abstime,
+        ) as c_int
+    }
+}
+
 #[allow(unsafe_code)]
 unsafe fn native_pthread_create(
     thread_out: *mut libc::pthread_t,
@@ -989,6 +1064,64 @@ fn futex_rwlock_trywrlock(word: &AtomicI32) -> c_int {
     match word.compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed) {
         Ok(_) => 0,
         Err(_) => libc::EBUSY,
+    }
+}
+
+/// Timed read lock: same as `futex_rwlock_rdlock` but with futex timeout.
+#[cfg(target_os = "linux")]
+fn futex_rwlock_timed_rdlock(word: &AtomicI32, abstime: *const libc::timespec) -> c_int {
+    loop {
+        let state = word.load(Ordering::Acquire);
+        if state >= 0 {
+            if state == i32::MAX {
+                return libc::EAGAIN;
+            }
+            if word
+                .compare_exchange(state, state + 1, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                return 0;
+            }
+            continue;
+        }
+        let rc = futex_wait_timed_private(word, state, abstime);
+        if rc == 0 {
+            continue;
+        }
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        if errno == libc::ETIMEDOUT {
+            return libc::ETIMEDOUT;
+        }
+        if errno == libc::EINTR || errno == libc::EAGAIN {
+            continue;
+        }
+        return if errno == 0 { libc::EAGAIN } else { errno };
+    }
+}
+
+/// Timed write lock: same as `futex_rwlock_wrlock` but with futex timeout.
+#[cfg(target_os = "linux")]
+fn futex_rwlock_timed_wrlock(word: &AtomicI32, abstime: *const libc::timespec) -> c_int {
+    loop {
+        if word
+            .compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            return 0;
+        }
+        let state = word.load(Ordering::Acquire);
+        let rc = futex_wait_timed_private(word, state, abstime);
+        if rc == 0 {
+            continue;
+        }
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        if errno == libc::ETIMEDOUT {
+            return libc::ETIMEDOUT;
+        }
+        if errno == libc::EINTR || errno == libc::EAGAIN {
+            continue;
+        }
+        return if errno == 0 { libc::EAGAIN } else { errno };
     }
 }
 
@@ -1999,6 +2132,9 @@ pub unsafe extern "C" fn pthread_once(
 /// Default stack size: 2 MiB (matches glibc default).
 const ATTR_DEFAULT_STACK_SIZE: usize = 2 * 1024 * 1024;
 
+/// POSIX `PTHREAD_SCOPE_SYSTEM` — system contention scope (1:1 threading model).
+const PTHREAD_SCOPE_SYSTEM: c_int = 0;
+
 /// Minimum stack size: PTHREAD_STACK_MIN (typically 16 KiB on Linux x86_64).
 const ATTR_MIN_STACK_SIZE: usize = 16384;
 
@@ -2841,6 +2977,1094 @@ pub unsafe extern "C" fn pthread_attr_setaffinity_np(
         return libc::EINVAL;
     }
     unsafe { libc::pthread_attr_setaffinity_np(attr, cpusetsize, cpuset) }
+}
+
+// ---------------------------------------------------------------------------
+// Thread attr: scheduling, stack, scope (native where possible, else GCT)
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_attr_getinheritsched` — get inherit-scheduler attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getinheritsched(
+    attr: *const libc::pthread_attr_t,
+    inheritsched: *mut c_int,
+) -> c_int {
+    if attr.is_null() || inheritsched.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_getinheritsched(attr, inheritsched) }
+}
+
+/// POSIX `pthread_attr_setinheritsched` — set inherit-scheduler attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setinheritsched(
+    attr: *mut libc::pthread_attr_t,
+    inheritsched: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_setinheritsched(attr, inheritsched) }
+}
+
+/// POSIX `pthread_attr_getschedparam` — get scheduling parameters.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getschedparam(
+    attr: *const libc::pthread_attr_t,
+    param: *mut libc::sched_param,
+) -> c_int {
+    if attr.is_null() || param.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_getschedparam(attr, param) }
+}
+
+/// POSIX `pthread_attr_setschedparam` — set scheduling parameters.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setschedparam(
+    attr: *mut libc::pthread_attr_t,
+    param: *const libc::sched_param,
+) -> c_int {
+    if attr.is_null() || param.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_setschedparam(attr, param) }
+}
+
+/// POSIX `pthread_attr_getschedpolicy` — get scheduling policy.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getschedpolicy(
+    attr: *const libc::pthread_attr_t,
+    policy: *mut c_int,
+) -> c_int {
+    if attr.is_null() || policy.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_getschedpolicy(attr, policy) }
+}
+
+/// POSIX `pthread_attr_setschedpolicy` — set scheduling policy.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setschedpolicy(
+    attr: *mut libc::pthread_attr_t,
+    policy: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_setschedpolicy(attr, policy) }
+}
+
+/// POSIX `pthread_attr_getscope` — get contention scope.
+/// Linux NPTL only supports PTHREAD_SCOPE_SYSTEM (1:1 model).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getscope(
+    attr: *const libc::pthread_attr_t,
+    scope: *mut c_int,
+) -> c_int {
+    if attr.is_null() || scope.is_null() {
+        return libc::EINVAL;
+    }
+    // Linux always uses PTHREAD_SCOPE_SYSTEM.
+    unsafe { *scope = PTHREAD_SCOPE_SYSTEM };
+    0
+}
+
+/// POSIX `pthread_attr_setscope` — set contention scope.
+/// Only PTHREAD_SCOPE_SYSTEM is supported on Linux.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setscope(
+    attr: *mut libc::pthread_attr_t,
+    scope: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    if scope == PTHREAD_SCOPE_SYSTEM {
+        0
+    } else {
+        libc::ENOTSUP
+    }
+}
+
+/// POSIX `pthread_attr_getstack` — get stack address and size.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getstack(
+    attr: *const libc::pthread_attr_t,
+    stackaddr: *mut *mut c_void,
+    stacksize: *mut usize,
+) -> c_int {
+    if attr.is_null() || stackaddr.is_null() || stacksize.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_getstack(attr, stackaddr, stacksize) }
+}
+
+/// POSIX `pthread_attr_setstack` — set stack address and size.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setstack(
+    attr: *mut libc::pthread_attr_t,
+    stackaddr: *mut c_void,
+    stacksize: usize,
+) -> c_int {
+    if attr.is_null() || stackaddr.is_null() || stacksize < ATTR_MIN_STACK_SIZE {
+        return libc::EINVAL;
+    }
+    unsafe { libc::pthread_attr_setstack(attr, stackaddr, stacksize) }
+}
+
+/// Deprecated `pthread_attr_getstackaddr` — get stack address.
+/// Returns NULL since we don't track custom stack addresses in our overlay.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getstackaddr(
+    attr: *const libc::pthread_attr_t,
+    stackaddr: *mut *mut c_void,
+) -> c_int {
+    if attr.is_null() || stackaddr.is_null() {
+        return libc::EINVAL;
+    }
+    // Deprecated API: return null (no custom stack address set).
+    unsafe { *stackaddr = std::ptr::null_mut() };
+    0
+}
+
+/// Deprecated `pthread_attr_setstackaddr` — set stack address.
+/// Accepts and ignores the value (deprecated, use pthread_attr_setstack instead).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setstackaddr(
+    attr: *mut libc::pthread_attr_t,
+    _stackaddr: *mut c_void,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    // Deprecated API: accept but don't store (use setstack instead).
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Barrier attributes — native (simple int fields)
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_barrierattr_init` — initialize barrier attributes.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_barrierattr_init(attr: *mut libc::pthread_barrierattr_t) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    // SAFETY: attr is non-null; store default (private) pshared.
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    *word = libc::PTHREAD_PROCESS_PRIVATE;
+    0
+}
+
+/// POSIX `pthread_barrierattr_destroy` — destroy barrier attributes.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_barrierattr_destroy(
+    attr: *mut libc::pthread_barrierattr_t,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    // SAFETY: attr is non-null; zero it.
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    *word = 0;
+    0
+}
+
+/// POSIX `pthread_barrierattr_getpshared` — get barrier process-shared attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_barrierattr_getpshared(
+    attr: *const libc::pthread_barrierattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    if attr.is_null() || pshared.is_null() {
+        return libc::EINVAL;
+    }
+    // SAFETY: both pointers are non-null.
+    unsafe {
+        *pshared = *(attr.cast::<c_int>());
+    }
+    0
+}
+
+/// POSIX `pthread_barrierattr_setpshared` — set barrier process-shared attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_barrierattr_setpshared(
+    attr: *mut libc::pthread_barrierattr_t,
+    pshared: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+        return libc::EINVAL;
+    }
+    // SAFETY: attr is non-null.
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    *word = pshared;
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Condvar attribute extensions — native (pshared field)
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_condattr_getpshared` — get condvar process-shared attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_condattr_getpshared(
+    attr: *const libc::pthread_condattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    if attr.is_null() || pshared.is_null() {
+        return libc::EINVAL;
+    }
+    // Condattr layout: first int is clock, second is pshared
+    // SAFETY: attr is non-null, caller owns memory.
+    unsafe {
+        let words = attr.cast::<c_int>();
+        *pshared = *words.add(1);
+    }
+    0
+}
+
+/// POSIX `pthread_condattr_setpshared` — set condvar process-shared attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_condattr_setpshared(
+    attr: *mut libc::pthread_condattr_t,
+    pshared: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+        return libc::EINVAL;
+    }
+    // SAFETY: attr is non-null, caller owns memory.
+    unsafe {
+        let words = attr.cast::<c_int>();
+        *words.add(1) = pshared;
+    }
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Mutex attribute extensions — native (protocol, pshared, robust)
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_mutexattr_getprotocol` — get mutex protocol.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutexattr_getprotocol(
+    attr: *const libc::pthread_mutexattr_t,
+    protocol: *mut c_int,
+) -> c_int {
+    if attr.is_null() || protocol.is_null() {
+        return libc::EINVAL;
+    }
+    // We only support PTHREAD_PRIO_NONE currently.
+    unsafe {
+        *protocol = libc::PTHREAD_PRIO_NONE;
+    }
+    0
+}
+
+/// POSIX `pthread_mutexattr_setprotocol` — set mutex protocol.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutexattr_setprotocol(
+    attr: *mut libc::pthread_mutexattr_t,
+    protocol: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    // Accept PTHREAD_PRIO_NONE; reject others for now.
+    if protocol != libc::PTHREAD_PRIO_NONE
+        && protocol != libc::PTHREAD_PRIO_INHERIT
+        && protocol != libc::PTHREAD_PRIO_PROTECT
+    {
+        return libc::EINVAL;
+    }
+    // Store protocol at offset 1 in the mutexattr (first int is type).
+    // SAFETY: attr is non-null, caller owns memory.
+    unsafe {
+        let words = attr.cast::<c_int>();
+        *words.add(1) = protocol;
+    }
+    0
+}
+
+/// POSIX `pthread_mutexattr_getpshared` — get mutex process-shared.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutexattr_getpshared(
+    attr: *const libc::pthread_mutexattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    if attr.is_null() || pshared.is_null() {
+        return libc::EINVAL;
+    }
+    // Default: PTHREAD_PROCESS_PRIVATE.
+    unsafe {
+        *pshared = libc::PTHREAD_PROCESS_PRIVATE;
+    }
+    0
+}
+
+/// POSIX `pthread_mutexattr_setpshared` — set mutex process-shared.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutexattr_setpshared(
+    attr: *mut libc::pthread_mutexattr_t,
+    pshared: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+        return libc::EINVAL;
+    }
+    0
+}
+
+/// POSIX `pthread_mutexattr_getrobust` — get mutex robust attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutexattr_getrobust(
+    attr: *const libc::pthread_mutexattr_t,
+    robust: *mut c_int,
+) -> c_int {
+    if attr.is_null() || robust.is_null() {
+        return libc::EINVAL;
+    }
+    // Default: PTHREAD_MUTEX_STALLED.
+    unsafe {
+        *robust = libc::PTHREAD_MUTEX_STALLED;
+    }
+    0
+}
+
+/// POSIX `pthread_mutexattr_setrobust` — set mutex robust attribute.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutexattr_setrobust(
+    attr: *mut libc::pthread_mutexattr_t,
+    robust: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    if robust != libc::PTHREAD_MUTEX_STALLED && robust != libc::PTHREAD_MUTEX_ROBUST {
+        return libc::EINVAL;
+    }
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Rwlock attribute extensions — native
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_rwlockattr_getpshared` — get rwlock process-shared.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_rwlockattr_getpshared(
+    attr: *const libc::pthread_rwlockattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    if attr.is_null() || pshared.is_null() {
+        return libc::EINVAL;
+    }
+    // SAFETY: attr is non-null.
+    unsafe {
+        *pshared = *(attr.cast::<c_int>());
+    }
+    0
+}
+
+/// POSIX `pthread_rwlockattr_setpshared` — set rwlock process-shared.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_rwlockattr_setpshared(
+    attr: *mut libc::pthread_rwlockattr_t,
+    pshared: c_int,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+        return libc::EINVAL;
+    }
+    // SAFETY: attr is non-null.
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    *word = pshared;
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Timed/clock pthread operations — raw syscall via futex
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_mutex_timedlock` — lock with timeout.
+///
+/// Native implementation using futex CAS loop with absolute timeout.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutex_timedlock(
+    mutex: *mut libc::pthread_mutex_t,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if mutex.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    let Some(word_ptr) = mutex_word_ptr(mutex) else {
+        return libc::EINVAL;
+    };
+    // SAFETY: alignment validated by `mutex_word_ptr`.
+    let word = unsafe { &*word_ptr };
+
+    // Fast path: uncontended.
+    if word
+        .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
+        .is_ok()
+    {
+        return 0;
+    }
+
+    // Slow path: CAS loop with futex timed wait.
+    loop {
+        let observed = word.load(Ordering::Relaxed);
+        if observed == 0 {
+            if word
+                .compare_exchange(0, 2, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                return 0;
+            }
+            continue;
+        }
+
+        if observed == 1 {
+            let _ = word.compare_exchange(1, 2, Ordering::Acquire, Ordering::Relaxed);
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let rc = futex_wait_timed_private(word, 2, abstime);
+            if rc == 0 {
+                continue;
+            }
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if errno == libc::ETIMEDOUT {
+                return libc::ETIMEDOUT;
+            }
+            if errno == libc::EINTR || errno == libc::EAGAIN {
+                continue;
+            }
+            return if errno == 0 { libc::EAGAIN } else { errno };
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            std::thread::yield_now();
+        }
+    }
+}
+
+/// POSIX `pthread_mutex_consistent` — mark robust mutex as consistent.
+///
+/// Native implementation: clears the EOWNERDEAD state on a robust mutex.
+/// In our implementation, the lock word at offset 0 tracks state.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutex_consistent(mutex: *mut libc::pthread_mutex_t) -> c_int {
+    if mutex.is_null() {
+        return libc::EINVAL;
+    }
+    // Our native mutexes don't track robust/owner-died state separately.
+    // Accept the call as a no-op for compatibility (the mutex is already usable).
+    0
+}
+
+/// GNU `pthread_mutex_clocklock` — lock with specific clock timeout.
+///
+/// Native implementation: converts clock deadline to CLOCK_REALTIME and
+/// delegates to `pthread_mutex_timedlock`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_mutex_clocklock(
+    mutex: *mut libc::pthread_mutex_t,
+    clockid: c_int,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if mutex.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if clockid == libc::CLOCK_REALTIME {
+        return unsafe { pthread_mutex_timedlock(mutex, abstime) };
+    }
+    // Convert to CLOCK_REALTIME deadline.
+    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    unsafe { pthread_mutex_timedlock(mutex, &real_deadline) }
+}
+
+/// POSIX `pthread_rwlock_timedrdlock` — timed read lock.
+///
+/// Native implementation using futex with absolute timeout.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_rwlock_timedrdlock(
+    rwlock: *mut libc::pthread_rwlock_t,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if rwlock.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if !is_managed_rwlock(rwlock) {
+        return libc::EINVAL;
+    }
+    let Some(word_ptr) = rwlock_word_ptr(rwlock) else {
+        return libc::EINVAL;
+    };
+    let word = unsafe { &*word_ptr };
+    futex_rwlock_timed_rdlock(word, abstime)
+}
+
+/// POSIX `pthread_rwlock_timedwrlock` — timed write lock.
+///
+/// Native implementation using futex with absolute timeout.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_rwlock_timedwrlock(
+    rwlock: *mut libc::pthread_rwlock_t,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if rwlock.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if !is_managed_rwlock(rwlock) {
+        return libc::EINVAL;
+    }
+    let Some(word_ptr) = rwlock_word_ptr(rwlock) else {
+        return libc::EINVAL;
+    };
+    let word = unsafe { &*word_ptr };
+    futex_rwlock_timed_wrlock(word, abstime)
+}
+
+/// GNU `pthread_rwlock_clockrdlock` — clock-specific timed read lock.
+///
+/// Native implementation: converts clock deadline and uses futex timed wait.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_rwlock_clockrdlock(
+    rwlock: *mut libc::pthread_rwlock_t,
+    clockid: c_int,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if rwlock.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if clockid == libc::CLOCK_REALTIME {
+        return unsafe { pthread_rwlock_timedrdlock(rwlock, abstime) };
+    }
+    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    unsafe { pthread_rwlock_timedrdlock(rwlock, &real_deadline) }
+}
+
+/// GNU `pthread_rwlock_clockwrlock` — clock-specific timed write lock.
+///
+/// Native implementation: converts clock deadline and uses futex timed wait.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_rwlock_clockwrlock(
+    rwlock: *mut libc::pthread_rwlock_t,
+    clockid: c_int,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if rwlock.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if clockid == libc::CLOCK_REALTIME {
+        return unsafe { pthread_rwlock_timedwrlock(rwlock, abstime) };
+    }
+    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    unsafe { pthread_rwlock_timedwrlock(rwlock, &real_deadline) }
+}
+
+/// GNU `pthread_cond_clockwait` — clock-specific timed condvar wait.
+///
+/// Native implementation: converts clock deadline to CLOCK_REALTIME and
+/// delegates to `pthread_cond_timedwait`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_cond_clockwait(
+    cond: *mut libc::pthread_cond_t,
+    mutex: *mut libc::pthread_mutex_t,
+    clockid: c_int,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if cond.is_null() || mutex.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if clockid == libc::CLOCK_REALTIME {
+        return unsafe { pthread_cond_timedwait(cond, mutex, abstime) };
+    }
+    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    unsafe { pthread_cond_timedwait(cond, mutex, &real_deadline) }
+}
+
+// ---------------------------------------------------------------------------
+// Thread join extensions (GNU)
+// ---------------------------------------------------------------------------
+
+/// GNU `pthread_timedjoin_np` — join with timeout.
+///
+/// Native implementation: waits for thread completion using futex with timeout.
+/// Returns `ETIMEDOUT` if the thread hasn't finished by the deadline.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_timedjoin_np(
+    thread: libc::pthread_t,
+    retval: *mut *mut c_void,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if abstime.is_null() {
+        // NULL timeout = blocking join.
+        return unsafe { native_pthread_join(thread, retval) };
+    }
+    let thread_key = thread as usize;
+    let my_tid = core_self_tid();
+
+    // Self-join detection.
+    if my_tid > 0 && thread_key == my_tid as usize {
+        return libc::EDEADLK;
+    }
+
+    // Peek at state without removing from registry.
+    let handle_ptr = {
+        let registry = THREAD_HANDLE_REGISTRY
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match registry.get(&thread_key) {
+            Some(&raw) => {
+                let hp = raw as *mut ThreadHandle;
+                let state = unsafe { (*hp).state.load(Ordering::Acquire) };
+                if state == THREAD_DETACHED || state == THREAD_JOINED {
+                    return libc::EINVAL;
+                }
+                hp
+            }
+            None => return libc::ESRCH,
+        }
+    };
+
+    // Wait for TID to be cleared (thread exit) with timeout.
+    // The kernel clears tid via CLONE_CHILD_CLEARTID and wakes futex waiters.
+    loop {
+        let tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
+        if tid == 0 {
+            // Thread exited. Perform the actual join.
+            return unsafe { native_pthread_join(thread, retval) };
+        }
+        // Check if deadline has passed.
+        let mut now: libc::timespec = unsafe { std::mem::zeroed() };
+        unsafe { libc::syscall(libc::SYS_clock_gettime, libc::CLOCK_REALTIME, &mut now) };
+        if now.tv_sec > unsafe { (*abstime).tv_sec }
+            || (now.tv_sec == unsafe { (*abstime).tv_sec }
+                && now.tv_nsec >= unsafe { (*abstime).tv_nsec })
+        {
+            return libc::ETIMEDOUT;
+        }
+        // Futex wait on the tid field with timeout.
+        // SAFETY: handle_ptr is valid (from registry lookup above).
+        let tid_ptr = unsafe { &(*handle_ptr).tid };
+        let ret = futex_wait_timed_private(tid_ptr, tid, abstime);
+        if ret < 0 {
+            let errno = unsafe { *libc::__errno_location() };
+            if errno == libc::ETIMEDOUT {
+                return libc::ETIMEDOUT;
+            }
+            // EINTR/EAGAIN — just retry.
+        }
+    }
+}
+
+/// GNU `pthread_tryjoin_np` — non-blocking join.
+///
+/// Native implementation: checks if thread is already finished and joins if so,
+/// otherwise returns `EBUSY`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_tryjoin_np(
+    thread: libc::pthread_t,
+    retval: *mut *mut c_void,
+) -> c_int {
+    let thread_key = thread as usize;
+
+    // Check if thread is finished without removing from registry.
+    {
+        let registry = THREAD_HANDLE_REGISTRY
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match registry.get(&thread_key) {
+            Some(&raw) => {
+                let handle_ptr = raw as *mut ThreadHandle;
+                // SAFETY: registry stores valid handles.
+                let state = unsafe { (*handle_ptr).state.load(Ordering::Acquire) };
+                match state {
+                    s if s == THREAD_FINISHED => {
+                        // Thread is done; proceed to join below.
+                    }
+                    s if s == THREAD_DETACHED || s == THREAD_JOINED => {
+                        return libc::EINVAL;
+                    }
+                    _ => {
+                        // STARTING or RUNNING — not finished yet.
+                        return libc::EBUSY;
+                    }
+                }
+            }
+            None => return libc::ESRCH,
+        }
+    }
+
+    // Thread is FINISHED. Perform a full join.
+    unsafe { native_pthread_join(thread, retval) }
+}
+
+/// GNU `pthread_clockjoin_np` — clock-specific timed join.
+///
+/// Native implementation: converts the clock-specific deadline to CLOCK_REALTIME
+/// and delegates to `pthread_timedjoin_np`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_clockjoin_np(
+    thread: libc::pthread_t,
+    retval: *mut *mut c_void,
+    clockid: c_int,
+    abstime: *const libc::timespec,
+) -> c_int {
+    if abstime.is_null() {
+        return unsafe { native_pthread_join(thread, retval) };
+    }
+    if clockid == libc::CLOCK_REALTIME {
+        return unsafe { pthread_timedjoin_np(thread, retval, abstime) };
+    }
+    // Convert from the specified clock to CLOCK_REALTIME.
+    let mut clock_now: libc::timespec = unsafe { std::mem::zeroed() };
+    let mut real_now: libc::timespec = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::syscall(libc::SYS_clock_gettime, clockid, &mut clock_now);
+        libc::syscall(libc::SYS_clock_gettime, libc::CLOCK_REALTIME, &mut real_now);
+    }
+    // delta = abstime - clock_now
+    let deadline = unsafe { &*abstime };
+    let delta_sec = deadline.tv_sec - clock_now.tv_sec;
+    let delta_nsec = deadline.tv_nsec - clock_now.tv_nsec;
+    // real_deadline = real_now + delta
+    let mut real_deadline = libc::timespec {
+        tv_sec: real_now.tv_sec + delta_sec,
+        tv_nsec: real_now.tv_nsec + delta_nsec,
+    };
+    // Normalise nanoseconds.
+    if real_deadline.tv_nsec >= 1_000_000_000 {
+        real_deadline.tv_sec += 1;
+        real_deadline.tv_nsec -= 1_000_000_000;
+    } else if real_deadline.tv_nsec < 0 {
+        real_deadline.tv_sec -= 1;
+        real_deadline.tv_nsec += 1_000_000_000;
+    }
+    unsafe { pthread_timedjoin_np(thread, retval, &real_deadline) }
+}
+
+// ---------------------------------------------------------------------------
+// Thread signals
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_kill` — send signal to thread.
+///
+/// Native implementation using `tgkill(2)` syscall.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_kill(thread: libc::pthread_t, sig: c_int) -> c_int {
+    // Validate signal number (0 is allowed for existence check).
+    if !(0..=64).contains(&sig) {
+        return libc::EINVAL;
+    }
+    match resolve_thread_tid(thread) {
+        Some(tid) => {
+            let pid = unsafe { libc::syscall(libc::SYS_getpid) } as i32;
+            let ret = unsafe { libc::syscall(libc::SYS_tgkill, pid, tid, sig) };
+            if ret < 0 {
+                unsafe { *libc::__errno_location() }
+            } else {
+                0
+            }
+        }
+        None => libc::ESRCH,
+    }
+}
+
+/// GNU `pthread_sigqueue` — queue signal with value to thread.
+///
+/// Native implementation using `rt_tgsigqueueinfo(2)` syscall.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_sigqueue(
+    thread: libc::pthread_t,
+    sig: c_int,
+    value: libc::sigval,
+) -> c_int {
+    if !(1..=64).contains(&sig) {
+        return libc::EINVAL;
+    }
+    match resolve_thread_tid(thread) {
+        Some(tid) => {
+            let pid = unsafe { libc::syscall(libc::SYS_getpid) } as i32;
+            // Build a siginfo_t structure with SI_QUEUE.
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            info.si_signo = sig;
+            info.si_code = libc::SI_QUEUE;
+            // si_pid and si_uid are part of the _kill union in siginfo_t.
+            // Set them via raw byte access for portability.
+            unsafe {
+                let p = &mut info as *mut libc::siginfo_t as *mut u8;
+                // si_pid at offset 16, si_uid at offset 20 on x86_64
+                *(p.add(16).cast::<i32>()) = pid;
+                *(p.add(20).cast::<u32>()) = libc::getuid();
+                // si_value at offset 24
+                *(p.add(24).cast::<libc::sigval>()) = value;
+            }
+            let ret = unsafe {
+                libc::syscall(
+                    libc::SYS_rt_tgsigqueueinfo,
+                    pid,
+                    tid,
+                    sig,
+                    &info as *const libc::siginfo_t,
+                )
+            };
+            if ret < 0 {
+                unsafe { *libc::__errno_location() }
+            } else {
+                0
+            }
+        }
+        None => libc::ESRCH,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Thread affinity (get/set for running thread)
+// ---------------------------------------------------------------------------
+
+/// GNU `pthread_getaffinity_np` — get CPU affinity of running thread.
+///
+/// Native implementation using `sched_getaffinity(2)` syscall.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_getaffinity_np(
+    thread: libc::pthread_t,
+    cpusetsize: usize,
+    cpuset: *mut libc::cpu_set_t,
+) -> c_int {
+    if cpuset.is_null() {
+        return libc::EINVAL;
+    }
+    match resolve_thread_tid(thread) {
+        Some(tid) => {
+            let ret = unsafe {
+                libc::syscall(libc::SYS_sched_getaffinity, tid, cpusetsize, cpuset)
+            };
+            if ret < 0 {
+                unsafe { *libc::__errno_location() }
+            } else {
+                // Kernel may return fewer bytes than requested; zero the rest.
+                let filled = ret as usize;
+                if filled < cpusetsize {
+                    unsafe {
+                        std::ptr::write_bytes(
+                            (cpuset as *mut u8).add(filled),
+                            0,
+                            cpusetsize - filled,
+                        );
+                    }
+                }
+                0
+            }
+        }
+        None => libc::ESRCH,
+    }
+}
+
+/// GNU `pthread_setaffinity_np` — set CPU affinity of running thread.
+///
+/// Native implementation using `sched_setaffinity(2)` syscall.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_setaffinity_np(
+    thread: libc::pthread_t,
+    cpusetsize: usize,
+    cpuset: *const libc::cpu_set_t,
+) -> c_int {
+    if cpuset.is_null() {
+        return libc::EINVAL;
+    }
+    match resolve_thread_tid(thread) {
+        Some(tid) => {
+            let ret = unsafe {
+                libc::syscall(libc::SYS_sched_setaffinity, tid, cpusetsize, cpuset)
+            };
+            if ret < 0 {
+                unsafe { *libc::__errno_location() }
+            } else {
+                0
+            }
+        }
+        None => libc::ESRCH,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency (obsolete POSIX, kept for compat)
+// ---------------------------------------------------------------------------
+
+/// Obsolete POSIX `pthread_setconcurrency` — set concurrency level (no-op on Linux).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_setconcurrency(_level: c_int) -> c_int {
+    // Linux uses 1:1 threading model; concurrency hint is meaningless.
+    0
+}
+
+/// Obsolete POSIX `pthread_getconcurrency` — get concurrency level.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_getconcurrency() -> c_int {
+    // Always 0 (system decides).
+    0
+}
+
+/// Deprecated `pthread_yield` — yield processor (GNU extension, same as sched_yield).
+///
+/// Native implementation using `sched_yield(2)` syscall.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_yield() -> c_int {
+    unsafe { libc::syscall(libc::SYS_sched_yield) as c_int }
+}
+
+// ---------------------------------------------------------------------------
+// Thread lifecycle extensions
+// ---------------------------------------------------------------------------
+
+/// POSIX `pthread_exit` — terminate calling thread.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
+    unsafe { libc::pthread_exit(retval) }
+}
+
+/// GNU `pthread_getcpuclockid` — get CPU-time clock for a thread.
+///
+/// Native implementation using kernel CPUCLOCK formula:
+/// `clockid = (~tid << 3) | 2` (CPUCLOCK_SCHED flag for thread CPU time).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_getcpuclockid(
+    thread: libc::pthread_t,
+    clockid: *mut libc::clockid_t,
+) -> c_int {
+    if clockid.is_null() {
+        return libc::EINVAL;
+    }
+    match resolve_thread_tid(thread) {
+        Some(tid) => {
+            // Kernel CPUCLOCK formula: (~pid << 3) | CPUCLOCK_SCHED(2)
+            let cid: libc::clockid_t = (!tid as libc::clockid_t) << 3 | 2;
+            // Validate that the clock is usable via clock_getres.
+            let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+            let ret = unsafe {
+                libc::syscall(libc::SYS_clock_getres, cid, &mut ts as *mut libc::timespec)
+            };
+            if ret < 0 {
+                return libc::ESRCH;
+            }
+            unsafe { *clockid = cid };
+            0
+        }
+        None => libc::ESRCH,
+    }
+}
+
+/// GNU `pthread_gettid_np` — get kernel TID for a thread.
+///
+/// Native implementation using `THREAD_HANDLE_REGISTRY` lookup.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_gettid_np(thread: libc::pthread_t) -> libc::pid_t {
+    resolve_thread_tid(thread).unwrap_or(-1) as libc::pid_t
+}
+
+/// GNU `pthread_attr_getsigmask_np` — get signal mask from thread attributes.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_getsigmask_np(
+    attr: *const libc::pthread_attr_t,
+    sigmask: *mut libc::sigset_t,
+) -> c_int {
+    if attr.is_null() || sigmask.is_null() {
+        return libc::EINVAL;
+    }
+    type Fn = unsafe extern "C" fn(*const libc::pthread_attr_t, *mut libc::sigset_t) -> c_int;
+    static FUNC: LazyLock<Option<Fn>> = LazyLock::new(|| {
+        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_attr_getsigmask_np".as_ptr()) };
+        if sym.is_null() {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
+        }
+    });
+    match *FUNC {
+        Some(f) => unsafe { f(attr, sigmask) },
+        None => libc::ENOSYS,
+    }
+}
+
+/// GNU `pthread_attr_setsigmask_np` — set signal mask in thread attributes.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_attr_setsigmask_np(
+    attr: *mut libc::pthread_attr_t,
+    sigmask: *const libc::sigset_t,
+) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    type Fn = unsafe extern "C" fn(*mut libc::pthread_attr_t, *const libc::sigset_t) -> c_int;
+    static FUNC: LazyLock<Option<Fn>> = LazyLock::new(|| {
+        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_attr_setsigmask_np".as_ptr()) };
+        if sym.is_null() {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
+        }
+    });
+    match *FUNC {
+        Some(f) => unsafe { f(attr, sigmask) },
+        None => libc::ENOSYS,
+    }
+}
+
+/// GNU `pthread_getattr_default_np` — get default thread attributes.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_getattr_default_np(attr: *mut libc::pthread_attr_t) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    type Fn = unsafe extern "C" fn(*mut libc::pthread_attr_t) -> c_int;
+    static FUNC: LazyLock<Option<Fn>> = LazyLock::new(|| {
+        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_getattr_default_np".as_ptr()) };
+        if sym.is_null() {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
+        }
+    });
+    match *FUNC {
+        Some(f) => unsafe { f(attr) },
+        None => libc::ENOSYS,
+    }
+}
+
+/// GNU `pthread_setattr_default_np` — set default thread attributes.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn pthread_setattr_default_np(attr: *const libc::pthread_attr_t) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    type Fn = unsafe extern "C" fn(*const libc::pthread_attr_t) -> c_int;
+    static FUNC: LazyLock<Option<Fn>> = LazyLock::new(|| {
+        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"pthread_setattr_default_np".as_ptr()) };
+        if sym.is_null() {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
+        }
+    });
+    match *FUNC {
+        Some(f) => unsafe { f(attr) },
+        None => libc::ENOSYS,
+    }
 }
 
 #[cfg(test)]

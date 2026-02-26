@@ -5299,12 +5299,12 @@ fn render_strfrom(fmt: &str, value: f64) -> String {
         return format!("{value}");
     }
     let rest = &fmt[1..];
-    let (precision, spec) = if rest.starts_with('.') {
-        let num_end = rest[1..]
+    let (precision, spec) = if let Some(after_dot) = rest.strip_prefix('.') {
+        let num_end = after_dot
             .find(|c: char| !c.is_ascii_digit())
-            .map_or(rest.len(), |i| i + 1);
-        let prec: usize = rest[1..num_end].parse().unwrap_or(6);
-        (prec, &rest[num_end..])
+            .unwrap_or(after_dot.len());
+        let prec: usize = after_dot[..num_end].parse().unwrap_or(6);
+        (prec, &after_dot[num_end..])
     } else {
         (6, rest)
     };
@@ -5751,12 +5751,11 @@ pub unsafe extern "C" fn envz_entry(
         let entry = unsafe { CStr::from_ptr(envz.add(pos)) };
         let entry_bytes = entry.to_bytes();
         // Check if entry starts with name and is followed by '=' or NUL
-        if entry_bytes.len() >= name_bytes.len() {
-            if entry_bytes.starts_with(name_bytes)
-                && (entry_bytes.len() == name_bytes.len() || entry_bytes[name_bytes.len()] == b'=')
-            {
-                return unsafe { envz.add(pos) as *mut c_char };
-            }
+        if entry_bytes.len() >= name_bytes.len()
+            && entry_bytes.starts_with(name_bytes)
+            && (entry_bytes.len() == name_bytes.len() || entry_bytes[name_bytes.len()] == b'=')
+        {
+            return unsafe { envz.add(pos) as *mut c_char };
         }
         pos += entry_bytes.len() + 1;
     }

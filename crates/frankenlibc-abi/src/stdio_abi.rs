@@ -4412,3 +4412,176 @@ pub unsafe extern "C" fn mktemp(template: *mut c_char) -> *mut c_char {
 
     template
 }
+
+// ===========================================================================
+// Unlocked stdio variants — bypass locking, delegate to locked versions
+// ===========================================================================
+
+/// `getchar_unlocked` — read a character from stdin without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getchar_unlocked() -> c_int {
+    unsafe { getchar() }
+}
+
+/// `putchar_unlocked` — write a character to stdout without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putchar_unlocked(c: c_int) -> c_int {
+    unsafe { putchar(c) }
+}
+
+/// `fread_unlocked` — binary stream input without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fread_unlocked(
+    ptr: *mut c_void,
+    size: usize,
+    nmemb: usize,
+    stream: *mut c_void,
+) -> usize {
+    unsafe { fread(ptr, size, nmemb, stream) }
+}
+
+/// `fwrite_unlocked` — binary stream output without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fwrite_unlocked(
+    ptr: *const c_void,
+    size: usize,
+    nmemb: usize,
+    stream: *mut c_void,
+) -> usize {
+    unsafe { fwrite(ptr, size, nmemb, stream) }
+}
+
+/// `fgets_unlocked` — get a string from stream without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fgets_unlocked(
+    buf: *mut c_char,
+    size: c_int,
+    stream: *mut c_void,
+) -> *mut c_char {
+    unsafe { fgets(buf, size, stream) }
+}
+
+/// `fputs_unlocked` — put a string to stream without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fputs_unlocked(s: *const c_char, stream: *mut c_void) -> c_int {
+    unsafe { fputs(s, stream) }
+}
+
+/// `clearerr_unlocked` — clear stream error/EOF indicators without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn clearerr_unlocked(stream: *mut c_void) {
+    unsafe { clearerr(stream) }
+}
+
+/// `fileno_unlocked` — get file descriptor from stream without locking.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fileno_unlocked(stream: *mut c_void) -> c_int {
+    unsafe { fileno(stream) }
+}
+
+/// `setbuffer` — set buffering for a stream (BSD extension).
+/// Equivalent to `setvbuf(stream, buf, buf ? _IOFBF : _IONBF, BUFSIZ)`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn setbuffer(stream: *mut c_void, buf: *mut c_char, size: usize) {
+    if stream.is_null() {
+        return;
+    }
+    let mode = if buf.is_null() {
+        2 // _IONBF
+    } else {
+        0 // _IOFBF
+    };
+    unsafe { setvbuf(stream, buf, mode, size) };
+}
+
+// ===========================================================================
+// __isoc99_* scanf aliases — GCC/clang emit these for C99+ code
+// ===========================================================================
+
+/// `__isoc99_scanf` — C99-conformant scanf (alias for scanf).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isoc99_scanf(format: *const c_char, mut args: ...) -> c_int {
+    let ap = std::ptr::addr_of_mut!(args).cast::<c_void>();
+    unsafe { vscanf(format, ap) }
+}
+
+/// `__isoc99_sscanf` — C99-conformant sscanf (alias for sscanf).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isoc99_sscanf(
+    s: *const c_char,
+    format: *const c_char,
+    mut args: ...
+) -> c_int {
+    let ap = std::ptr::addr_of_mut!(args).cast::<c_void>();
+    unsafe { vsscanf(s, format, ap) }
+}
+
+/// `__isoc99_fscanf` — C99-conformant fscanf (alias for fscanf).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isoc99_fscanf(
+    stream: *mut c_void,
+    format: *const c_char,
+    mut args: ...
+) -> c_int {
+    let ap = std::ptr::addr_of_mut!(args).cast::<c_void>();
+    unsafe { vfscanf(stream, format, ap) }
+}
+
+/// `__isoc99_vscanf` — C99-conformant vscanf (alias for vscanf).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isoc99_vscanf(format: *const c_char, ap: *mut c_void) -> c_int {
+    unsafe { vscanf(format, ap) }
+}
+
+/// `__isoc99_vsscanf` — C99-conformant vsscanf (alias for vsscanf).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isoc99_vsscanf(
+    s: *const c_char,
+    format: *const c_char,
+    ap: *mut c_void,
+) -> c_int {
+    unsafe { vsscanf(s, format, ap) }
+}
+
+/// `__isoc99_vfscanf` — C99-conformant vfscanf (alias for vfscanf).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __isoc99_vfscanf(
+    stream: *mut c_void,
+    format: *const c_char,
+    ap: *mut c_void,
+) -> c_int {
+    unsafe { vfscanf(stream, format, ap) }
+}
+
+// ===========================================================================
+// getw / putw — legacy SVID/POSIX.1 word I/O
+// ===========================================================================
+
+/// `getw` — read an int from a stream.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getw(stream: *mut c_void) -> c_int {
+    let mut val: c_int = 0;
+    let n = unsafe {
+        fread(
+            &mut val as *mut c_int as *mut c_void,
+            std::mem::size_of::<c_int>(),
+            1,
+            stream,
+        )
+    };
+    if n != 1 { libc::EOF } else { val }
+}
+
+/// `putw` — write an int to a stream.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putw(w: c_int, stream: *mut c_void) -> c_int {
+    let n = unsafe {
+        fwrite(
+            &w as *const c_int as *const c_void,
+            std::mem::size_of::<c_int>(),
+            1,
+            stream,
+        )
+    };
+    if n != 1 { libc::EOF } else { 0 }
+}

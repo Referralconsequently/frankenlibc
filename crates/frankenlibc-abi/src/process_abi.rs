@@ -443,12 +443,13 @@ struct SpawnFileActions {
 }
 
 /// Internal spawn attributes (flags + signal masks, etc.)
-#[allow(dead_code)]
 struct SpawnAttrs {
     flags: libc::c_short,
     pgroup: libc::pid_t,
     sigdefault: u64, // signal set bitmask
     sigmask: u64,
+    schedpolicy: c_int,
+    schedparam_priority: c_int,
 }
 
 /// Magic value to tag our internal pointers.
@@ -517,6 +518,8 @@ pub unsafe extern "C" fn posix_spawnattr_init(attrp: *mut c_void) -> c_int {
         pgroup: 0,
         sigdefault: 0,
         sigmask: 0,
+        schedpolicy: 0,
+        schedparam_priority: 0,
     });
     let raw = Box::into_raw(attr);
     let p = attrp as *mut u8;
@@ -547,6 +550,256 @@ pub unsafe extern "C" fn posix_spawnattr_destroy(attrp: *mut c_void) -> c_int {
         *(p.add(AT_MAGIC_OFF) as *mut u64) = 0;
         *(p.add(AT_PTR_OFF) as *mut *mut SpawnAttrs) = std::ptr::null_mut();
     }
+    0
+}
+
+/// Read spawn attrs from opaque pointer. Returns None if null or not initialized.
+unsafe fn read_spawn_attrs(attrp: *const c_void) -> Option<&'static SpawnAttrs> {
+    if attrp.is_null() {
+        return None;
+    }
+    let p = attrp as *const u8;
+    let magic = unsafe { *(p.add(AT_MAGIC_OFF) as *const u64) };
+    if magic != SPAWN_AT_MAGIC {
+        return None;
+    }
+    let raw = unsafe { *(p.add(AT_PTR_OFF) as *const *const SpawnAttrs) };
+    if raw.is_null() {
+        return None;
+    }
+    Some(unsafe { &*raw })
+}
+
+/// Get mutable spawn attrs from opaque pointer.
+unsafe fn read_spawn_attrs_mut(attrp: *mut c_void) -> Option<&'static mut SpawnAttrs> {
+    if attrp.is_null() {
+        return None;
+    }
+    let p = attrp as *mut u8;
+    let magic = unsafe { *(p.add(AT_MAGIC_OFF) as *const u64) };
+    if magic != SPAWN_AT_MAGIC {
+        return None;
+    }
+    let raw = unsafe { *(p.add(AT_PTR_OFF) as *const *mut SpawnAttrs) };
+    if raw.is_null() {
+        return None;
+    }
+    Some(unsafe { &mut *raw })
+}
+
+// ===========================================================================
+// posix_spawnattr accessors
+// ===========================================================================
+
+/// `posix_spawnattr_getflags` — get spawn attribute flags.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_getflags(
+    attrp: *const c_void,
+    flags: *mut libc::c_short,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if flags.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { *flags = attr.flags };
+    0
+}
+
+/// `posix_spawnattr_setflags` — set spawn attribute flags.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_setflags(
+    attrp: *mut c_void,
+    flags: libc::c_short,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    attr.flags = flags;
+    0
+}
+
+/// `posix_spawnattr_getsigdefault` — get default signal set.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_getsigdefault(
+    attrp: *const c_void,
+    sigdefault: *mut libc::sigset_t,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if sigdefault.is_null() {
+        return libc::EINVAL;
+    }
+    // Store our u64 bitmask into sigset_t
+    unsafe {
+        libc::sigemptyset(sigdefault);
+        for sig in 1..=63 {
+            if attr.sigdefault & (1u64 << sig) != 0 {
+                libc::sigaddset(sigdefault, sig);
+            }
+        }
+    }
+    0
+}
+
+/// `posix_spawnattr_setsigdefault` — set default signal set.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_setsigdefault(
+    attrp: *mut c_void,
+    sigdefault: *const libc::sigset_t,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if sigdefault.is_null() {
+        return libc::EINVAL;
+    }
+    let mut mask = 0u64;
+    for sig in 1..=63 {
+        if unsafe { libc::sigismember(sigdefault, sig) } == 1 {
+            mask |= 1u64 << sig;
+        }
+    }
+    attr.sigdefault = mask;
+    0
+}
+
+/// `posix_spawnattr_getsigmask` — get signal mask.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_getsigmask(
+    attrp: *const c_void,
+    sigmask: *mut libc::sigset_t,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if sigmask.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe {
+        libc::sigemptyset(sigmask);
+        for sig in 1..=63 {
+            if attr.sigmask & (1u64 << sig) != 0 {
+                libc::sigaddset(sigmask, sig);
+            }
+        }
+    }
+    0
+}
+
+/// `posix_spawnattr_setsigmask` — set signal mask.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_setsigmask(
+    attrp: *mut c_void,
+    sigmask: *const libc::sigset_t,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if sigmask.is_null() {
+        return libc::EINVAL;
+    }
+    let mut mask = 0u64;
+    for sig in 1..=63 {
+        if unsafe { libc::sigismember(sigmask, sig) } == 1 {
+            mask |= 1u64 << sig;
+        }
+    }
+    attr.sigmask = mask;
+    0
+}
+
+/// `posix_spawnattr_getpgroup` — get process group.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_getpgroup(
+    attrp: *const c_void,
+    pgroup: *mut libc::pid_t,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if pgroup.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { *pgroup = attr.pgroup };
+    0
+}
+
+/// `posix_spawnattr_setpgroup` — set process group.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_setpgroup(
+    attrp: *mut c_void,
+    pgroup: libc::pid_t,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    attr.pgroup = pgroup;
+    0
+}
+
+/// `posix_spawnattr_getschedparam` — get scheduling parameters.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_getschedparam(
+    attrp: *const c_void,
+    schedparam: *mut libc::sched_param,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if schedparam.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe {
+        (*schedparam).sched_priority = attr.schedparam_priority;
+    }
+    0
+}
+
+/// `posix_spawnattr_setschedparam` — set scheduling parameters.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_setschedparam(
+    attrp: *mut c_void,
+    schedparam: *const libc::sched_param,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if schedparam.is_null() {
+        return libc::EINVAL;
+    }
+    attr.schedparam_priority = unsafe { (*schedparam).sched_priority };
+    0
+}
+
+/// `posix_spawnattr_getschedpolicy` — get scheduling policy.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_getschedpolicy(
+    attrp: *const c_void,
+    schedpolicy: *mut c_int,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if schedpolicy.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe { *schedpolicy = attr.schedpolicy };
+    0
+}
+
+/// `posix_spawnattr_setschedpolicy` — set scheduling policy.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn posix_spawnattr_setschedpolicy(
+    attrp: *mut c_void,
+    schedpolicy: c_int,
+) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    attr.schedpolicy = schedpolicy;
     0
 }
 

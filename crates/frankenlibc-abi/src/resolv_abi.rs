@@ -1187,3 +1187,18 @@ pub unsafe extern "C" fn getprotobynumber(proto: c_int) -> *mut c_void {
         (&mut storage.protoent as *mut libc::protoent).cast::<c_void>()
     })
 }
+
+// ===========================================================================
+// h_errno — thread-local resolver error variable
+// ===========================================================================
+
+std::thread_local! {
+    static H_ERRNO_TLS: std::cell::Cell<c_int> = const { std::cell::Cell::new(0) };
+}
+
+/// `__h_errno_location` — return thread-local h_errno pointer.
+/// glibc's h_errno macro expands to `(*__h_errno_location())`.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __h_errno_location() -> *mut c_int {
+    H_ERRNO_TLS.with(|cell| cell.as_ptr())
+}

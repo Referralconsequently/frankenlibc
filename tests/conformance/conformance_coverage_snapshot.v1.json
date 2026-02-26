@@ -1,11 +1,11 @@
 {
   "schema_version": "v1",
   "bead": "bd-15n.3",
-  "generated_at": "2026-02-25T20:09:02Z",
+  "generated_at": "2026-02-26T00:34:50Z",
   "summary": {
-    "total_symbols": 1184,
-    "symbols_with_fixtures": 194,
-    "coverage_pct": 16,
+    "total_symbols": 1279,
+    "symbols_with_fixtures": 197,
+    "coverage_pct": 15,
     "total_fixture_files": 50,
     "total_fixture_cases": 514,
     "total_families": 41
@@ -97,14 +97,14 @@
       "pct": 18
     },
     "pthread_abi": {
-      "total": 59,
+      "total": 64,
       "covered": 20,
-      "pct": 34
+      "pct": 31
     },
     "pwd_abi": {
-      "total": 8,
+      "total": 14,
       "covered": 3,
-      "pct": 38
+      "pct": 21
     },
     "resolv_abi": {
       "total": 10,
@@ -115,6 +115,11 @@
       "total": 2,
       "covered": 1,
       "pct": 50
+    },
+    "search_abi": {
+      "total": 2,
+      "covered": 0,
+      "pct": 0
     },
     "setjmp_abi": {
       "total": 6,
@@ -137,19 +142,19 @@
       "pct": 100
     },
     "stdio_abi": {
-      "total": 77,
+      "total": 82,
       "covered": 9,
-      "pct": 12
-    },
-    "stdlib_abi": {
-      "total": 65,
-      "covered": 7,
       "pct": 11
     },
+    "stdlib_abi": {
+      "total": 89,
+      "covered": 7,
+      "pct": 8
+    },
     "string_abi": {
-      "total": 58,
+      "total": 81,
       "covered": 21,
-      "pct": 36
+      "pct": 26
     },
     "termios_abi": {
       "total": 10,
@@ -162,8 +167,8 @@
       "pct": 17
     },
     "unistd_abi": {
-      "total": 348,
-      "covered": 24,
+      "total": 378,
+      "covered": 27,
       "pct": 7
     },
     "unknown": {

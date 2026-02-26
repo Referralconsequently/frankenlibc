@@ -52,6 +52,8 @@ const PERSIST_CLOUD: usize = 24;
 
 /// Observation dimension.
 const PERSIST_DIM: usize = 4;
+/// Absolute clamp limit for raw observation coordinates.
+const PERSIST_COORD_ABS_LIMIT: f64 = 1_000_000.0;
 
 /// Minimum persistence to count as "significant" (fraction of diameter).
 const SIGNIFICANCE_FRACTION: f64 = 0.15;
@@ -211,6 +213,19 @@ fn euclidean_dist(a: &[f64; PERSIST_DIM], b: &[f64; PERSIST_DIM]) -> f64 {
     sum.sqrt()
 }
 
+fn sanitize_observation(values: [f64; PERSIST_DIM]) -> [f64; PERSIST_DIM] {
+    let mut out = [0.0f64; PERSIST_DIM];
+    for i in 0..PERSIST_DIM {
+        let value = values[i];
+        out[i] = if value.is_finite() {
+            value.clamp(-PERSIST_COORD_ABS_LIMIT, PERSIST_COORD_ABS_LIMIT)
+        } else {
+            0.0
+        };
+    }
+    out
+}
+
 fn summarize(pairs: &[PersistencePair], diameter: f64) -> PersistenceSummary {
     if pairs.is_empty() {
         return PersistenceSummary {
@@ -302,7 +317,7 @@ impl PersistenceDetector {
 
     /// Record a 4D observation vector.
     pub fn observe(&mut self, values: [f64; PERSIST_DIM]) {
-        self.window[self.write_pos] = values;
+        self.window[self.write_pos] = sanitize_observation(values);
         self.write_pos = (self.write_pos + 1) % PERSIST_CLOUD;
         if self.count < PERSIST_CLOUD {
             self.count += 1;
@@ -617,5 +632,32 @@ mod tests {
             det.state(),
             det.anomaly_count(),
         );
+    }
+
+    #[test]
+    fn non_finite_observations_are_sanitized_before_storage() {
+        let mut det = PersistenceDetector::new();
+        det.observe([f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 42.0]);
+        assert_eq!(det.window[0], [0.0, 0.0, 0.0, 42.0]);
+    }
+
+    #[test]
+    fn extreme_observations_are_clamped_and_summary_stays_finite() {
+        let mut det = PersistenceDetector::new();
+        let extreme = [1.0e300, -1.0e300, 5.0e307, -5.0e307];
+        let windows = PERSIST_CLOUD * BASELINE_WINDOWS as usize;
+        for _ in 0..windows {
+            det.observe(extreme);
+        }
+        assert!(
+            det.window
+                .iter()
+                .flatten()
+                .all(|v| v.is_finite() && v.abs() <= PERSIST_COORD_ABS_LIMIT)
+        );
+        let summary = det.last_summary();
+        assert!(summary.total_persistence.is_finite());
+        assert!(summary.persistence_entropy.is_finite());
+        assert!(summary.max_persistence.is_finite());
     }
 }

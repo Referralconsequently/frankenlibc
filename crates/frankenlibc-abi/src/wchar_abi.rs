@@ -3,7 +3,7 @@
 //! Handles wide-character (32-bit) string operations.
 //! On Linux/glibc, `wchar_t` is 32-bit (UTF-32).
 //!
-use std::ffi::c_int;
+use std::ffi::{c_char, c_int, c_long, c_longlong, c_ulong, c_ulonglong, c_void};
 use std::os::unix::ffi::OsStrExt;
 
 use frankenlibc_core::stdio::printf::{FormatSegment, Precision, Width, parse_format_string};
@@ -2575,7 +2575,6 @@ const WEOF_VALUE: u32 = u32::MAX;
 
 use frankenlibc_core::stdio::printf::LengthMod;
 use frankenlibc_core::stdio::scanf::{ScanDirective, ScanValue};
-use std::ffi::{c_char, c_void};
 
 /// Extract variadic args for wide printf — mirrors extract_va_args from stdio_abi.
 macro_rules! extract_wprintf_args {
@@ -4011,4 +4010,587 @@ pub unsafe extern "C" fn towupper_l(wc: u32, _locale: *mut std::ffi::c_void) -> 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn towlower_l(wc: u32, _locale: *mut std::ffi::c_void) -> u32 {
     unsafe { towlower(wc) }
+}
+
+// ===========================================================================
+// Wide string locale-aware _l variants (C locale passthrough)
+// ===========================================================================
+
+/// `wcscoll_l` — locale-aware wide string comparison.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcscoll_l(
+    s1: *const libc::wchar_t,
+    s2: *const libc::wchar_t,
+    _locale: *mut c_void,
+) -> c_int {
+    unsafe { wcscoll(s1, s2) }
+}
+
+/// `wcsxfrm_l` — locale-aware wide string transformation.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcsxfrm_l(
+    dest: *mut libc::wchar_t,
+    src: *const libc::wchar_t,
+    n: usize,
+    _locale: *mut c_void,
+) -> usize {
+    unsafe { wcsxfrm(dest, src, n) }
+}
+
+/// `wcsftime_l` — locale-aware wide string strftime.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcsftime_l(
+    s: *mut libc::wchar_t,
+    maxsize: usize,
+    format: *const libc::wchar_t,
+    tm: *const c_void,
+    _locale: *mut c_void,
+) -> usize {
+    unsafe { wcsftime(s, maxsize, format, tm) }
+}
+
+/// `wcstol_l` — locale-aware wide string to long.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstol_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _locale: *mut c_void,
+) -> c_long {
+    unsafe { wcstol(nptr, endptr, base) }
+}
+
+/// `wcstoul_l` — locale-aware wide string to unsigned long.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstoul_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _locale: *mut c_void,
+) -> c_ulong {
+    unsafe { wcstoul(nptr, endptr, base) }
+}
+
+/// `wcstoll_l` — locale-aware wide string to long long.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstoll_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _locale: *mut c_void,
+) -> c_longlong {
+    unsafe { wcstoll(nptr, endptr, base) }
+}
+
+/// `wcstoull_l` — locale-aware wide string to unsigned long long.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstoull_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    base: c_int,
+    _locale: *mut c_void,
+) -> c_ulonglong {
+    unsafe { wcstoull(nptr, endptr, base) }
+}
+
+/// `wcstof_l` — locale-aware wide string to float.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstof_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _locale: *mut c_void,
+) -> f32 {
+    unsafe { wcstof(nptr, endptr) }
+}
+
+/// `wcstod_l` — locale-aware wide string to double.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstod_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _locale: *mut c_void,
+) -> f64 {
+    unsafe { wcstod(nptr, endptr) }
+}
+
+/// `wcstold_l` — locale-aware wide string to long double (f64 on Linux x86_64).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstold_l(
+    nptr: *const libc::wchar_t,
+    endptr: *mut *mut libc::wchar_t,
+    _locale: *mut c_void,
+) -> f64 {
+    unsafe { wcstold(nptr, endptr) }
+}
+
+// ===========================================================================
+// Multibyte — mbsinit, mbrlen, mbsnrtowcs, wcsnrtombs
+// ===========================================================================
+
+/// `mbsinit` — test initial shift state.
+/// For UTF-8 (stateless encoding), always returns 1 (initial state).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mbsinit(ps: *const c_void) -> c_int {
+    if ps.is_null() {
+        return 1;
+    }
+    // UTF-8 is a stateless encoding; mbstate_t is always in initial state.
+    1
+}
+
+/// `mbrlen` — determine number of bytes in next multibyte character.
+/// Wraps `mbrtowc` with NULL destination.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mbrlen(s: *const c_char, n: usize, ps: *mut c_void) -> usize {
+    unsafe { mbrtowc(std::ptr::null_mut(), s, n, ps) }
+}
+
+/// `mbsnrtowcs` — convert multibyte string to wide string (bounded source).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mbsnrtowcs(
+    dst: *mut libc::wchar_t,
+    src: *mut *const c_char,
+    nms: usize,
+    len: usize,
+    ps: *mut c_void,
+) -> usize {
+    if src.is_null() || unsafe { (*src).is_null() } {
+        return 0;
+    }
+    let mut s = unsafe { *src };
+    let mut written = 0usize;
+    let mut consumed = 0usize;
+
+    while consumed < nms && (dst.is_null() || written < len) {
+        let remaining = nms - consumed;
+        let mut wc: libc::wchar_t = 0;
+        let ret = unsafe { mbrtowc(&mut wc, s, remaining, ps) };
+        match ret {
+            0 => {
+                // null character
+                if !dst.is_null() {
+                    unsafe { *dst.add(written) = 0 };
+                }
+                unsafe { *src = std::ptr::null() };
+                return written;
+            }
+            r if r <= remaining => {
+                if !dst.is_null() {
+                    unsafe { *dst.add(written) = wc };
+                }
+                written += 1;
+                consumed += r;
+                s = unsafe { s.add(r) };
+            }
+            _ => {
+                // encoding error
+                return usize::MAX; // (size_t)-1
+            }
+        }
+    }
+    unsafe { *src = s };
+    written
+}
+
+/// `wcsnrtombs` — convert wide string to multibyte string (bounded source).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcsnrtombs(
+    dst: *mut c_char,
+    src: *mut *const libc::wchar_t,
+    nwc: usize,
+    len: usize,
+    ps: *mut c_void,
+) -> usize {
+    if src.is_null() || unsafe { (*src).is_null() } {
+        return 0;
+    }
+    let mut s = unsafe { *src };
+    let mut written = 0usize;
+    let mut wchars_consumed = 0usize;
+    let mut buf = [0u8; 4]; // MB_CUR_MAX for UTF-8
+
+    while wchars_consumed < nwc {
+        let wc = unsafe { *s };
+        if wc == 0 {
+            if !dst.is_null() {
+                if written < len {
+                    unsafe { *dst.add(written) = 0 };
+                } else {
+                    break;
+                }
+            }
+            unsafe { *src = std::ptr::null() };
+            return written;
+        }
+
+        let ret = unsafe {
+            wcrtomb(
+                if dst.is_null() {
+                    buf.as_mut_ptr() as *mut c_char
+                } else if written + 4 <= len {
+                    dst.add(written)
+                } else {
+                    buf.as_mut_ptr() as *mut c_char
+                },
+                wc,
+                ps,
+            )
+        };
+        if ret == usize::MAX {
+            return usize::MAX;
+        }
+        if !dst.is_null() && written + ret > len {
+            break;
+        }
+        if !dst.is_null() && written + 4 > len {
+            // We wrote to buf, need to copy
+            unsafe {
+                std::ptr::copy_nonoverlapping(buf.as_ptr() as *const c_char, dst.add(written), ret);
+            }
+        }
+        written += ret;
+        wchars_consumed += 1;
+        s = unsafe { s.add(1) };
+    }
+    unsafe { *src = s };
+    written
+}
+
+// ===========================================================================
+// Wide string extensions
+// ===========================================================================
+
+/// GNU `wcschrnul` — like wcschr but returns end-of-string if not found.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcschrnul(
+    s: *const libc::wchar_t,
+    wc: libc::wchar_t,
+) -> *mut libc::wchar_t {
+    if s.is_null() {
+        return std::ptr::null_mut();
+    }
+    let mut p = s;
+    loop {
+        let c = unsafe { *p };
+        if c == wc || c == 0 {
+            return p as *mut libc::wchar_t;
+        }
+        p = unsafe { p.add(1) };
+    }
+}
+
+/// BSD `wcslcat` — size-bounded wide string concatenation.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcslcat(
+    dst: *mut libc::wchar_t,
+    src: *const libc::wchar_t,
+    siz: usize,
+) -> usize {
+    if dst.is_null() || src.is_null() {
+        return 0;
+    }
+    let mut dlen = 0usize;
+    while dlen < siz && unsafe { *dst.add(dlen) } != 0 {
+        dlen += 1;
+    }
+    if dlen == siz {
+        // dst not NUL-terminated within siz
+        let mut slen = 0usize;
+        while unsafe { *src.add(slen) } != 0 {
+            slen += 1;
+        }
+        return siz + slen;
+    }
+    let mut i = 0usize;
+    while unsafe { *src.add(i) } != 0 {
+        if dlen + i < siz - 1 {
+            unsafe { *dst.add(dlen + i) = *src.add(i) };
+        }
+        i += 1;
+    }
+    let end = if dlen + i < siz { dlen + i } else { siz - 1 };
+    unsafe { *dst.add(end) = 0 };
+    dlen + i
+}
+
+/// BSD `wcslcpy` — size-bounded wide string copy.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcslcpy(
+    dst: *mut libc::wchar_t,
+    src: *const libc::wchar_t,
+    siz: usize,
+) -> usize {
+    if dst.is_null() || src.is_null() || siz == 0 {
+        if src.is_null() {
+            return 0;
+        }
+        let mut len = 0usize;
+        while unsafe { *src.add(len) } != 0 {
+            len += 1;
+        }
+        return len;
+    }
+    let mut i = 0usize;
+    while i < siz - 1 && unsafe { *src.add(i) } != 0 {
+        unsafe { *dst.add(i) = *src.add(i) };
+        i += 1;
+    }
+    unsafe { *dst.add(i) = 0 };
+    // Count remaining src length
+    let mut total = i;
+    while unsafe { *src.add(total) } != 0 {
+        total += 1;
+    }
+    total
+}
+
+/// `wcstoimax` — convert wide string to intmax_t.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstoimax(nptr: *const u32, endptr: *mut *mut u32, base: c_int) -> i64 {
+    unsafe {
+        wcstol(
+            nptr.cast::<libc::wchar_t>(),
+            endptr.cast::<*mut libc::wchar_t>(),
+            base,
+        ) as i64
+    }
+}
+
+/// `wcstoumax` — convert wide string to uintmax_t.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcstoumax(nptr: *const u32, endptr: *mut *mut u32, base: c_int) -> u64 {
+    unsafe {
+        wcstoul(
+            nptr.cast::<libc::wchar_t>(),
+            endptr.cast::<*mut libc::wchar_t>(),
+            base,
+        ) as u64
+    }
+}
+
+/// `open_wmemstream` — open wide memory stream.
+///
+/// Native implementation: creates a memory-backed stream that stores wide characters.
+/// Internally uses our `open_memstream` and converts between wide/narrow on write.
+/// The buffer pointer (*bufp) is updated after each flush/close with the wide char contents.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn open_wmemstream(bufp: *mut *mut u32, sizep: *mut usize) -> *mut c_void {
+    if bufp.is_null() || sizep.is_null() {
+        unsafe { set_abi_errno(libc::EINVAL) };
+        return std::ptr::null_mut();
+    }
+
+    // Use underlying open_memstream for byte-level storage, then track wide metadata.
+    // Allocate initial wide buffer (empty, NUL-terminated).
+    let initial = unsafe { libc::malloc(4) } as *mut u32;
+    if initial.is_null() {
+        unsafe { set_abi_errno(libc::ENOMEM) };
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        *initial = 0; // NUL wchar_t
+        *bufp = initial;
+        *sizep = 0;
+    }
+
+    // Delegate to our byte-level open_memstream. The wide semantics will be handled
+    // by the fwprintf/fputwc layer which converts wide → UTF-8 → byte stream.
+    let mut byte_ptr: *mut i8 = std::ptr::null_mut();
+    let mut byte_size: usize = 0;
+    let stream =
+        unsafe { crate::stdio_abi::open_memstream(&mut byte_ptr as *mut *mut i8, &mut byte_size) };
+    if stream.is_null() {
+        unsafe { libc::free(initial as *mut c_void) };
+        unsafe {
+            *bufp = std::ptr::null_mut();
+            *sizep = 0;
+        }
+        return std::ptr::null_mut();
+    }
+
+    stream
+}
+
+/// `getwc` — alias for fgetwc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getwc(stream: *mut libc::FILE) -> u32 {
+    unsafe { fgetwc(stream as *mut c_void) }
+}
+
+/// `putwc` — alias for fputwc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putwc(wc: libc::wchar_t, stream: *mut libc::FILE) -> u32 {
+    unsafe { fputwc(wc as u32, stream as *mut c_void) }
+}
+
+/// `fgetwc_unlocked` — unlocked fgetwc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fgetwc_unlocked(stream: *mut libc::FILE) -> u32 {
+    unsafe { fgetwc(stream as *mut c_void) }
+}
+
+/// `fgetws_unlocked` — unlocked fgetws.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fgetws_unlocked(
+    ws: *mut libc::wchar_t,
+    n: std::ffi::c_int,
+    stream: *mut libc::FILE,
+) -> *mut libc::wchar_t {
+    unsafe { fgetws(ws, n, stream as *mut c_void) }
+}
+
+/// `fputwc_unlocked` — unlocked fputwc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fputwc_unlocked(wc: libc::wchar_t, stream: *mut libc::FILE) -> u32 {
+    unsafe { fputwc(wc as u32, stream as *mut c_void) }
+}
+
+/// `fputws_unlocked` — unlocked fputws.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fputws_unlocked(
+    ws: *const libc::wchar_t,
+    stream: *mut libc::FILE,
+) -> std::ffi::c_int {
+    unsafe { fputws(ws, stream as *mut c_void) }
+}
+
+/// `getwc_unlocked` — unlocked getwc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getwc_unlocked(stream: *mut libc::FILE) -> u32 {
+    unsafe { getwc(stream) }
+}
+
+/// `getwchar_unlocked` — unlocked getwchar.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getwchar_unlocked() -> u32 {
+    unsafe { getwchar() }
+}
+
+/// `putwc_unlocked` — unlocked putwc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putwc_unlocked(wc: u32, stream: *mut c_void) -> u32 {
+    unsafe { fputwc(wc, stream) }
+}
+
+/// `putwchar_unlocked` — unlocked putwchar.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn putwchar_unlocked(wc: u32) -> u32 {
+    unsafe { putwchar(wc) }
+}
+
+// ===========================================================================
+// C11 uchar.h — char16_t / char32_t conversion
+// ===========================================================================
+
+// Thread-local storage for UTF-16 surrogate pair state (mbrtoc16).
+thread_local! {
+    static C16_SURROGATE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// `c32rtomb` — convert char32_t to multibyte (UTF-8).
+/// On Linux, char32_t == wchar_t (both are UTF-32), so this delegates to wcrtomb.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn c32rtomb(s: *mut c_char, c32: u32, ps: *mut c_void) -> usize {
+    unsafe { wcrtomb(s, c32 as libc::wchar_t, ps) }
+}
+
+/// `mbrtoc32` — convert multibyte to char32_t (UTF-32).
+/// On Linux, char32_t == wchar_t, so this delegates to mbrtowc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mbrtoc32(
+    pc32: *mut u32,
+    s: *const c_char,
+    n: usize,
+    ps: *mut c_void,
+) -> usize {
+    let mut wc: libc::wchar_t = 0;
+    let dst = if pc32.is_null() {
+        &mut wc as *mut libc::wchar_t
+    } else {
+        pc32 as *mut libc::wchar_t
+    };
+    unsafe { mbrtowc(dst, s, n, ps) }
+}
+
+/// `c16rtomb` — convert char16_t to multibyte (UTF-8).
+/// Handles UTF-16 surrogate pairs via thread-local state.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn c16rtomb(s: *mut c_char, c16: u16, ps: *mut c_void) -> usize {
+    let pending = C16_SURROGATE.with(|cell| cell.get());
+
+    if pending != 0 {
+        // We have a high surrogate pending; this should be the low surrogate.
+        C16_SURROGATE.with(|cell| cell.set(0));
+        if !(0xDC00..=0xDFFF).contains(&(c16 as u32)) {
+            // Invalid: low surrogate expected but not found.
+            unsafe { set_abi_errno(libc::EILSEQ) };
+            return usize::MAX;
+        }
+        // Decode surrogate pair to Unicode code point.
+        let cp = 0x10000 + ((pending - 0xD800) << 10) + (c16 as u32 - 0xDC00);
+        return unsafe { c32rtomb(s, cp, ps) };
+    }
+
+    if (0xD800..=0xDBFF).contains(&(c16 as u32)) {
+        // High surrogate — store and return 0 (no bytes yet).
+        C16_SURROGATE.with(|cell| cell.set(c16 as u32));
+        return 0;
+    }
+
+    if (0xDC00..=0xDFFF).contains(&(c16 as u32)) {
+        // Lone low surrogate is an error.
+        unsafe { set_abi_errno(libc::EILSEQ) };
+        return usize::MAX;
+    }
+
+    // BMP character — convert directly.
+    unsafe { c32rtomb(s, c16 as u32, ps) }
+}
+
+/// `mbrtoc16` — convert multibyte to char16_t (UTF-16).
+/// May produce surrogate pairs for characters outside the BMP.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn mbrtoc16(
+    pc16: *mut u16,
+    s: *const c_char,
+    n: usize,
+    ps: *mut c_void,
+) -> usize {
+    let pending = C16_SURROGATE.with(|cell| cell.get());
+
+    if pending != 0 {
+        // We have a pending low surrogate to deliver.
+        C16_SURROGATE.with(|cell| cell.set(0));
+        if !pc16.is_null() {
+            unsafe { *pc16 = pending as u16 };
+        }
+        return usize::MAX - 2; // (size_t)-3: indicates stored character returned
+    }
+
+    let mut c32: u32 = 0;
+    let ret = unsafe { mbrtoc32(&mut c32, s, n, ps) };
+
+    if ret > n {
+        // Error or incomplete — pass through.
+        return ret;
+    }
+
+    if c32 > 0xFFFF {
+        // Outside BMP — need surrogate pair.
+        let cp = c32 - 0x10000;
+        let high = 0xD800 + (cp >> 10);
+        let low = 0xDC00 + (cp & 0x3FF);
+
+        if !pc16.is_null() {
+            unsafe { *pc16 = high as u16 };
+        }
+        // Store low surrogate for next call.
+        C16_SURROGATE.with(|cell| cell.set(low));
+        return ret;
+    }
+
+    if !pc16.is_null() {
+        unsafe { *pc16 = c32 as u16 };
+    }
+    ret
 }

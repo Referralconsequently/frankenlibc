@@ -614,3 +614,79 @@ pub unsafe extern "C" fn scandir64(
         )
     }
 }
+
+// ---------------------------------------------------------------------------
+// fdopendir / dirfd
+// ---------------------------------------------------------------------------
+
+/// POSIX `fdopendir` — open directory stream from file descriptor.
+///
+/// Native implementation: creates a DirState from the given fd and registers
+/// it in our DIR_REGISTRY, returning an opaque handle.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fdopendir(fd: c_int) -> *mut libc::DIR {
+    if fd < 0 {
+        unsafe { set_abi_errno(errno::EBADF) };
+        return std::ptr::null_mut();
+    }
+
+    let (_, decision) = runtime_policy::decide(ApiFamily::IoFd, fd as usize, 0, false, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
+        return std::ptr::null_mut();
+    }
+
+    // Verify the fd is a directory by attempting a zero-length getdents64.
+    // If it fails with ENOTDIR, the fd is not a directory.
+    let mut probe = [0u8; 1];
+    let rc = unsafe { libc::syscall(libc::SYS_getdents64 as c_long, fd, probe.as_mut_ptr(), 0i32) };
+    // getdents64 with count=0 returns 0 on directories, -1/ENOTDIR on non-dirs.
+    // But some kernels return EINVAL for count=0, so also accept that as "ok, it's an fd".
+    if rc < 0 {
+        let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        if e == libc::ENOTDIR {
+            unsafe { set_abi_errno(libc::ENOTDIR) };
+            runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
+            return std::ptr::null_mut();
+        }
+        // EINVAL from count=0 is fine — just means it's a valid fd
+    }
+
+    let handle = next_handle();
+    let state = DirState {
+        fd,
+        buffer: vec![0u8; GETDENTS_BUF_SIZE],
+        offset: 0,
+        valid_bytes: 0,
+        eof: false,
+        last_d_off: 0,
+    };
+
+    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let map = registry.get_or_insert_with(HashMap::new);
+    map.insert(handle, state);
+
+    runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, false);
+    handle as *mut libc::DIR
+}
+
+/// POSIX `dirfd` — get file descriptor from directory stream.
+///
+/// Native implementation: looks up the fd from our DIR_REGISTRY.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn dirfd(dirp: *mut libc::DIR) -> c_int {
+    if dirp.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return -1;
+    }
+
+    let handle = dirp as usize;
+    let registry = DIR_REGISTRY.lock().unwrap();
+    match registry.as_ref().and_then(|m| m.get(&handle)) {
+        Some(state) => state.fd,
+        None => {
+            unsafe { set_abi_errno(errno::EBADF) };
+            -1
+        }
+    }
+}

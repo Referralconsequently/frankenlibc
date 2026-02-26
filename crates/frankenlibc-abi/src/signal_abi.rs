@@ -465,3 +465,291 @@ pub unsafe extern "C" fn sigwait(set: *const libc::sigset_t, sig: *mut c_int) ->
         last_host_errno(libc::EINTR)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Legacy/obsolete signal functions — implemented natively
+// ---------------------------------------------------------------------------
+
+/// `siginterrupt` — allow signals to interrupt system calls (obsolete).
+/// Implemented natively via sigaction.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn siginterrupt(sig: c_int, flag: c_int) -> c_int {
+    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
+    // SAFETY: get current action for the signal.
+    if unsafe {
+        libc::syscall(
+            libc::SYS_rt_sigaction,
+            sig,
+            std::ptr::null::<libc::sigaction>(),
+            &mut sa as *mut libc::sigaction,
+            std::mem::size_of::<libc::c_ulong>(),
+        )
+    } != 0
+    {
+        return -1;
+    }
+    if flag != 0 {
+        sa.sa_flags &= !libc::SA_RESTART;
+    } else {
+        sa.sa_flags |= libc::SA_RESTART;
+    }
+    // SAFETY: set the modified action.
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_rt_sigaction,
+            sig,
+            &sa as *const libc::sigaction,
+            std::ptr::null::<libc::sigaction>(),
+            std::mem::size_of::<libc::c_ulong>(),
+        ) as c_int
+    };
+    if rc != 0 { -1 } else { 0 }
+}
+
+/// `sighold` — add signal to process signal mask (XSI obsolete).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sighold(sig: c_int) -> c_int {
+    let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+    unsafe { libc::sigemptyset(&mut set) };
+    unsafe { libc::sigaddset(&mut set, sig) };
+    let kernel_sigset_size = std::mem::size_of::<libc::c_ulong>();
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_rt_sigprocmask,
+            libc::SIG_BLOCK,
+            &set as *const libc::sigset_t,
+            std::ptr::null::<libc::sigset_t>(),
+            kernel_sigset_size,
+        ) as c_int
+    };
+    if rc != 0 { -1 } else { 0 }
+}
+
+/// `sigrelse` — remove signal from process signal mask (XSI obsolete).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigrelse(sig: c_int) -> c_int {
+    let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+    unsafe { libc::sigemptyset(&mut set) };
+    unsafe { libc::sigaddset(&mut set, sig) };
+    let kernel_sigset_size = std::mem::size_of::<libc::c_ulong>();
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_rt_sigprocmask,
+            libc::SIG_UNBLOCK,
+            &set as *const libc::sigset_t,
+            std::ptr::null::<libc::sigset_t>(),
+            kernel_sigset_size,
+        ) as c_int
+    };
+    if rc != 0 { -1 } else { 0 }
+}
+
+/// `sigignore` — set signal disposition to SIG_IGN (XSI obsolete).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigignore(sig: c_int) -> c_int {
+    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
+    sa.sa_sigaction = libc::SIG_IGN;
+    sa.sa_flags = 0;
+    unsafe { libc::sigemptyset(&mut sa.sa_mask) };
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_rt_sigaction,
+            sig,
+            &sa as *const libc::sigaction,
+            std::ptr::null::<libc::sigaction>(),
+            std::mem::size_of::<libc::c_ulong>(),
+        ) as c_int
+    };
+    if rc != 0 { -1 } else { 0 }
+}
+
+/// `psiginfo` — print signal info to stderr.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn psiginfo(info: *const libc::siginfo_t, msg: *const std::ffi::c_char) {
+    if info.is_null() {
+        return;
+    }
+    let sig = unsafe { (*info).si_signo };
+    let abbrev = unsafe { sigabbrev_np(sig) };
+    let desc = if abbrev.is_null() {
+        "Unknown signal"
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(abbrev) }
+            .to_str()
+            .unwrap_or("Unknown signal")
+    };
+    if !msg.is_null() {
+        let c_msg = unsafe { std::ffi::CStr::from_ptr(msg) };
+        if let Ok(s) = c_msg.to_str() {
+            eprintln!("{s}: SIG{desc}");
+            return;
+        }
+    }
+    eprintln!("SIG{desc}");
+}
+
+/// `sigabbrev_np` — return abbreviated signal name (GNU extension).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigabbrev_np(sig: c_int) -> *const std::ffi::c_char {
+    // Return signal abbreviation without "SIG" prefix
+    static NAMES: &[&[u8]] = &[
+        b"0\0",      // 0
+        b"HUP\0",    // 1
+        b"INT\0",    // 2
+        b"QUIT\0",   // 3
+        b"ILL\0",    // 4
+        b"TRAP\0",   // 5
+        b"ABRT\0",   // 6
+        b"BUS\0",    // 7
+        b"FPE\0",    // 8
+        b"KILL\0",   // 9
+        b"USR1\0",   // 10
+        b"SEGV\0",   // 11
+        b"USR2\0",   // 12
+        b"PIPE\0",   // 13
+        b"ALRM\0",   // 14
+        b"TERM\0",   // 15
+        b"STKFLT\0", // 16
+        b"CHLD\0",   // 17
+        b"CONT\0",   // 18
+        b"STOP\0",   // 19
+        b"TSTP\0",   // 20
+        b"TTIN\0",   // 21
+        b"TTOU\0",   // 22
+        b"URG\0",    // 23
+        b"XCPU\0",   // 24
+        b"XFSZ\0",   // 25
+        b"VTALRM\0", // 26
+        b"PROF\0",   // 27
+        b"WINCH\0",  // 28
+        b"IO\0",     // 29
+        b"PWR\0",    // 30
+        b"SYS\0",    // 31
+    ];
+    if sig < 0 || sig as usize >= NAMES.len() {
+        return std::ptr::null();
+    }
+    NAMES[sig as usize].as_ptr().cast()
+}
+
+/// `sigdescr_np` — return signal description string (GNU extension).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigdescr_np(sig: c_int) -> *const std::ffi::c_char {
+    static DESCS: &[&[u8]] = &[
+        b"Unknown signal 0\0",         // 0
+        b"Hangup\0",                   // 1
+        b"Interrupt\0",                // 2
+        b"Quit\0",                     // 3
+        b"Illegal instruction\0",      // 4
+        b"Trace/breakpoint trap\0",    // 5
+        b"Aborted\0",                  // 6
+        b"Bus error\0",                // 7
+        b"Floating point exception\0", // 8
+        b"Killed\0",                   // 9
+        b"User defined signal 1\0",    // 10
+        b"Segmentation fault\0",       // 11
+        b"User defined signal 2\0",    // 12
+        b"Broken pipe\0",              // 13
+        b"Alarm clock\0",              // 14
+        b"Terminated\0",               // 15
+        b"Stack fault\0",              // 16
+        b"Child exited\0",             // 17
+        b"Continued\0",                // 18
+        b"Stopped (signal)\0",         // 19
+        b"Stopped\0",                  // 20
+        b"Stopped (tty input)\0",      // 21
+        b"Stopped (tty output)\0",     // 22
+        b"Urgent I/O condition\0",     // 23
+        b"CPU time limit exceeded\0",  // 24
+        b"File size limit exceeded\0", // 25
+        b"Virtual timer expired\0",    // 26
+        b"Profiling timer expired\0",  // 27
+        b"Window changed\0",           // 28
+        b"I/O possible\0",             // 29
+        b"Power failure\0",            // 30
+        b"Bad system call\0",          // 31
+    ];
+    if sig < 0 || sig as usize >= DESCS.len() {
+        return std::ptr::null();
+    }
+    DESCS[sig as usize].as_ptr().cast()
+}
+
+/// `sigandset` — compute intersection of two signal sets (GNU).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigandset(
+    dest: *mut libc::sigset_t,
+    left: *const libc::sigset_t,
+    right: *const libc::sigset_t,
+) -> c_int {
+    if dest.is_null() || left.is_null() || right.is_null() {
+        return -1;
+    }
+    // SAFETY: sigset_t on Linux is an array of unsigned longs.
+    unsafe {
+        let d = dest as *mut u64;
+        let l = left as *const u64;
+        let r = right as *const u64;
+        let n = std::mem::size_of::<libc::sigset_t>() / 8;
+        for i in 0..n {
+            *d.add(i) = *l.add(i) & *r.add(i);
+        }
+    }
+    0
+}
+
+/// `sigorset` — compute union of two signal sets (GNU).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigorset(
+    dest: *mut libc::sigset_t,
+    left: *const libc::sigset_t,
+    right: *const libc::sigset_t,
+) -> c_int {
+    if dest.is_null() || left.is_null() || right.is_null() {
+        return -1;
+    }
+    // SAFETY: sigset_t on Linux is an array of unsigned longs.
+    unsafe {
+        let d = dest as *mut u64;
+        let l = left as *const u64;
+        let r = right as *const u64;
+        let n = std::mem::size_of::<libc::sigset_t>() / 8;
+        for i in 0..n {
+            *d.add(i) = *l.add(i) | *r.add(i);
+        }
+    }
+    0
+}
+
+/// `sigisemptyset` — test if signal set is empty (GNU).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigisemptyset(set: *const libc::sigset_t) -> c_int {
+    if set.is_null() {
+        return -1;
+    }
+    // SAFETY: sigset_t on Linux is an array of unsigned longs.
+    unsafe {
+        let s = set as *const u64;
+        let n = std::mem::size_of::<libc::sigset_t>() / 8;
+        for i in 0..n {
+            if *s.add(i) != 0 {
+                return 0; // Not empty
+            }
+        }
+    }
+    1 // Empty
+}
+
+/// `__libc_current_sigrtmin` — return minimum real-time signal number.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __libc_current_sigrtmin() -> c_int {
+    // Linux reserves SIGRTMIN+0..+2 for NPTL; usable range starts at SIGRTMIN+3 = 35.
+    35
+}
+
+/// `__libc_current_sigrtmax` — return maximum real-time signal number.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __libc_current_sigrtmax() -> c_int {
+    // SIGRTMAX on Linux x86_64 = 64.
+    64
+}

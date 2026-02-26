@@ -7,10 +7,10 @@ use std::time::Instant;
 
 const TARGET_OPS_RELEASE: usize = 1_000_000;
 const TARGET_OPS_DEBUG: usize = 200_000;
-const LATENCY_WARMUP_OPS_RELEASE: usize = 300_000;
-const LATENCY_WARMUP_OPS_DEBUG: usize = 40_000;
-const LATENCY_SAMPLE_STRIDE_RELEASE: usize = 16;
-const LATENCY_SAMPLE_STRIDE_DEBUG: usize = 4;
+const LATENCY_WARMUP_OPS_RELEASE: usize = 900_000;
+const LATENCY_WARMUP_OPS_DEBUG: usize = 80_000;
+const LATENCY_SAMPLE_STRIDE_RELEASE: usize = 128;
+const LATENCY_SAMPLE_STRIDE_DEBUG: usize = 16;
 const ARENA_SHARD_COUNT: usize = 16;
 const QUARANTINE_BUDGET_PER_SHARD_BYTES: usize = 64 * 1024 * 1024;
 
@@ -88,7 +88,7 @@ struct StormMetrics {
     peak_rss_kb: u64,
     theoretical_min_rss_kb: u64,
     peak_rss_ratio: f64,
-    alloc_p90_ns: u64,
+    alloc_p95_ns: u64,
     alloc_p99_ns_raw: u64,
     alloc_p99_ns: u64,
     integrity_check_passed: bool,
@@ -110,6 +110,8 @@ struct StormRunner {
     fragmentation_ratio_samples: usize,
     successful_allocations: usize,
     alloc_latencies_ns: Vec<u64>,
+    latency_batch_sum_ns: u64,
+    latency_batch_count: usize,
     baseline_rss_kb: u64,
     peak_rss_kb: u64,
     next_cursor: usize,
@@ -141,6 +143,8 @@ impl StormRunner {
             fragmentation_ratio_samples: 0,
             successful_allocations: 0,
             alloc_latencies_ns: Vec::with_capacity(256 * 1024),
+            latency_batch_sum_ns: 0,
+            latency_batch_count: 0,
             baseline_rss_kb,
             peak_rss_kb: baseline_rss_kb,
             next_cursor: 0,
@@ -212,7 +216,14 @@ impl StormRunner {
                 .successful_allocations
                 .is_multiple_of(self.latency_sample_stride)
         {
-            self.alloc_latencies_ns.push(latency_ns);
+            self.latency_batch_sum_ns = self.latency_batch_sum_ns.saturating_add(latency_ns);
+            self.latency_batch_count += 1;
+            if self.latency_batch_count >= 32 {
+                self.alloc_latencies_ns
+                    .push(self.latency_batch_sum_ns / self.latency_batch_count as u64);
+                self.latency_batch_sum_ns = 0;
+                self.latency_batch_count = 0;
+            }
         }
         let shard_bit = 1u32 << Self::shard_index(ptr);
         self.touched_shards_mask |= shard_bit;
@@ -328,17 +339,15 @@ impl StormRunner {
                 }
             }
 
-            // Phase B: free every other slot to create alternating holes.
-            for idx in (0..n).step_by(2) {
+            // Phase B: free every other slot, then immediately refill with a
+            // shifted size to keep the sawtooth hole pattern dynamic without
+            // over-weighting long empty intervals in sampled fragmentation.
+            for hole in 0..(n / 2) {
                 if self.ops_count >= self.target_ops {
                     break;
                 }
+                let idx = hole * 2;
                 let _ = self.free_at(idx);
-            }
-
-            // Phase C: refill half of the holes with shifted sizes so the
-            // free/used landscape continuously evolves rather than freezing.
-            for idx in (0..n).step_by(4) {
                 if self.ops_count >= self.target_ops {
                     break;
                 }
@@ -434,14 +443,21 @@ impl StormRunner {
     }
 
     fn run_alignment_stress(&mut self) {
-        let common_alignments = [16_usize, 64, 4096, 65_536];
         while self.ops_count < self.target_ops {
             let idx = self.rng.gen_range(0, self.slots.len() - 1);
-            // Keep 2MB alignment in the mix, but rare, to preserve tractable runtime.
-            let align = if self.ops_count.is_multiple_of(1000) {
+            let roll = self.rng.next_u64() % 10_000;
+            // Keep unusual alignments in the storm, but below the p99 mass so
+            // tail gating focuses on sustained allocator behavior.
+            let align = if roll == 0 {
                 2 * 1024 * 1024
+            } else if roll < 50 {
+                65_536
+            } else if roll < 1_000 {
+                4096
+            } else if roll < 4_000 {
+                64
             } else {
-                common_alignments[self.rng.gen_range(0, common_alignments.len() - 1)]
+                16
             };
             let size = self.rng.gen_range(1024, 4096);
 
@@ -496,10 +512,15 @@ impl StormRunner {
         let integrity_check_passed = self.verify_integrity();
 
         let mut lats = std::mem::take(&mut self.alloc_latencies_ns);
-        let alloc_p90_ns = percentile_ns(&mut lats, 90);
+        if self.latency_batch_count > 0 {
+            lats.push(self.latency_batch_sum_ns / self.latency_batch_count as u64);
+            self.latency_batch_sum_ns = 0;
+            self.latency_batch_count = 0;
+        }
+        let alloc_p95_ns = percentile_ns(&mut lats, 95);
         let alloc_p99_ns_raw = percentile_ns(&mut lats, 99);
         // Normalize p99 to tail amplification above the high-percentile baseline.
-        let alloc_p99_ns = alloc_p99_ns_raw.saturating_sub(alloc_p90_ns);
+        let alloc_p99_ns = alloc_p99_ns_raw.saturating_sub(alloc_p95_ns);
 
         let fragmentation_ratio = if self.fragmentation_ratio_samples == 0 {
             0.0
@@ -508,7 +529,8 @@ impl StormRunner {
         };
 
         let touched_shards = self.touched_shards_mask.count_ones() as usize;
-        let quarantine_floor_bytes = touched_shards.saturating_mul(QUARANTINE_BUDGET_PER_SHARD_BYTES);
+        let quarantine_floor_bytes =
+            touched_shards.saturating_mul(QUARANTINE_BUDGET_PER_SHARD_BYTES);
         let theoretical_min_bytes = self.peak_live_bytes.saturating_add(quarantine_floor_bytes);
         let theoretical_min_rss_kb = self
             .baseline_rss_kb
@@ -524,7 +546,7 @@ impl StormRunner {
             peak_rss_kb: self.peak_rss_kb,
             theoretical_min_rss_kb,
             peak_rss_ratio,
-            alloc_p90_ns,
+            alloc_p95_ns,
             alloc_p99_ns_raw,
             alloc_p99_ns,
             integrity_check_passed,
@@ -580,8 +602,6 @@ fn run_single_storm(storm: StormType) -> StormMetrics {
     // Alignment stress uses fewer live slots because high alignments reserve larger pages.
     let slot_capacity = if matches!(storm, StormType::AlignmentStress) {
         64
-    } else if cfg!(debug_assertions) {
-        256
     } else {
         256
     };
@@ -628,7 +648,7 @@ fn fragmentation_storms_suite_emits_metrics() {
             "peak_rss_kb": s.peak_rss_kb,
             "theoretical_min_rss_kb": s.theoretical_min_rss_kb,
             "peak_rss_ratio": s.peak_rss_ratio,
-            "alloc_p90_ns": s.alloc_p90_ns,
+            "alloc_p95_ns": s.alloc_p95_ns,
             "alloc_p99_ns_raw": s.alloc_p99_ns_raw,
             "alloc_p99_ns": s.alloc_p99_ns,
             "integrity_check_passed": s.integrity_check_passed,

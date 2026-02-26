@@ -3,12 +3,17 @@
 //! Bootstrap provides the POSIX "C"/"POSIX" locale only. `setlocale` accepts
 //! these names and rejects all others. `localeconv` returns C-locale defaults.
 
-use std::ffi::{CStr, c_char, c_int};
+use std::ffi::{CStr, c_char, c_int, c_void};
 
 use frankenlibc_core::locale as locale_core;
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
 use crate::runtime_policy;
+
+unsafe fn set_abi_errno(val: c_int) {
+    // SAFETY: __errno_location returns a valid, thread-local pointer.
+    unsafe { *libc::__errno_location() = val };
+}
 
 /// Static C-locale name string.
 static C_LOCALE_NAME: &[u8] = b"C\0";
@@ -330,6 +335,53 @@ pub unsafe extern "C" fn freelocale(_locale: LocaleT) {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn duplocale(_locale: LocaleT) -> LocaleT {
     c_locale_handle()
+}
+
+/// POSIX `nl_langinfo_l` — locale-aware nl_langinfo.
+///
+/// C-locale only: ignores locale parameter and delegates to nl_langinfo.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn nl_langinfo_l(item: libc::nl_item, _locale: *mut c_void) -> *const c_char {
+    unsafe { nl_langinfo(item) }
+}
+
+// ===========================================================================
+// XSI message catalogs — catopen / catgets / catclose
+// ===========================================================================
+
+/// nl_catd type — opaque message catalog descriptor.
+#[allow(non_camel_case_types)]
+pub type nl_catd = isize;
+
+/// `catopen` — open a message catalog.
+///
+/// Returns (nl_catd)-1 with errno set to ENOSYS. Message catalogs are
+/// not supported, but the symbol must be present for configure scripts.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn catopen(_name: *const c_char, _oflag: c_int) -> nl_catd {
+    unsafe { set_abi_errno(libc::ENOSYS) };
+    -1
+}
+
+/// `catgets` — read a message from a catalog.
+///
+/// Returns the default string since catalogs are not supported.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn catgets(
+    _catd: nl_catd,
+    _set_id: c_int,
+    _msg_id: c_int,
+    s: *const c_char,
+) -> *const c_char {
+    // Return default string as-is
+    s
+}
+
+/// `catclose` — close a message catalog.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn catclose(_catd: nl_catd) -> c_int {
+    unsafe { set_abi_errno(libc::EBADF) };
+    -1
 }
 
 #[cfg(test)]

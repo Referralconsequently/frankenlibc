@@ -7,7 +7,12 @@
 
 #![allow(unsafe_code)]
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{CString, c_char, c_int, c_void};
+use std::os::unix::ffi::OsStrExt;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use frankenlibc_abi::errno_abi::__errno_location;
+use frankenlibc_abi::unistd_abi::{eaccess, euidaccess};
 
 // ---------------------------------------------------------------------------
 // glob64 / globfree64 tests
@@ -460,4 +465,53 @@ fn fgetgrent_reads_multiple_entries() {
     );
 
     unsafe { fclose(stream) };
+}
+
+fn errno_value() -> i32 {
+    // SAFETY: errno pointer is thread-local and valid.
+    unsafe { *__errno_location() }
+}
+
+fn unique_temp_path(tag: &str) -> CString {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before unix epoch")
+        .as_nanos();
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "frankenlibc_euidaccess_{tag}_{}_{}",
+        std::process::id(),
+        nanos
+    ));
+    CString::new(path.as_os_str().as_bytes()).expect("temp path must not contain interior NUL")
+}
+
+#[test]
+fn euidaccess_null_path_sets_efault() {
+    let rc = unsafe { euidaccess(std::ptr::null(), libc::F_OK) };
+    assert_eq!(rc, -1);
+    assert_eq!(errno_value(), libc::EFAULT);
+}
+
+#[test]
+fn euidaccess_existing_path_matches_eaccess() {
+    let path = unique_temp_path("exists");
+    let path_str = path.to_str().expect("utf8 temp path");
+    std::fs::write(path_str, b"x").expect("create temp file");
+
+    let euid_rc = unsafe { euidaccess(path.as_ptr(), libc::F_OK) };
+    let e_rc = unsafe { eaccess(path.as_ptr(), libc::F_OK) };
+
+    assert_eq!(euid_rc, 0, "euidaccess should succeed for existing path");
+    assert_eq!(e_rc, 0, "eaccess should succeed for existing path");
+
+    let _ = std::fs::remove_file(path_str);
+}
+
+#[test]
+fn euidaccess_missing_path_fails_with_enoent() {
+    let path = unique_temp_path("missing");
+    let rc = unsafe { euidaccess(path.as_ptr(), libc::F_OK) };
+    assert_eq!(rc, -1);
+    assert_eq!(errno_value(), libc::ENOENT);
 }

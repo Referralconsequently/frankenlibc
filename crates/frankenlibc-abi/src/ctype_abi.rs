@@ -22,18 +22,18 @@ use crate::runtime_policy;
 //
 // Bitmask layout matches glibc's <ctype.h> definitions.
 
-const _ISupper: u16 = 1 << 0;
-const _ISlower: u16 = 1 << 1;
-const _ISalpha: u16 = 1 << 2;
-const _ISdigit: u16 = 1 << 3;
-const _ISxdigit: u16 = 1 << 4;
-const _ISspace: u16 = 1 << 5;
-const _ISprint: u16 = 1 << 6;
-const _ISgraph: u16 = 1 << 7;
-const _ISblank: u16 = 1 << 8;
-const _IScntrl: u16 = 1 << 9;
-const _ISpunct: u16 = 1 << 10;
-const _ISalnum: u16 = 1 << 11;
+const _ISUPPER: u16 = 1 << 0;
+const _ISLOWER: u16 = 1 << 1;
+const _ISALPHA: u16 = 1 << 2;
+const _ISDIGIT: u16 = 1 << 3;
+const _ISXDIGIT: u16 = 1 << 4;
+const _ISSPACE: u16 = 1 << 5;
+const _ISPRINT: u16 = 1 << 6;
+const _ISGRAPH: u16 = 1 << 7;
+const _ISBLANK: u16 = 1 << 8;
+const _ISCNTRL: u16 = 1 << 9;
+const _ISPUNCT: u16 = 1 << 10;
+const _ISALNUM: u16 = 1 << 11;
 
 /// Build the 384-entry classification table for the C/POSIX locale.
 /// Indices 0..128 are the "negative" range (-128..-1), index 128 is char 0,
@@ -47,11 +47,11 @@ const fn build_ctype_b_table() -> [u16; 384] {
         let mut bits: u16 = 0;
         // control characters: 0-31 and 127
         if c <= 31 || c == 127 {
-            bits |= _IScntrl;
+            bits |= _ISCNTRL;
         }
         // blank: space and tab
         if c == b' ' as usize || c == b'\t' as usize {
-            bits |= _ISblank;
+            bits |= _ISBLANK;
         }
         // space characters: space, tab, newline, vertical tab, form feed, carriage return
         if c == b' ' as usize
@@ -61,36 +61,36 @@ const fn build_ctype_b_table() -> [u16; 384] {
             || c == 0x0C // form feed
             || c == b'\r' as usize
         {
-            bits |= _ISspace;
+            bits |= _ISSPACE;
         }
         // uppercase
         if c >= b'A' as usize && c <= b'Z' as usize {
-            bits |= _ISupper | _ISalpha | _ISalnum | _ISprint | _ISgraph;
+            bits |= _ISUPPER | _ISALPHA | _ISALNUM | _ISPRINT | _ISGRAPH;
         }
         // lowercase
         if c >= b'a' as usize && c <= b'z' as usize {
-            bits |= _ISlower | _ISalpha | _ISalnum | _ISprint | _ISgraph;
+            bits |= _ISLOWER | _ISALPHA | _ISALNUM | _ISPRINT | _ISGRAPH;
         }
         // digit
         if c >= b'0' as usize && c <= b'9' as usize {
-            bits |= _ISdigit | _ISalnum | _ISxdigit | _ISprint | _ISgraph;
+            bits |= _ISDIGIT | _ISALNUM | _ISXDIGIT | _ISPRINT | _ISGRAPH;
         }
         // xdigit (A-F, a-f) — digits already handled above
         if (c >= b'A' as usize && c <= b'F' as usize) || (c >= b'a' as usize && c <= b'f' as usize)
         {
-            bits |= _ISxdigit;
+            bits |= _ISXDIGIT;
         }
         // printable: 32-126
         if c >= 0x20 && c <= 0x7E {
-            bits |= _ISprint;
+            bits |= _ISPRINT;
         }
         // graph: printable minus space
         if c > 0x20 && c <= 0x7E {
-            bits |= _ISgraph;
+            bits |= _ISGRAPH;
         }
         // punct: printable, not alnum, not space
-        if c > 0x20 && c <= 0x7E && (bits & (_ISalpha | _ISdigit)) == 0 {
-            bits |= _ISpunct;
+        if c > 0x20 && c <= 0x7E && (bits & (_ISALPHA | _ISDIGIT)) == 0 {
+            bits |= _ISPUNCT;
         }
         t[idx] = bits;
         c += 1;

@@ -32,6 +32,59 @@ unsafe extern "C" {
     static mut environ: *mut *mut c_char;
 }
 
+// ===========================================================================
+// program_invocation_name / __progname — GNU program name globals
+// ===========================================================================
+//
+// These are global writable pointers that GNU C programs reference as
+// `extern char *program_invocation_name;`. We export them via AtomicPtr
+// and provide #[no_mangle] accessor stubs for the linker.
+
+use std::sync::atomic::AtomicPtr;
+
+/// Internal storage for program_invocation_name (full argv[0]).
+#[allow(non_upper_case_globals)]
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub static program_invocation_name: AtomicPtr<c_char> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Internal storage for program_invocation_short_name (basename of argv[0]).
+#[allow(non_upper_case_globals)]
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub static program_invocation_short_name: AtomicPtr<c_char> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Internal storage for __progname (alias for program_invocation_short_name).
+#[allow(non_upper_case_globals)]
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub static __progname: AtomicPtr<c_char> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Set program name globals from argv[0] during startup.
+pub(crate) fn init_program_name(argv: *mut *mut c_char) {
+    if argv.is_null() {
+        return;
+    }
+    // SAFETY: argv[0] is validated by startup_phase0_impl before this is called.
+    let argv0 = unsafe { *argv };
+    if argv0.is_null() {
+        return;
+    }
+    program_invocation_name.store(argv0, Ordering::Release);
+
+    // Find basename (last component after '/')
+    let mut base = argv0;
+    let mut p = argv0;
+    // SAFETY: scanning null-terminated C string from argv[0]
+    unsafe {
+        while *p != 0 {
+            if *p == b'/' as c_char {
+                base = p.add(1);
+            }
+            p = p.add(1);
+        }
+    }
+    program_invocation_short_name.store(base, Ordering::Release);
+    __progname.store(base, Ordering::Release);
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartupPolicyDecision {
@@ -588,6 +641,9 @@ unsafe fn startup_phase0_impl(
     path.push(StartupCheckpoint::CaptureInvariants);
     store_invariants(inv);
 
+    // Initialize program_invocation_name / __progname from argv[0].
+    init_program_name(ubp_av);
+
     if let Some(init_fn) = init {
         path.push(StartupCheckpoint::CallInitHook);
         // SAFETY: callback pointer provided by caller.
@@ -722,6 +778,62 @@ pub unsafe extern "C" fn __frankenlibc_startup_phase0(
 ) -> c_int {
     // SAFETY: dedicated fixture path invokes the same validated implementation.
     unsafe { startup_phase0_impl(main, argc, ubp_av, init, fini, rtld_fini, stack_end) }
+}
+
+// ===========================================================================
+// __cxa_thread_atexit_impl — thread-local destructor registration
+// ===========================================================================
+
+/// Thread-local at-exit destructor entry.
+#[allow(dead_code)] // fields read during thread-exit destructor invocation
+struct TlsAtExitEntry {
+    dtor: unsafe extern "C" fn(*mut c_void),
+    obj: *mut c_void,
+    // _dso_handle ignored — we don't track DSO unloading
+}
+
+// SAFETY: pointers are only accessed by the thread that registered them.
+unsafe impl Send for TlsAtExitEntry {}
+
+std::thread_local! {
+    static TLS_ATEXIT_LIST: std::cell::RefCell<Vec<TlsAtExitEntry>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
+}
+
+/// `__cxa_thread_atexit_impl` — register a thread-local destructor.
+/// Called by C++ for thread_local objects with non-trivial destructors.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __cxa_thread_atexit_impl(
+    dtor: unsafe extern "C" fn(*mut c_void),
+    obj: *mut c_void,
+    _dso_handle: *mut c_void,
+) -> c_int {
+    TLS_ATEXIT_LIST.with(|list| {
+        list.borrow_mut().push(TlsAtExitEntry { dtor, obj });
+    });
+    0
+}
+
+// ===========================================================================
+// __stack_chk_fail — stack protection
+// ===========================================================================
+
+/// `__stack_chk_fail` — called when stack canary mismatch is detected.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __stack_chk_fail() -> ! {
+    // In glibc this aborts with a diagnostic. We write to stderr and abort.
+    let msg = b"*** stack smashing detected ***: terminated\n";
+    // SAFETY: direct syscall write to stderr, no dependency on stdio.
+    let _ = unsafe {
+        libc::syscall(
+            libc::SYS_write,
+            2i32, // stderr
+            msg.as_ptr(),
+            msg.len(),
+        )
+    };
+    unsafe { libc::abort() };
 }
 
 /// Returns the last captured startup invariants from `startup_phase0_impl`.

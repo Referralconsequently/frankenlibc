@@ -2209,8 +2209,10 @@ pub unsafe extern "C" fn confstr(name: c_int, buf: *mut c_char, len: usize) -> u
 
 use std::sync::Mutex;
 
-unsafe extern "C" {
-    static program_invocation_short_name: *const c_char;
+use std::sync::atomic::Ordering as AtomicOrdering;
+
+fn get_program_short_name() -> *const c_char {
+    crate::startup_abi::program_invocation_short_name.load(AtomicOrdering::Acquire)
 }
 
 /// POSIX hash action for `hsearch`.
@@ -2520,7 +2522,7 @@ pub unsafe extern "C" fn error(status: c_int, errnum: c_int, fmt: *const c_char,
 
     // Try to get program name
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2582,7 +2584,7 @@ pub unsafe extern "C" fn error_at_line(
     let mut stderr = std::io::stderr().lock();
 
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2642,7 +2644,7 @@ pub unsafe extern "C" fn err(eval: c_int, fmt: *const c_char, mut args: ...) {
     let mut stderr = std::io::stderr().lock();
 
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2684,7 +2686,7 @@ pub unsafe extern "C" fn errx(eval: c_int, fmt: *const c_char, mut args: ...) {
     let mut stderr = std::io::stderr().lock();
 
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2717,7 +2719,7 @@ pub unsafe extern "C" fn warn(fmt: *const c_char, mut args: ...) {
     let mut stderr = std::io::stderr().lock();
 
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2758,7 +2760,7 @@ pub unsafe extern "C" fn warnx(fmt: *const c_char, mut args: ...) {
     let mut stderr = std::io::stderr().lock();
 
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2789,7 +2791,7 @@ pub unsafe extern "C" fn verr(eval: c_int, fmt: *const c_char, ap: *mut c_void) 
     use std::io::Write;
     let mut stderr = std::io::stderr().lock();
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2823,7 +2825,7 @@ pub unsafe extern "C" fn verrx(eval: c_int, fmt: *const c_char, ap: *mut c_void)
     use std::io::Write;
     let mut stderr = std::io::stderr().lock();
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2848,7 +2850,7 @@ pub unsafe extern "C" fn vwarn(fmt: *const c_char, ap: *mut c_void) {
     use std::io::Write;
     let mut stderr = std::io::stderr().lock();
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -2881,7 +2883,7 @@ pub unsafe extern "C" fn vwarnx(fmt: *const c_char, ap: *mut c_void) {
     use std::io::Write;
     let mut stderr = std::io::stderr().lock();
     let progname = unsafe {
-        let p = program_invocation_short_name;
+        let p = get_program_short_name();
         if !p.is_null() {
             CStr::from_ptr(p).to_str().unwrap_or("unknown")
         } else {
@@ -3591,5 +3593,5 @@ pub unsafe extern "C" fn __xpg_strerror_r(errnum: c_int, buf: *mut c_char, bufle
 /// `gnu_get_libc_release` — return the release of the C library.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn gnu_get_libc_release() -> *const c_char {
-    b"stable\0".as_ptr() as *const c_char
+    c"stable".as_ptr()
 }
