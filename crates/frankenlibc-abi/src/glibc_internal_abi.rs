@@ -3263,7 +3263,7 @@ pub unsafe extern "C" fn parse_printf_format(
         }
         // Skip width (may be * which consumes an int arg)
         if unsafe { *p } == b'*' {
-            if count < n as usize && !argtypes.is_null() {
+            if count < n && !argtypes.is_null() {
                 unsafe { *argtypes.add(count) = PA_INT };
             }
             count += 1;
@@ -3277,7 +3277,7 @@ pub unsafe extern "C" fn parse_printf_format(
         if unsafe { *p } == b'.' {
             p = unsafe { p.add(1) };
             if unsafe { *p } == b'*' {
-                if count < n as usize && !argtypes.is_null() {
+                if count < n && !argtypes.is_null() {
                     unsafe { *argtypes.add(count) = PA_INT };
                 }
                 count += 1;
@@ -3330,7 +3330,7 @@ pub unsafe extern "C" fn parse_printf_format(
         if unsafe { *p } != 0 {
             p = unsafe { p.add(1) };
         }
-        if count < n as usize && !argtypes.is_null() {
+        if count < n && !argtypes.is_null() {
             unsafe { *argtypes.add(count) = argtype };
         }
         count += 1;
