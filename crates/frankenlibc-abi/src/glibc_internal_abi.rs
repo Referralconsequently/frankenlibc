@@ -456,13 +456,10 @@ pub unsafe extern "C" fn __ctype32_toupper() -> *const c_int {
 }
 
 // ==========================================================================
-// __is*_l / __tow*_l double-underscore ctype locale variants (30 symbols)
+// Ctype/wchar locale variants — non-duplicate natives only
+// (16 __is*_l + 14 isw*_l + 3 __tow*_l + 14 isw*_l + towctrans_l + wctrans_l
+//  now exported from ctype_abi.rs / wchar_abi.rs — dlsym_passthrough removed)
 // ==========================================================================
-dlsym_passthrough!(fn __isalnum_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isalpha_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isascii_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isblank_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iscntrl_l(c: c_int, loc: *mut c_void) -> c_int);
 // __isctype: native — lookup ctype_b table
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __isctype(c: c_int, mask: c_int) -> c_int {
@@ -473,23 +470,8 @@ pub unsafe extern "C" fn __isctype(c: c_int, mask: c_int) -> c_int {
     let val = unsafe { *table.offset(c as isize) } as c_int;
     val & mask
 }
-dlsym_passthrough!(fn __isdigit_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isgraph_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __islower_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isprint_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __ispunct_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isspace_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isupper_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __isxdigit_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __toascii_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __tolower_l(c: c_int, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __toupper_l(c: c_int, loc: *mut c_void) -> c_int);
 
 // Wide-char locale variants
-dlsym_passthrough!(fn __iswalnum_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswalpha_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswblank_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswcntrl_l(wc: WcharT, loc: *mut c_void) -> c_int);
 // __iswctype: forward to wchar_abi::iswctype
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __iswctype(wc: WcharT, desc: c_ulong) -> c_int {
@@ -501,22 +483,11 @@ pub unsafe extern "C" fn __iswctype_l(wc: WcharT, desc: c_ulong, loc: *mut c_voi
     let _ = loc;
     unsafe { __iswctype(wc, desc) }
 }
-dlsym_passthrough!(fn __iswdigit_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswgraph_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswlower_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswprint_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswpunct_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswspace_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswupper_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __iswxdigit_l(wc: WcharT, loc: *mut c_void) -> c_int);
 // __towctrans: native — forward to our towctrans
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __towctrans(wc: WcharT, desc: c_ulong) -> WcharT {
     unsafe { super::unistd_abi::towctrans(wc as c_uint, desc) as WcharT }
 }
-dlsym_passthrough!(fn __towctrans_l(wc: WcharT, desc: c_ulong, loc: *mut c_void) -> WcharT);
-dlsym_passthrough!(fn __towlower_l(wc: WcharT, loc: *mut c_void) -> WcharT);
-dlsym_passthrough!(fn __towupper_l(wc: WcharT, loc: *mut c_void) -> WcharT);
 // __wctrans_l: native — forward to our wctrans_l
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __wctrans_l(name: *const c_char, loc: *mut c_void) -> c_ulong {
@@ -529,20 +500,6 @@ pub unsafe extern "C" fn __wctype_l(name: *const c_char, loc: *mut c_void) -> c_
 }
 
 // Public wchar locale variants (missing from matrix)
-dlsym_passthrough!(fn iswalnum_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswalpha_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswblank_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswcntrl_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswdigit_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswgraph_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswlower_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswprint_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswpunct_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswspace_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswupper_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn iswxdigit_l(wc: WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn towctrans_l(wc: WcharT, desc: c_ulong, loc: *mut c_void) -> WcharT);
-dlsym_passthrough!(fn wctrans_l(name: *const c_char, loc: *mut c_void) -> c_ulong);
 // wcscasecmp_l/wcsncasecmp_l: locale-ignored — forward to wchar_abi
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn wcscasecmp_l(
@@ -612,8 +569,7 @@ pub unsafe extern "C" fn __strxfrm_l(dest: *mut c_char, src: *const c_char, n: S
 pub unsafe extern "C" fn __strftime_l(s: *mut c_char, max: SizeT, fmt: *const c_char, tm: *const c_void, loc: *mut c_void) -> SizeT {
     super::unistd_abi::strftime_l(s, max, fmt, tm.cast(), loc)
 }
-// __strfmon_l → strfmon_l (locale-aware monetary formatting)
-dlsym_passthrough!(fn __strfmon_l(s: *mut c_char, maxsize: SizeT, loc: *mut c_void, fmt: *const c_char) -> SSizeT);
+// __strfmon_l: now exported from string_abi.rs — dlsym_passthrough removed
 // __stpcpy → stpcpy
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
@@ -634,8 +590,7 @@ pub unsafe extern "C" fn __strdup(s: *const c_char) -> *mut c_char {
 pub unsafe extern "C" fn __strndup(s: *const c_char, n: SizeT) -> *mut c_char {
     super::string_abi::strndup(s, n)
 }
-// __strerror_r: GNU variant returns *mut c_char (pointer to message)
-dlsym_passthrough!(fn __strerror_r(errnum: c_int, buf: *mut c_char, buflen: SizeT) -> *mut c_char);
+// __strerror_r: now exported from string_abi.rs — dlsym_passthrough removed
 // __strtok_r → strtok_r
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __strtok_r(s: *mut c_char, delim: *const c_char, saveptr: *mut *mut c_char) -> *mut c_char {
@@ -689,63 +644,17 @@ pub unsafe extern "C" fn __ffs(i: c_int) -> c_int {
     super::stdlib_abi::ffs(i)
 }
 
-// __strsep variants (4 symbols)
-dlsym_passthrough!(fn __strsep_1c(sp: *mut *mut c_char, reject: c_char) -> *mut c_char);
-dlsym_passthrough!(fn __strsep_2c(sp: *mut *mut c_char, r1: c_char, r2: c_char) -> *mut c_char);
-dlsym_passthrough!(fn __strsep_3c(sp: *mut *mut c_char, r1: c_char, r2: c_char, r3: c_char) -> *mut c_char);
-dlsym_passthrough!(fn __strsep_g(sp: *mut *mut c_char, delim: *const c_char) -> *mut c_char);
-
-// __strpbrk / __strspn / __strcspn optimized variants (6 symbols)
-dlsym_passthrough!(fn __strpbrk_c2(s: *const c_char, a1: c_int, a2: c_int) -> *mut c_char);
-dlsym_passthrough!(fn __strpbrk_c3(s: *const c_char, a1: c_int, a2: c_int, a3: c_int) -> *mut c_char);
-dlsym_passthrough!(fn __strspn_c1(s: *const c_char, a1: c_int) -> SizeT);
-dlsym_passthrough!(fn __strspn_c2(s: *const c_char, a1: c_int, a2: c_int) -> SizeT);
-dlsym_passthrough!(fn __strspn_c3(s: *const c_char, a1: c_int, a2: c_int, a3: c_int) -> SizeT);
-dlsym_passthrough!(fn __strcspn_c1(s: *const c_char, a1: c_int) -> SizeT);
-dlsym_passthrough!(fn __strcspn_c2(s: *const c_char, a1: c_int, a2: c_int) -> SizeT);
-dlsym_passthrough!(fn __strcspn_c3(s: *const c_char, a1: c_int, a2: c_int, a3: c_int) -> SizeT);
-
-// Wide string locale variants
-dlsym_passthrough!(fn __wcscasecmp_l(s1: *const WcharT, s2: *const WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __wcscoll_l(s1: *const WcharT, s2: *const WcharT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __wcsncasecmp_l(s1: *const WcharT, s2: *const WcharT, n: SizeT, loc: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __wcsxfrm_l(dest: *mut WcharT, src: *const WcharT, n: SizeT, loc: *mut c_void) -> SizeT);
-dlsym_passthrough!(fn __wcsftime_l(s: *mut WcharT, max: SizeT, fmt: *const WcharT, tm: *const c_void, loc: *mut c_void) -> SizeT);
+// __strsep_*c / __strpbrk_*c / __strspn_*c / __strcspn_*c: now exported from string_abi.rs
+// __wcscasecmp_l / __wcscoll_l / __wcsncasecmp_l / __wcsxfrm_l / __wcsftime_l: now from wchar_abi.rs
+// __strtod/f/ld/l/ll/ul/ull _internal/_l: now exported from string_abi.rs
+// __wcstod/f/ld/l/ll/ul/ull _internal/_l: now exported from wchar_abi.rs
 
 // ==========================================================================
-// __strtod_*/strtof* internal parse variants (14 symbols)
+// f128 internal parse variants (must stay GCT — no f128 in Rust)
 // ==========================================================================
-dlsym_passthrough!(fn __strtod_internal(nptr: *const c_char, endptr: *mut *mut c_char, group: c_int) -> f64);
-dlsym_passthrough!(fn __strtod_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn __strtof_internal(nptr: *const c_char, endptr: *mut *mut c_char, group: c_int) -> f32);
-dlsym_passthrough!(fn __strtof_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f32);
-dlsym_passthrough!(fn __strtold_internal(nptr: *const c_char, endptr: *mut *mut c_char, group: c_int) -> f64);
-dlsym_passthrough!(fn __strtold_l(nptr: *const c_char, endptr: *mut *mut c_char, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn __strtol_internal(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, group: c_int) -> c_long);
-dlsym_passthrough!(fn __strtol_l(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, loc: *mut c_void) -> c_long);
-dlsym_passthrough!(fn __strtoll_internal(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, group: c_int) -> i64);
-dlsym_passthrough!(fn __strtoll_l(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, loc: *mut c_void) -> i64);
-dlsym_passthrough!(fn __strtoul_internal(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, group: c_int) -> c_ulong);
-dlsym_passthrough!(fn __strtoul_l(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, loc: *mut c_void) -> c_ulong);
-dlsym_passthrough!(fn __strtoull_internal(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, group: c_int) -> u64);
-dlsym_passthrough!(fn __strtoull_l(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int, loc: *mut c_void) -> u64);
 dlsym_passthrough!(fn __strtof128_internal(nptr: *const c_char, endptr: *mut *mut c_char, group: c_int) -> f64);
 
 // Wide string to number internal variants
-dlsym_passthrough!(fn __wcstod_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, group: c_int) -> f64);
-dlsym_passthrough!(fn __wcstod_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn __wcstof_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, group: c_int) -> f32);
-dlsym_passthrough!(fn __wcstof_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f32);
-dlsym_passthrough!(fn __wcstold_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, group: c_int) -> f64);
-dlsym_passthrough!(fn __wcstold_l(nptr: *const WcharT, endptr: *mut *mut WcharT, loc: *mut c_void) -> f64);
-dlsym_passthrough!(fn __wcstol_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, group: c_int) -> c_long);
-dlsym_passthrough!(fn __wcstol_l(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, loc: *mut c_void) -> c_long);
-dlsym_passthrough!(fn __wcstoll_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, group: c_int) -> i64);
-dlsym_passthrough!(fn __wcstoll_l(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, loc: *mut c_void) -> i64);
-dlsym_passthrough!(fn __wcstoul_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, group: c_int) -> c_ulong);
-dlsym_passthrough!(fn __wcstoul_l(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, loc: *mut c_void) -> c_ulong);
-dlsym_passthrough!(fn __wcstoull_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, group: c_int) -> u64);
-dlsym_passthrough!(fn __wcstoull_l(nptr: *const WcharT, endptr: *mut *mut WcharT, base: c_int, loc: *mut c_void) -> u64);
 dlsym_passthrough!(fn __wcstof128_internal(nptr: *const WcharT, endptr: *mut *mut WcharT, group: c_int) -> f64);
 
 // ==========================================================================
@@ -1396,9 +1305,6 @@ pub unsafe extern "C" fn __arch_prctl(code: c_int, addr: c_ulong) -> c_int {
     unsafe { libc::syscall(libc::SYS_arch_prctl, code as c_long, addr as c_long) as c_int }
 }
 dlsym_passthrough!(fn __asprintf(strp: *mut *mut c_char, fmt: *const c_char) -> c_int);
-dlsym_passthrough!(fn __assert(assertion: *const c_char, file: *const c_char, line: c_int));
-dlsym_passthrough!(fn __assert_fail(assertion: *const c_char, file: *const c_char, line: c_uint, function: *const c_char));
-dlsym_passthrough!(fn __assert_perror_fail(errnum: c_int, file: *const c_char, line: c_uint, function: *const c_char));
 // __backtrace: native — forward to our backtrace
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __backtrace(buffer: *mut *mut c_void, size: c_int) -> c_int {
@@ -1449,7 +1355,6 @@ pub unsafe extern "C" fn __cmsg_nxthdr(mhdr: *mut c_void, cmsg: *mut c_void) -> 
 pub unsafe extern "C" fn __connect(sockfd: c_int, addr: *const c_void, addrlen: c_uint) -> c_int {
     unsafe { libc::syscall(libc::SYS_connect, sockfd, addr, addrlen) as c_int }
 }
-dlsym_passthrough!(fn __cxa_at_quick_exit(func: *mut c_void, dso_handle: *mut c_void) -> c_int);
 // __cyg_profile_func_enter/exit: GCC -finstrument-functions hooks — no-op
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __cyg_profile_func_enter(this_fn: *mut c_void, call_site: *mut c_void) {
@@ -1583,7 +1488,6 @@ pub unsafe extern "C" fn __getpid() -> c_int {
 pub unsafe extern "C" fn __gettimeofday(tv: *mut c_void, tz: *mut c_void) -> c_int {
     unsafe { libc::syscall(libc::SYS_gettimeofday, tv, tz) as c_int }
 }
-dlsym_passthrough!(fn __gmtime_r(timep: *const c_long, result: *mut c_void) -> *mut c_void);
 dlsym_passthrough!(fn __ivaliduser(hostf: *mut c_void, raddr: c_uint, luser: *const c_char, ruser: *const c_char) -> c_int);
 // __lseek: native syscall
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -3830,7 +3734,6 @@ pub static mut _obstack: *mut c_void = std::ptr::null_mut();
 // ==========================================================================
 
 // __stpcpy_small: optimized small-string stpcpy
-dlsym_passthrough!(fn __stpcpy_small(dest: *mut c_char, src: c_ulong, src2: c_ulong, src3: c_ulong, src4: c_ulong) -> *mut c_char);
 
 // printf_size / printf_size_info: custom printf formatter for human-readable sizes
 dlsym_passthrough!(fn printf_size(fp: *mut c_void, info: *const c_void, args: *const *const c_void) -> c_int);
