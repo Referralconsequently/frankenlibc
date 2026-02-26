@@ -47,6 +47,7 @@ pub mod errno_abi;
 pub mod locale_abi;
 pub mod math_abi;
 pub mod startup_helpers;
+pub mod stdbit_abi;
 
 // Phase 2+ ABI modules — call libc syscalls, gated to prevent symbol recursion in tests
 #[cfg(not(test))]
@@ -60,11 +61,15 @@ pub mod err_abi;
 #[cfg(not(test))]
 pub mod fenv_abi;
 #[cfg(not(test))]
+pub mod fortify_abi;
+#[cfg(not(test))]
 pub mod grp_abi;
 #[cfg(not(test))]
 pub mod iconv_abi;
 #[cfg(not(test))]
 pub mod inet_abi;
+#[cfg(not(test))]
+pub mod isoc_abi;
 #[cfg(not(test))]
 pub mod io_abi;
 #[cfg(not(test))]
@@ -98,5 +103,13 @@ pub mod termios_abi;
 pub mod time_abi;
 #[cfg(not(test))]
 pub mod unistd_abi;
+
+// Massive glibc internal symbol coverage
+#[cfg(not(test))]
+pub mod glibc_internal_abi;
+#[cfg(not(test))]
+pub mod io_internal_abi;
+#[cfg(not(test))]
+pub mod rpc_abi;
 
 pub mod util;
