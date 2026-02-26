@@ -18805,7 +18805,7 @@
     },
     {
       "symbol": "getpw",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {

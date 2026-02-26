@@ -3010,7 +3010,7 @@ pub unsafe extern "C" fn putgrent(grp: *const c_void, fp: *mut c_void) -> c_int 
         }
     }
     // Format: name:passwd:gid:member1,member2,...
-    let member_str: Vec<u8> = members.join(b",");
+    let member_str: Vec<u8> = members.join(&b","[..]);
     let line = unsafe {
         format!(
             "{}:{}:{}:{}\n",
