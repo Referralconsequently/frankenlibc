@@ -108,3 +108,4 @@ baseline_decisions
 .rch-deploy-root/
 rch-bin/
 rch-install/
+.env
