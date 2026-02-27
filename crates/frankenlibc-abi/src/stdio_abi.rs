@@ -213,6 +213,12 @@ pub static mut stdout: *mut c_void = STDOUT_SENTINEL as *mut c_void;
 #[allow(non_upper_case_globals)]
 pub static mut stderr: *mut c_void = STDERR_SENTINEL as *mut c_void;
 
+/// Internal stream id for stdin-backed scanf helpers.
+#[inline]
+pub(crate) const fn stdin_stream_id() -> usize {
+    STDIN_SENTINEL
+}
+
 // ---------------------------------------------------------------------------
 // fopen / fclose
 // ---------------------------------------------------------------------------
