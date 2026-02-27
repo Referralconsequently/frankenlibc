@@ -1333,7 +1333,15 @@ fn res_nquery_null_statp_returns_error() {
 #[test]
 fn res_nquerydomain_null_returns_error() {
     let r = unsafe {
-        res_nquerydomain(ptr::null_mut(), ptr::null(), ptr::null(), 1, 1, ptr::null_mut(), 0)
+        res_nquerydomain(
+            ptr::null_mut(),
+            ptr::null(),
+            ptr::null(),
+            1,
+            1,
+            ptr::null_mut(),
+            0,
+        )
     };
     assert!(r <= 0);
 }

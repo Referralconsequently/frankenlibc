@@ -579,8 +579,9 @@ fn ensure_minimal_panic_hook() {
             let _ = unsafe { syscall::sys_write(libc::STDERR_FILENO, MSG.as_ptr(), MSG.len()) };
             if seen == 0 {
                 const PREFIX: &[u8] = b"frankenlibc: panic location: ";
-                let _ =
-                    unsafe { syscall::sys_write(libc::STDERR_FILENO, PREFIX.as_ptr(), PREFIX.len()) };
+                let _ = unsafe {
+                    syscall::sys_write(libc::STDERR_FILENO, PREFIX.as_ptr(), PREFIX.len())
+                };
                 if let Some(location) = info.location() {
                     let _ = unsafe {
                         syscall::sys_write(
@@ -592,39 +593,40 @@ fn ensure_minimal_panic_hook() {
                     let _ = unsafe { syscall::sys_write(libc::STDERR_FILENO, b":".as_ptr(), 1) };
                     write_u32_stderr(location.line());
                 } else {
-                    let _ = unsafe { syscall::sys_write(libc::STDERR_FILENO, b"unknown".as_ptr(), 7) };
+                    let _ =
+                        unsafe { syscall::sys_write(libc::STDERR_FILENO, b"unknown".as_ptr(), 7) };
                 }
                 let _ = unsafe { syscall::sys_write(libc::STDERR_FILENO, b"\n".as_ptr(), 1) };
 
                 const PAYLOAD_PREFIX: &[u8] = b"frankenlibc: panic payload: ";
-            let _ = unsafe {
-                syscall::sys_write(
-                    libc::STDERR_FILENO,
-                    PAYLOAD_PREFIX.as_ptr(),
-                    PAYLOAD_PREFIX.len(),
-                )
-            };
-            if let Some(payload) = info.payload().downcast_ref::<&str>() {
-                let payload_bytes = payload.as_bytes();
-                let payload_len = payload_bytes.len().min(512);
                 let _ = unsafe {
-                    syscall::sys_write(libc::STDERR_FILENO, payload_bytes.as_ptr(), payload_len)
+                    syscall::sys_write(
+                        libc::STDERR_FILENO,
+                        PAYLOAD_PREFIX.as_ptr(),
+                        PAYLOAD_PREFIX.len(),
+                    )
                 };
-            } else if let Some(payload) = info.payload().downcast_ref::<String>() {
-                let payload_bytes = payload.as_bytes();
-                let payload_len = payload_bytes.len().min(512);
-                let _ = unsafe {
-                    syscall::sys_write(libc::STDERR_FILENO, payload_bytes.as_ptr(), payload_len)
-                };
-            } else {
-                let _ = unsafe {
-                    syscall::sys_write(libc::STDERR_FILENO, b"<non-string>".as_ptr(), 12)
-                };
+                if let Some(payload) = info.payload().downcast_ref::<&str>() {
+                    let payload_bytes = payload.as_bytes();
+                    let payload_len = payload_bytes.len().min(512);
+                    let _ = unsafe {
+                        syscall::sys_write(libc::STDERR_FILENO, payload_bytes.as_ptr(), payload_len)
+                    };
+                } else if let Some(payload) = info.payload().downcast_ref::<String>() {
+                    let payload_bytes = payload.as_bytes();
+                    let payload_len = payload_bytes.len().min(512);
+                    let _ = unsafe {
+                        syscall::sys_write(libc::STDERR_FILENO, payload_bytes.as_ptr(), payload_len)
+                    };
+                } else {
+                    let _ = unsafe {
+                        syscall::sys_write(libc::STDERR_FILENO, b"<non-string>".as_ptr(), 12)
+                    };
+                }
+                let _ = unsafe { syscall::sys_write(libc::STDERR_FILENO, b"\n".as_ptr(), 1) };
             }
-            let _ = unsafe { syscall::sys_write(libc::STDERR_FILENO, b"\n".as_ptr(), 1) };
-        }
-        PANIC_HOOK_WRITE_STATE.store(PANIC_HOOK_WRITE_IDLE, AtomicOrdering::Release);
-    }));
+            PANIC_HOOK_WRITE_STATE.store(PANIC_HOOK_WRITE_IDLE, AtomicOrdering::Release);
+        }));
     }
 }
 
@@ -1179,8 +1181,6 @@ mod tests {
             .lock()
             .expect("env lock should not be poisoned")
     }
-
-
 
     fn reset_decision_contract_machine_for_tests() {
         let _ = DECISION_CONTRACT_MACHINE.try_with(|slot| {
