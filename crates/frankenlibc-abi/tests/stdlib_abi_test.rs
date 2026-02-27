@@ -3,24 +3,25 @@
 //! Integration tests for `<stdlib.h>` ABI entrypoints.
 
 use frankenlibc_abi::errno_abi::__errno_location;
+use frankenlibc_abi::resolv_abi::__h_errno_location;
 use frankenlibc_abi::stdlib_abi::{
-    a64l, at_quick_exit, atoll, clearenv, drand48, ecvt, erand48, fcvt, gcvt, getenv, getsubopt,
-    initstate, jrand48, l64a, lcong48, lrand48, mkostemp, mkostemps, mkstemps, mrand48, nrand48,
-    on_exit, qsort_r, random, reallocarray, seed48, setenv, setstate, srand48, srandom, strtold,
-    strtoll, strtoull,
+    a64l, at_quick_exit, atoll, clearenv, confstr, drand48, ecvt, erand48, fcvt, gcvt,
+    get_avphys_pages, get_nprocs, get_nprocs_conf, get_phys_pages, getenv, getsubopt, initstate,
+    jrand48, l64a, lcong48, lrand48, mkostemp, mkostemps, mkstemps, mrand48, nrand48, on_exit,
+    qsort_r, random, reallocarray, seed48, setenv, setstate, srand48, srandom, strtold, strtoll,
+    strtoull,
 };
 use frankenlibc_abi::unistd_abi::{
-    __h_errno_location, confstr, creat64, ctermid, ether_aton, ether_aton_r, ether_ntoa,
-    ether_ntoa_r, fpathconf, fstat64, fstatat64, ftruncate64, get_avphys_pages, get_nprocs,
-    get_nprocs_conf, get_phys_pages, getdomainname, gethostid, getlogin, getlogin_r, getopt,
-    getopt_long, getpagesize, grantpt, herror, hstrerror, lockf, lseek64, lstat64, mkdtemp,
-    mq_close, mq_getattr, mq_open, mq_receive, mq_send, mq_setattr, mq_unlink, msgctl, msgget,
-    msgrcv, msgsnd, nice, open64, pathconf, posix_fallocate, posix_madvise, posix_openpt, pread64,
-    ptsname, pwrite64, sched_get_priority_max, sched_get_priority_min, sched_getparam,
-    sched_getscheduler, sched_rr_get_interval, sched_setparam, sched_setscheduler, semctl, semget,
-    semop, setdomainname, sethostname, shm_open, shm_unlink, shmat, shmctl, shmdt, shmget,
-    sigqueue, sigtimedwait, sigwaitinfo, stat64, sysconf, timer_create, timer_delete,
-    timer_getoverrun, timer_gettime, timer_settime, truncate64, ttyname, ttyname_r, unlockpt,
+    creat64, ctermid, ether_aton, ether_aton_r, ether_ntoa, ether_ntoa_r, fpathconf, fstat64,
+    fstatat64, ftruncate64, getdomainname, gethostid, getlogin, getlogin_r, getopt, getopt_long,
+    getpagesize, grantpt, herror, hstrerror, lockf, lseek64, lstat64, mkdtemp, mq_close,
+    mq_getattr, mq_open, mq_receive, mq_send, mq_setattr, mq_unlink, msgctl, msgget, msgrcv,
+    msgsnd, nice, open64, pathconf, posix_fallocate, posix_madvise, posix_openpt, pread64, ptsname,
+    pwrite64, sched_get_priority_max, sched_get_priority_min, sched_getparam, sched_getscheduler,
+    sched_rr_get_interval, sched_setparam, sched_setscheduler, semctl, semget, semop,
+    setdomainname, sethostname, shm_open, shm_unlink, shmat, shmctl, shmdt, shmget, sigqueue,
+    sigtimedwait, sigwaitinfo, stat64, sysconf, timer_create, timer_delete, timer_getoverrun,
+    timer_gettime, timer_settime, truncate64, ttyname, ttyname_r, unlockpt,
 };
 use std::ffi::CString;
 use std::os::fd::AsRawFd;
@@ -1529,8 +1530,14 @@ fn get_phys_and_avphys_pages_match_sysinfo_projection() {
 
     // SAFETY: no pointer preconditions.
     assert_eq!(unsafe { get_phys_pages() }, expected_phys);
-    // SAFETY: no pointer preconditions.
-    assert_eq!(unsafe { get_avphys_pages() }, expected_avphys);
+    // Available pages fluctuate as the kernel allocates/frees memory between
+    // the sysinfo() call and get_avphys_pages(). Allow 5% tolerance.
+    let actual_avphys = unsafe { get_avphys_pages() };
+    let tolerance = (expected_avphys as f64 * 0.05) as libc::c_long;
+    assert!(
+        (actual_avphys - expected_avphys).abs() <= tolerance,
+        "get_avphys_pages() = {actual_avphys}, expected ~{expected_avphys} (tolerance {tolerance})"
+    );
 }
 
 #[test]

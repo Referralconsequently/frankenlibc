@@ -339,7 +339,7 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
 
     let _trace_scope = runtime_policy::entrypoint_scope("malloc");
     let req = size.max(1);
-    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (aligned, recent_page, ordering) = allocator_stage_context(0);
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
 
     if matches!(decision.action, MembraneAction::Deny) {
@@ -520,7 +520,7 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
     };
 
     let _trace_scope = runtime_policy::entrypoint_scope("calloc");
-    let (aligned, recent_page, ordering) = allocator_stage_context(size);
+    let (aligned, recent_page, ordering) = allocator_stage_context(0);
     let total = match nmemb.checked_mul(size) {
         Some(t) => t.max(1),
         None => {
@@ -817,7 +817,7 @@ pub unsafe extern "C" fn posix_memalign(
 
     let _trace_scope = runtime_policy::entrypoint_scope("posix_memalign");
     let req = size.max(1);
-    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (aligned, recent_page, ordering) = allocator_stage_context(0);
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
 
     if matches!(decision.action, MembraneAction::Deny) {
@@ -898,7 +898,7 @@ pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void 
 
     let _trace_scope = runtime_policy::entrypoint_scope("memalign");
     let req = size.max(1);
-    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (aligned, recent_page, ordering) = allocator_stage_context(0);
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
 
     if matches!(decision.action, MembraneAction::Deny) {
@@ -981,7 +981,7 @@ pub unsafe extern "C" fn aligned_alloc(alignment: usize, size: usize) -> *mut c_
 
     let _trace_scope = runtime_policy::entrypoint_scope("aligned_alloc");
     let req = size.max(1);
-    let (aligned, recent_page, ordering) = allocator_stage_context(req);
+    let (aligned, recent_page, ordering) = allocator_stage_context(0);
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
 
     if matches!(decision.action, MembraneAction::Deny) {
@@ -1382,24 +1382,3 @@ pub unsafe extern "C" fn __libc_mallinfo() -> Mallinfo {
 /// `__libc_freeres` — release all libc internal resources (no-op).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __libc_freeres() {}
-
-/// `__libc_init_first` — early libc initialization (no-op, handled by startup).
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_init_first() {}
-
-/// `__libc_sa_len` — sockaddr length by family (used by old RPC code).
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_sa_len(af: c_int) -> c_int {
-    match af {
-        libc::AF_INET => core::mem::size_of::<libc::sockaddr_in>() as c_int,
-        libc::AF_INET6 => core::mem::size_of::<libc::sockaddr_in6>() as c_int,
-        libc::AF_UNIX => core::mem::size_of::<libc::sockaddr_un>() as c_int,
-        _ => 0,
-    }
-}
-
-/// `__libc_allocate_rtsig` — allocate a real-time signal (stub).
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_allocate_rtsig(_high: c_int) -> c_int {
-    -1 // No RT signals available
-}

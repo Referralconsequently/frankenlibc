@@ -2488,7 +2488,6 @@ pub unsafe extern "C" fn vsyslog(priority: c_int, format: *const c_char, ap: *mu
 const MKDTEMP_SUFFIX_LEN: usize = 6;
 const MKDTEMP_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 static MKDTEMP_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-const CONFSTR_PATH: &[u8] = b"/bin:/usr/bin\0";
 const CTERMID_PATH: &[u8] = b"/dev/tty\0";
 const GETLOGIN_MAX_LEN: usize = 256;
 const TTYNAME_MAX_LEN: usize = 4096;
@@ -2580,14 +2579,6 @@ unsafe fn resolve_ptsname_into(fd: c_int, dst: *mut c_char, cap: usize) -> Resul
 }
 
 #[inline]
-fn confstr_value(name: c_int) -> Option<&'static [u8]> {
-    match name {
-        libc::_CS_PATH => Some(CONFSTR_PATH),
-        _ => None,
-    }
-}
-
-#[inline]
 fn pathconf_value(name: c_int) -> Option<libc::c_long> {
     match name {
         libc::_PC_LINK_MAX => Some(127),
@@ -2662,43 +2653,6 @@ unsafe fn mkdtemp_inner(template: *mut c_char) -> (*mut c_char, bool) {
 
     unsafe { set_abi_errno(libc::EEXIST) };
     (std::ptr::null_mut(), true)
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn confstr(name: c_int, buf: *mut c_char, len: usize) -> usize {
-    let (_, decision) = runtime_policy::decide(
-        ApiFamily::IoFd,
-        buf as usize,
-        len,
-        true,
-        buf.is_null() && len > 0,
-        0,
-    );
-    if matches!(decision.action, MembraneAction::Deny) {
-        unsafe { set_abi_errno(libc::EPERM) };
-        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 8, true);
-        return 0;
-    }
-
-    let value = match confstr_value(name) {
-        Some(v) => v,
-        None => {
-            unsafe { set_abi_errno(libc::EINVAL) };
-            runtime_policy::observe(ApiFamily::IoFd, decision.profile, 8, true);
-            return 0;
-        }
-    };
-
-    if !buf.is_null() && len > 0 {
-        let copy_len = std::cmp::min(len, value.len());
-        unsafe { std::ptr::copy_nonoverlapping(value.as_ptr(), buf.cast::<u8>(), copy_len) };
-        if copy_len == len {
-            unsafe { *buf.add(len - 1) = 0 };
-        }
-    }
-
-    runtime_policy::observe(ApiFamily::IoFd, decision.profile, 8, false);
-    value.len()
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -5778,64 +5732,6 @@ std::thread_local! {
     static UTMP_TLS: std::cell::RefCell<UtmpState> = const { std::cell::RefCell::new(UtmpState::new()) };
 }
 
-#[inline]
-fn normalized_nprocs(name: c_int) -> c_int {
-    let value = unsafe { sysconf(name) };
-    if value <= 0 || value > c_int::MAX as libc::c_long {
-        1
-    } else {
-        value as c_int
-    }
-}
-
-#[inline]
-fn sysinfo_pages(free: bool) -> libc::c_long {
-    let mut info = std::mem::MaybeUninit::<libc::sysinfo>::zeroed();
-    let rc = unsafe { libc::syscall(libc::SYS_sysinfo, info.as_mut_ptr()) };
-    if rc < 0 {
-        return -1;
-    }
-    let info = unsafe { info.assume_init() };
-
-    let page_size = unsafe { sysconf(libc::_SC_PAGESIZE) };
-    if page_size <= 0 {
-        return -1;
-    }
-
-    let mem_unit = if info.mem_unit == 0 {
-        1_u128
-    } else {
-        info.mem_unit as u128
-    };
-    let ram = if free {
-        info.freeram as u128
-    } else {
-        info.totalram as u128
-    };
-    let pages = ram.saturating_mul(mem_unit) / page_size as u128;
-    pages.min(libc::c_long::MAX as u128) as libc::c_long
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn get_nprocs() -> c_int {
-    normalized_nprocs(libc::_SC_NPROCESSORS_ONLN)
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn get_nprocs_conf() -> c_int {
-    normalized_nprocs(libc::_SC_NPROCESSORS_CONF)
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn get_phys_pages() -> std::ffi::c_long {
-    sysinfo_pages(false)
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn get_avphys_pages() -> std::ffi::c_long {
-    sysinfo_pages(true)
-}
-
 /// POSIX `getutent` — read the next entry from the utmp file.
 ///
 /// Returns a pointer to a thread-local `struct utmp` buffer (384 bytes).
@@ -6873,15 +6769,9 @@ std::thread_local! {
     static H_ERRNO_TLS: std::cell::Cell<c_int> = const { std::cell::Cell::new(0) };
 }
 
-/// POSIX `__h_errno_location` — return pointer to thread-local h_errno.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __h_errno_location() -> *mut c_int {
-    H_ERRNO_TLS.with(|cell| cell.as_ptr())
-}
-
 #[inline]
 unsafe fn current_h_errno() -> c_int {
-    let ptr = unsafe { __h_errno_location() };
+    let ptr = unsafe { crate::resolv_abi::__h_errno_location() };
     unsafe { *ptr }
 }
 
@@ -10492,19 +10382,6 @@ pub unsafe extern "C" fn __cxa_finalize(dso_handle: *mut c_void) {
 #[allow(non_upper_case_globals)]
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub static __stack_chk_guard: c_ulong = 0x00000aff0a0d0000;
-
-/// `__stack_chk_fail` — stack smashing detected, abort.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __stack_chk_fail() -> ! {
-    const MSG: &[u8] = b"*** stack smashing detected ***: terminated\n";
-    unsafe {
-        libc::syscall(libc::SYS_write, 2i32, MSG.as_ptr(), MSG.len());
-        libc::syscall(libc::SYS_exit_group, 134i32);
-    };
-    // Unreachable but required for -> !
-    unsafe { std::hint::unreachable_unchecked() }
-}
-
 // ===========================================================================
 // Batch: Network database iterators — Implemented (parse /etc/ files)
 // ===========================================================================
@@ -10610,60 +10487,8 @@ pub unsafe extern "C" fn gethostent() -> *mut c_void {
 // Batch: wctype functions — Implemented
 // ===========================================================================
 
-/// Wide-character type descriptor (opaque handle).
-type WctypeT = c_ulong;
 /// Wide-character transformation descriptor (opaque handle).
 type WctransT = c_ulong;
-
-/// `wctype` — get wide-char classification descriptor.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn wctype(property: *const c_char) -> WctypeT {
-    if property.is_null() {
-        return 0;
-    }
-    let s = unsafe { CStr::from_ptr(property) };
-    match s.to_bytes() {
-        b"alnum" => 1,
-        b"alpha" => 2,
-        b"blank" => 3,
-        b"cntrl" => 4,
-        b"digit" => 5,
-        b"graph" => 6,
-        b"lower" => 7,
-        b"print" => 8,
-        b"punct" => 9,
-        b"space" => 10,
-        b"upper" => 11,
-        b"xdigit" => 12,
-        _ => 0,
-    }
-}
-
-/// `iswctype` — classify wide character by type descriptor.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn iswctype(wc: c_uint, desc: WctypeT) -> c_int {
-    if wc > 127 {
-        return 0; // Only ASCII in C locale
-    }
-    let c = wc as u8;
-    let result = match desc {
-        1 => c.is_ascii_alphanumeric(),
-        2 => c.is_ascii_alphabetic(),
-        3 => c == b' ' || c == b'\t',
-        4 => c.is_ascii_control(),
-        5 => c.is_ascii_digit(),
-        6 => c.is_ascii_graphic(),
-        7 => c.is_ascii_lowercase(),
-        8 => c.is_ascii_graphic() || c == b' ',
-        9 => c.is_ascii_punctuation(),
-        10 => c.is_ascii_whitespace(),
-        11 => c.is_ascii_uppercase(),
-        12 => c.is_ascii_hexdigit(),
-        _ => false,
-    };
-    c_int::from(result)
-}
-
 /// `wctrans` — get wide-char transformation descriptor.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn wctrans(property: *const c_char) -> WctransT {
@@ -10918,21 +10743,6 @@ pub unsafe extern "C" fn bind_textdomain_codeset(
 // ===========================================================================
 // Batch: if_nameindex / if_freenameindex — Implemented
 // ===========================================================================
-
-/// `if_nameindex` — return array of network interface name/index pairs.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn if_nameindex() -> *mut libc::if_nameindex {
-    unsafe { libc::if_nameindex() }
-}
-
-/// `if_freenameindex` — free array from if_nameindex.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn if_freenameindex(ptr: *mut libc::if_nameindex) {
-    if !ptr.is_null() {
-        unsafe { libc::if_freenameindex(ptr) };
-    }
-}
-
 // ===========================================================================
 // Batch: FTS (file tree walk) — Implemented
 // ===========================================================================
@@ -11398,81 +11208,6 @@ pub unsafe extern "C" fn ftok(pathname: *const c_char, proj_id: c_int) -> i32 {
 // ---------------------------------------------------------------------------
 // Shadow password functions
 // ---------------------------------------------------------------------------
-
-/// `getspnam` — get shadow password entry by name.
-///
-/// Native implementation: delegates to pwd_abi which parses /etc/shadow.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getspnam(name: *const c_char) -> *mut libc::spwd {
-    unsafe { crate::pwd_abi::getspnam(name) as *mut libc::spwd }
-}
-
-/// `getspnam_r` — reentrant get shadow password entry by name.
-///
-/// Native implementation: delegates to pwd_abi which parses /etc/shadow.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getspnam_r(
-    name: *const c_char,
-    spbuf: *mut libc::spwd,
-    buf: *mut c_char,
-    buflen: usize,
-    spbufp: *mut *mut libc::spwd,
-) -> c_int {
-    unsafe {
-        crate::pwd_abi::getspnam_r(
-            name,
-            spbuf as *mut c_void,
-            buf,
-            buflen,
-            spbufp as *mut *mut c_void,
-        )
-    }
-}
-
-/// `getspent` — get next shadow password entry.
-///
-/// Native implementation: delegates to pwd_abi which iterates /etc/shadow.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getspent() -> *mut libc::spwd {
-    unsafe { crate::pwd_abi::getspent() as *mut libc::spwd }
-}
-
-/// `getspent_r` — reentrant get next shadow password entry.
-///
-/// Native implementation: delegates to pwd_abi which iterates /etc/shadow.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getspent_r(
-    spbuf: *mut libc::spwd,
-    buf: *mut c_char,
-    buflen: usize,
-    spbufp: *mut *mut libc::spwd,
-) -> c_int {
-    unsafe {
-        crate::pwd_abi::getspent_r(
-            spbuf as *mut c_void,
-            buf,
-            buflen,
-            spbufp as *mut *mut c_void,
-        )
-    }
-}
-
-/// `setspent` — rewind shadow password database.
-///
-/// Native implementation: delegates to pwd_abi.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn setspent() {
-    crate::pwd_abi::setspent();
-}
-
-/// `endspent` — close shadow password database.
-///
-/// Native implementation: delegates to pwd_abi.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn endspent() {
-    crate::pwd_abi::endspent();
-}
-
 /// `putspent` — write shadow password entry to stream.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn putspent(sp: *const libc::spwd, stream: *mut libc::FILE) -> c_int {
@@ -11550,78 +11285,6 @@ pub unsafe extern "C" fn muntrace() {}
 // ---------------------------------------------------------------------------
 // Error reporting (GNU extensions)
 // ---------------------------------------------------------------------------
-
-/// GNU `error` — print error message and optionally exit.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn error(status: c_int, errnum: c_int, format: *const c_char, _: ...) {
-    // Simplified: print to stderr with program name.
-    if !format.is_null() {
-        let fmt = unsafe { std::ffi::CStr::from_ptr(format) };
-        if let Ok(s) = fmt.to_str() {
-            if errnum != 0 {
-                let err_desc = unsafe { libc::strerror(errnum) };
-                if !err_desc.is_null() {
-                    let ed = unsafe { std::ffi::CStr::from_ptr(err_desc) };
-                    if let Ok(e) = ed.to_str() {
-                        eprintln!("{s}: {e}");
-                    } else {
-                        eprintln!("{s}");
-                    }
-                } else {
-                    eprintln!("{s}");
-                }
-            } else {
-                eprintln!("{s}");
-            }
-        }
-    }
-    if status != 0 {
-        std::process::exit(status);
-    }
-}
-
-/// GNU `error_at_line` — print error message with file/line and optionally exit.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn error_at_line(
-    status: c_int,
-    errnum: c_int,
-    filename: *const c_char,
-    linenum: u32,
-    format: *const c_char,
-    _: ...
-) {
-    let file = if !filename.is_null() {
-        unsafe { std::ffi::CStr::from_ptr(filename) }
-            .to_str()
-            .unwrap_or("<unknown>")
-    } else {
-        "<unknown>"
-    };
-    if !format.is_null() {
-        let fmt = unsafe { std::ffi::CStr::from_ptr(format) };
-        if let Ok(s) = fmt.to_str() {
-            if errnum != 0 {
-                let err_desc = unsafe { libc::strerror(errnum) };
-                if !err_desc.is_null() {
-                    let ed = unsafe { std::ffi::CStr::from_ptr(err_desc) };
-                    if let Ok(e) = ed.to_str() {
-                        eprintln!("{file}:{linenum}: {s}: {e}");
-                    } else {
-                        eprintln!("{file}:{linenum}: {s}");
-                    }
-                } else {
-                    eprintln!("{file}:{linenum}: {s}");
-                }
-            } else {
-                eprintln!("{file}:{linenum}: {s}");
-            }
-        }
-    }
-    if status != 0 {
-        std::process::exit(status);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // fmtmsg — classified message display
 // ---------------------------------------------------------------------------
@@ -11839,23 +11502,6 @@ pub unsafe extern "C" fn utmpxname(file: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 // Stdio LFS64 aliases (map to existing implementations)
 // ---------------------------------------------------------------------------
-
-/// `fwrite_unlocked` — unlocked fwrite (fast path, no locking).
-/// Delegates to standard fwrite (our implementation doesn't differentiate locking).
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn fwrite_unlocked(
-    ptr: *const c_void,
-    size: usize,
-    nmemb: usize,
-    stream: *mut libc::FILE,
-) -> usize {
-    if ptr.is_null() || stream.is_null() {
-        return 0;
-    }
-    // Delegate to regular fwrite — our stdio doesn't differentiate locked/unlocked.
-    unsafe { libc::fwrite(ptr, size, nmemb, stream) }
-}
-
 // ---------------------------------------------------------------------------
 // syscall() — generic syscall wrapper
 // ---------------------------------------------------------------------------
@@ -13251,66 +12897,6 @@ pub unsafe extern "C" fn fts64_set(ftsp: *mut c_void, f_entry: *mut c_void, inst
 // ===========================================================================
 // Catgets (message catalog)
 // ===========================================================================
-
-/// `catopen` — open message catalog. nl_catd is a `*mut c_void` on glibc.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn catopen(name: *const c_char, flag: c_int) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"catopen".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(name, flag) },
-        None => -1isize as *mut c_void, // CATD_ERR = (nl_catd)-1
-    }
-}
-
-/// `catgets` — read message from catalog.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn catgets(
-    catalog: *mut c_void,
-    set_id: c_int,
-    msg_id: c_int,
-    s: *const c_char,
-) -> *mut c_char {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int, c_int, *const c_char) -> *mut c_char;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"catgets".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(catalog, set_id, msg_id, s) },
-        None => s as *mut c_char,
-    }
-}
-
-/// `catclose` — close message catalog.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn catclose(catalog: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"catclose".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(catalog) },
-        None => -1,
-    }
-}
-
 // ===========================================================================
 // Argp (argument parsing framework) — delegate to glibc
 // ===========================================================================
@@ -13516,101 +13102,6 @@ pub unsafe extern "C" fn obstack_vprintf(
 // ===========================================================================
 // C11 Unicode (uchar.h)
 // ===========================================================================
-
-/// `c16rtomb` — convert char16_t to multibyte.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn c16rtomb(s: *mut c_char, c16: u16, ps: *mut libc::mbstate_t) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_char, u16, *mut libc::mbstate_t) -> usize;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"c16rtomb".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(s, c16, ps) },
-        None => {
-            unsafe { set_abi_errno(libc::EILSEQ) };
-            usize::MAX
-        }
-    }
-}
-
-/// `c32rtomb` — convert char32_t to multibyte.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn c32rtomb(s: *mut c_char, c32: u32, ps: *mut libc::mbstate_t) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_char, u32, *mut libc::mbstate_t) -> usize;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"c32rtomb".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(s, c32, ps) },
-        None => {
-            unsafe { set_abi_errno(libc::EILSEQ) };
-            usize::MAX
-        }
-    }
-}
-
-/// `mbrtoc16` — convert multibyte to char16_t.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn mbrtoc16(
-    pc16: *mut u16,
-    s: *const c_char,
-    n: usize,
-    ps: *mut libc::mbstate_t,
-) -> usize {
-    type Fn = unsafe extern "C" fn(*mut u16, *const c_char, usize, *mut libc::mbstate_t) -> usize;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"mbrtoc16".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(pc16, s, n, ps) },
-        None => {
-            unsafe { set_abi_errno(libc::EILSEQ) };
-            usize::MAX
-        }
-    }
-}
-
-/// `mbrtoc32` — convert multibyte to char32_t.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn mbrtoc32(
-    pc32: *mut u32,
-    s: *const c_char,
-    n: usize,
-    ps: *mut libc::mbstate_t,
-) -> usize {
-    type Fn = unsafe extern "C" fn(*mut u32, *const c_char, usize, *mut libc::mbstate_t) -> usize;
-    static FUNC: std::sync::LazyLock<Option<Fn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"mbrtoc32".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, Fn>(sym) })
-        }
-    });
-    match *FUNC {
-        Some(f) => unsafe { f(pc32, s, n, ps) },
-        None => {
-            unsafe { set_abi_errno(libc::EILSEQ) };
-            usize::MAX
-        }
-    }
-}
-
 // ===========================================================================
 // POSIX ucontext (getcontext/setcontext/makecontext/swapcontext)
 // ===========================================================================
@@ -14344,11 +13835,7 @@ pub unsafe extern "C" fn pkey_set(pkey: c_int, rights: c_int) -> c_int {
 // _Exit / _Fork
 // ===========================================================================
 
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-#[allow(non_snake_case)]
-pub unsafe extern "C" fn _Exit(status: c_int) -> ! {
-    unsafe { libc::_exit(status) }
-}
+// _Exit is defined above as frankenlibc_exit_immediate (export_name = "_Exit")
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 #[allow(non_snake_case)]
@@ -14643,181 +14130,6 @@ pub unsafe extern "C" fn scalbf(x: f32, exp: f32) -> f32 {
 // ===========================================================================
 // glibc __* syscall / POSIX internal aliases
 // ===========================================================================
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __open(path: *const c_char, oflag: c_int, mut args: ...) -> c_int {
-    let mode: libc::mode_t = if oflag & libc::O_CREAT != 0 {
-        unsafe { args.arg() }
-    } else {
-        0
-    };
-    unsafe { libc::open(path, oflag, mode) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __open64(path: *const c_char, oflag: c_int, mut args: ...) -> c_int {
-    let mode: libc::mode_t = if oflag & libc::O_CREAT != 0 {
-        unsafe { args.arg() }
-    } else {
-        0
-    };
-    unsafe { libc::open(path, oflag | libc::O_LARGEFILE, mode) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __close(fd: c_int) -> c_int {
-    unsafe { libc::close(fd) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __read(fd: c_int, buf: *mut c_void, count: usize) -> isize {
-    unsafe { libc::read(fd, buf, count) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __write(fd: c_int, buf: *const c_void, count: usize) -> isize {
-    unsafe { libc::write(fd, buf, count) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pread64(
-    fd: c_int,
-    buf: *mut c_void,
-    count: usize,
-    offset: i64,
-) -> isize {
-    unsafe { libc::pread64(fd, buf, count, offset) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pwrite64(
-    fd: c_int,
-    buf: *const c_void,
-    count: usize,
-    offset: i64,
-) -> isize {
-    unsafe { libc::pwrite64(fd, buf, count, offset) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __dup2(oldfd: c_int, newfd: c_int) -> c_int {
-    unsafe { libc::dup2(oldfd, newfd) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pipe(pipefd: *mut c_int) -> c_int {
-    unsafe { libc::pipe(pipefd) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __fork() -> libc::pid_t {
-    unsafe { libc::fork() }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __vfork() -> libc::pid_t {
-    unsafe { libc::fork() } // vfork semantics via fork
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __wait(status: *mut c_int) -> libc::pid_t {
-    unsafe { libc::waitpid(-1, status, 0) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __waitpid(
-    pid: libc::pid_t,
-    status: *mut c_int,
-    options: c_int,
-) -> libc::pid_t {
-    unsafe { libc::waitpid(pid, status, options) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __poll(
-    fds: *mut libc::pollfd,
-    nfds: libc::nfds_t,
-    timeout: c_int,
-) -> c_int {
-    unsafe { libc::poll(fds, nfds, timeout) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __select(
-    nfds: c_int,
-    readfds: *mut libc::fd_set,
-    writefds: *mut libc::fd_set,
-    exceptfds: *mut libc::fd_set,
-    timeout: *mut libc::timeval,
-) -> c_int {
-    unsafe { libc::select(nfds, readfds, writefds, exceptfds, timeout) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __send(
-    sockfd: c_int,
-    buf: *const c_void,
-    len: usize,
-    flags: c_int,
-) -> isize {
-    unsafe { libc::send(sockfd, buf, len, flags) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __connect(
-    sockfd: c_int,
-    addr: *const libc::sockaddr,
-    addrlen: libc::socklen_t,
-) -> c_int {
-    unsafe { libc::connect(sockfd, addr, addrlen) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __fcntl(fd: c_int, cmd: c_int, mut args: ...) -> c_int {
-    let arg: c_long = unsafe { args.arg() };
-    unsafe { libc::fcntl(fd, cmd, arg) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __lseek(fd: c_int, offset: libc::off_t, whence: c_int) -> libc::off_t {
-    unsafe { libc::lseek(fd, offset, whence) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sbrk(increment: isize) -> *mut c_void {
-    unsafe { libc::sbrk(increment) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __getpid() -> libc::pid_t {
-    unsafe { libc::getpid() }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __getpgid(pid: libc::pid_t) -> libc::pid_t {
-    unsafe { libc::getpgid(pid) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __setpgid(pid: libc::pid_t, pgid: libc::pid_t) -> c_int {
-    unsafe { libc::setpgid(pid, pgid) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sysconf(name: c_int) -> c_long {
-    unsafe { libc::sysconf(name) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __getpagesize() -> c_int {
-    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as c_int }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __gettimeofday(tv: *mut libc::timeval, tz: *mut c_void) -> c_int {
-    unsafe { libc::gettimeofday(tv, tz as *mut libc::timezone) }
-}
-
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gmtime_r(
     time: *const libc::time_t,
@@ -14826,85 +14138,7 @@ pub unsafe extern "C" fn __gmtime_r(
     unsafe { libc::gmtime_r(time, result) }
 }
 
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __nanosleep(
-    req: *const libc::timespec,
-    rem: *mut libc::timespec,
-) -> c_int {
-    unsafe { libc::nanosleep(req, rem) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __secure_getenv(name: *const c_char) -> *mut c_char {
-    // In secure mode (setuid/setgid), return null. Otherwise, forward to getenv.
-    if unsafe { libc::getauxval(libc::AT_SECURE) } != 0 {
-        return core::ptr::null_mut();
-    }
-    unsafe { libc::getenv(name) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __posix_getopt(
-    argc: c_int,
-    argv: *const *mut c_char,
-    optstring: *const c_char,
-) -> c_int {
-    unsafe { libc::getopt(argc, argv, optstring) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __bzero(s: *mut c_void, n: usize) {
-    unsafe { core::ptr::write_bytes(s as *mut u8, 0, n) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __ffs(i: c_int) -> c_int {
-    if i == 0 {
-        0
-    } else {
-        i.trailing_zeros() as c_int + 1
-    }
-}
-
 // ── __sched_* aliases ───────────────────────────────────────────────────────
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_yield() -> c_int {
-    unsafe { libc::sched_yield() }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_get_priority_max(policy: c_int) -> c_int {
-    unsafe { libc::sched_get_priority_max(policy) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_get_priority_min(policy: c_int) -> c_int {
-    unsafe { libc::sched_get_priority_min(policy) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_getparam(
-    pid: libc::pid_t,
-    param: *mut libc::sched_param,
-) -> c_int {
-    unsafe { libc::sched_getparam(pid, param) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_getscheduler(pid: libc::pid_t) -> c_int {
-    unsafe { libc::sched_getscheduler(pid) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sched_setscheduler(
-    pid: libc::pid_t,
-    policy: c_int,
-    param: *const libc::sched_param,
-) -> c_int {
-    unsafe { libc::sched_setscheduler(pid, policy, param) }
-}
-
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __sched_setparam(
     pid: libc::pid_t,
@@ -14922,37 +14156,3 @@ pub unsafe extern "C" fn __sched_rr_get_interval(
 }
 
 // ── __sig* aliases ──────────────────────────────────────────────────────────
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sigaction(
-    signum: c_int,
-    act: *const libc::sigaction,
-    oldact: *mut libc::sigaction,
-) -> c_int {
-    unsafe { libc::sigaction(signum, act, oldact) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sigaddset(set: *mut libc::sigset_t, signum: c_int) -> c_int {
-    unsafe { libc::sigaddset(set, signum) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sigdelset(set: *mut libc::sigset_t, signum: c_int) -> c_int {
-    unsafe { libc::sigdelset(set, signum) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sigismember(set: *const libc::sigset_t, signum: c_int) -> c_int {
-    unsafe { libc::sigismember(set, signum) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sigpause(sig: c_int) -> c_int {
-    unsafe { sigpause(sig) }
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __sigsuspend(set: *const libc::sigset_t) -> c_int {
-    unsafe { libc::sigsuspend(set) }
-}

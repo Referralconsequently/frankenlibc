@@ -818,24 +818,6 @@ pub unsafe extern "C" fn __cxa_thread_atexit_impl(
 // ===========================================================================
 // __stack_chk_fail — stack protection
 // ===========================================================================
-
-/// `__stack_chk_fail` — called when stack canary mismatch is detected.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __stack_chk_fail() -> ! {
-    // In glibc this aborts with a diagnostic. We write to stderr and abort.
-    let msg = b"*** stack smashing detected ***: terminated\n";
-    // SAFETY: direct syscall write to stderr, no dependency on stdio.
-    let _ = unsafe {
-        libc::syscall(
-            libc::SYS_write,
-            2i32, // stderr
-            msg.as_ptr(),
-            msg.len(),
-        )
-    };
-    unsafe { libc::abort() };
-}
-
 /// Returns the last captured startup invariants from `startup_phase0_impl`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __frankenlibc_startup_snapshot(

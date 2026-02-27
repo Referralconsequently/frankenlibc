@@ -80,126 +80,6 @@ fn native_ldexp(x: f64, exp: c_int) -> f64 {
     result * f64::from_bits(((n + 1023) as u64) << 52)
 }
 
-// ==========================================================================
-// __pthread_* internal aliases (42 symbols)
-// ==========================================================================
-// __pthread_cleanup_routine: now exported from pthread_abi.rs (no-op stub)
-// __pthread_getspecific → pthread_getspecific
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_getspecific(key: c_uint) -> *mut c_void {
-    unsafe { super::pthread_abi::pthread_getspecific(key) }
-}
-// __pthread_key_create → pthread_key_create
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_key_create(key: *mut c_uint, dtor: *mut c_void) -> c_int {
-    let destructor: Option<unsafe extern "C" fn(*mut c_void)> = if dtor.is_null() {
-        None
-    } else {
-        Some(unsafe { std::mem::transmute::<*mut c_void, unsafe extern "C" fn(*mut c_void)>(dtor) })
-    };
-    unsafe { super::pthread_abi::pthread_key_create(key.cast(), destructor) }
-}
-// __pthread_mutex_destroy → pthread_mutex_destroy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutex_destroy(mutex: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutex_destroy(mutex.cast()) }
-}
-// __pthread_mutex_init → pthread_mutex_init
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutex_init(mutex: *mut c_void, attr: *const c_void) -> c_int {
-    unsafe {
-        super::pthread_abi::pthread_mutex_init(
-            mutex.cast(),
-            attr as *const libc::pthread_mutexattr_t,
-        )
-    }
-}
-// __pthread_mutex_lock → pthread_mutex_lock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutex_lock(mutex: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutex_lock(mutex.cast()) }
-}
-// __pthread_mutex_trylock → pthread_mutex_trylock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutex_trylock(mutex: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutex_trylock(mutex.cast()) }
-}
-// __pthread_mutex_unlock → pthread_mutex_unlock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutex_unlock(mutex: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutex_unlock(mutex.cast()) }
-}
-// __pthread_mutexattr_destroy → pthread_mutexattr_destroy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutexattr_destroy(attr: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutexattr_destroy(attr.cast()) }
-}
-// __pthread_mutexattr_init → pthread_mutexattr_init
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutexattr_init(attr: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutexattr_init(attr.cast()) }
-}
-// __pthread_mutexattr_settype → pthread_mutexattr_settype
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_mutexattr_settype(attr: *mut c_void, kind: c_int) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutexattr_settype(attr.cast(), kind) }
-}
-// __pthread_once → pthread_once
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_once(control: *mut c_void, init_routine: *mut c_void) -> c_int {
-    let routine: Option<unsafe extern "C" fn()> = if init_routine.is_null() {
-        None
-    } else {
-        Some(unsafe { std::mem::transmute::<*mut c_void, unsafe extern "C" fn()>(init_routine) })
-    };
-    unsafe { super::pthread_abi::pthread_once(control.cast(), routine) }
-}
-// __pthread_register_cancel/defer: now exported from pthread_abi.rs (no-op stubs)
-// __pthread_rwlock_destroy → pthread_rwlock_destroy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_destroy(rwlock: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_destroy(rwlock.cast()) }
-}
-// __pthread_rwlock_init → pthread_rwlock_init
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_init(rwlock: *mut c_void, attr: *const c_void) -> c_int {
-    unsafe {
-        super::pthread_abi::pthread_rwlock_init(
-            rwlock.cast(),
-            attr as *const libc::pthread_rwlockattr_t,
-        )
-    }
-}
-// __pthread_rwlock_rdlock → pthread_rwlock_rdlock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_rdlock(rwlock: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_rdlock(rwlock.cast()) }
-}
-// __pthread_rwlock_tryrdlock → pthread_rwlock_tryrdlock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_tryrdlock(rwlock: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_tryrdlock(rwlock.cast()) }
-}
-// __pthread_rwlock_trywrlock → pthread_rwlock_trywrlock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_trywrlock(rwlock: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_trywrlock(rwlock.cast()) }
-}
-// __pthread_rwlock_unlock → pthread_rwlock_unlock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_unlock(rwlock: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_unlock(rwlock.cast()) }
-}
-// __pthread_rwlock_wrlock → pthread_rwlock_wrlock
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_rwlock_wrlock(rwlock: *mut c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_wrlock(rwlock.cast()) }
-}
-// __pthread_setspecific → pthread_setspecific
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __pthread_setspecific(key: c_uint, val: *const c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_setspecific(key, val) }
-}
 // __pthread_unregister_cancel/restore, __pthread_unwind_next: now in pthread_abi.rs (no-op/abort stubs)
 
 // Pthread cleanup push/pop (4 symbols)
@@ -551,12 +431,6 @@ pub unsafe extern "C" fn __isctype(c: c_int, mask: c_int) -> c_int {
 pub unsafe extern "C" fn __iswctype(wc: WcharT, desc: c_ulong) -> c_int {
     unsafe { crate::wchar_abi::iswctype(wc as u32, desc as usize) }
 }
-// __iswctype_l: locale-ignored — forward to __iswctype
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __iswctype_l(wc: WcharT, desc: c_ulong, loc: *mut c_void) -> c_int {
-    let _ = loc;
-    unsafe { __iswctype(wc, desc) }
-}
 // __towctrans: native — forward to our towctrans
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __towctrans(wc: WcharT, desc: c_ulong) -> WcharT {
@@ -593,167 +467,6 @@ pub unsafe extern "C" fn wcsncasecmp_l(
 ) -> c_int {
     let _ = loc;
     unsafe { crate::wchar_abi::wcsncasecmp(s1.cast(), s2.cast(), n) }
-}
-// strcasecmp_l → strcasecmp (C locale)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn strcasecmp_l(
-    s1: *const c_char,
-    s2: *const c_char,
-    _loc: *mut c_void,
-) -> c_int {
-    unsafe { super::string_abi::strcasecmp(s1, s2) }
-}
-// strncasecmp_l → strncasecmp (C locale)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn strncasecmp_l(
-    s1: *const c_char,
-    s2: *const c_char,
-    n: SizeT,
-    _loc: *mut c_void,
-) -> c_int {
-    unsafe { super::string_abi::strncasecmp(s1, s2, n) }
-}
-
-// ==========================================================================
-// __str*_l / __wcs*_l locale string wrappers (20 symbols)
-// ==========================================================================
-// __strcasecmp → strcasecmp
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int {
-    unsafe { super::string_abi::strcasecmp(s1, s2) }
-}
-// __strcasecmp_l → strcasecmp (C locale)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcasecmp_l(
-    s1: *const c_char,
-    s2: *const c_char,
-    _loc: *mut c_void,
-) -> c_int {
-    unsafe { super::string_abi::strcasecmp(s1, s2) }
-}
-// __strcasestr → strcasestr
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcasestr(
-    haystack: *const c_char,
-    needle: *const c_char,
-) -> *mut c_char {
-    unsafe { super::string_abi::strcasestr(haystack, needle) }
-}
-// __strcoll_l → strcoll (C locale)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcoll_l(
-    s1: *const c_char,
-    s2: *const c_char,
-    _loc: *mut c_void,
-) -> c_int {
-    unsafe { super::string_abi::strcoll(s1, s2) }
-}
-// __strncasecmp_l → strncasecmp (C locale)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strncasecmp_l(
-    s1: *const c_char,
-    s2: *const c_char,
-    n: SizeT,
-    _loc: *mut c_void,
-) -> c_int {
-    unsafe { super::string_abi::strncasecmp(s1, s2, n) }
-}
-// __strxfrm_l → strxfrm (C locale)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strxfrm_l(
-    dest: *mut c_char,
-    src: *const c_char,
-    n: SizeT,
-    _loc: *mut c_void,
-) -> SizeT {
-    unsafe { super::string_abi::strxfrm(dest, src, n) }
-}
-// __strftime_l → strftime_l
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strftime_l(
-    s: *mut c_char,
-    max: SizeT,
-    fmt: *const c_char,
-    tm: *const c_void,
-    loc: *mut c_void,
-) -> SizeT {
-    unsafe { super::unistd_abi::strftime_l(s, max, fmt, tm.cast(), loc) }
-}
-// __strfmon_l: now exported from string_abi.rs — dlsym_passthrough removed
-// __stpcpy → stpcpy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
-    unsafe { super::string_abi::stpcpy(dest, src) }
-}
-// __stpncpy → stpncpy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __stpncpy(dest: *mut c_char, src: *const c_char, n: SizeT) -> *mut c_char {
-    unsafe { super::string_abi::stpncpy(dest, src, n) }
-}
-// __strdup → strdup
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strdup(s: *const c_char) -> *mut c_char {
-    unsafe { super::string_abi::strdup(s) }
-}
-// __strndup → strndup
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strndup(s: *const c_char, n: SizeT) -> *mut c_char {
-    unsafe { super::string_abi::strndup(s, n) }
-}
-// __strerror_r: now exported from string_abi.rs — dlsym_passthrough removed
-// __strtok_r → strtok_r
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strtok_r(
-    s: *mut c_char,
-    delim: *const c_char,
-    saveptr: *mut *mut c_char,
-) -> *mut c_char {
-    unsafe { super::string_abi::strtok_r(s, delim, saveptr) }
-}
-// __strtok_r_1c: single-char delimiter strtok — wrap as delimiter string
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strtok_r_1c(
-    s: *mut c_char,
-    delim: c_char,
-    saveptr: *mut *mut c_char,
-) -> *mut c_char {
-    let delim_str = [delim as u8, 0u8];
-    unsafe { super::string_abi::strtok_r(s, delim_str.as_ptr().cast(), saveptr) }
-}
-// __strverscmp → strverscmp
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strverscmp(s1: *const c_char, s2: *const c_char) -> c_int {
-    unsafe { super::string_abi::strverscmp(s1, s2) }
-}
-// __strcpy_small: glibc inline optimization — forward as regular strcpy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcpy_small(
-    dest: *mut c_char,
-    src: c_ulong,
-    src2: c_ulong,
-) -> *mut c_char {
-    // __strcpy_small packs up to 16 bytes into two register-sized args
-    let d = dest as *mut u8;
-    unsafe {
-        std::ptr::write_unaligned(d as *mut u64, src);
-        std::ptr::write_unaligned(d.add(8) as *mut u64, src2);
-    }
-    dest
-}
-// __rawmemchr → rawmemchr
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __rawmemchr(s: *const c_void, c: c_int) -> *mut c_void {
-    unsafe { super::string_abi::rawmemchr(s, c) }
-}
-// __mempcpy → mempcpy
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __mempcpy(dest: *mut c_void, src: *const c_void, n: SizeT) -> *mut c_void {
-    unsafe { super::string_abi::mempcpy(dest, src, n) }
-}
-// __memcmpeq: like memcmp but only 0 (equal) or non-zero (different)
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __memcmpeq(s1: *const c_void, s2: *const c_void, n: SizeT) -> c_int {
-    unsafe { super::string_abi::memcmp(s1, s2, n) }
 }
 // __bzero → bzero
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -1240,7 +953,11 @@ pub unsafe extern "C" fn res_nmkquery(
     buf: *mut c_void,
     buflen: c_int,
 ) -> c_int {
-    unsafe { __res_nmkquery(statp, op, dname, class, typ, data, datalen, newrr, buf, buflen) }
+    unsafe {
+        __res_nmkquery(
+            statp, op, dname, class, typ, data, datalen, newrr, buf, buflen,
+        )
+    }
 }
 // res_nquery: stateful alias for __res_nquery
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -3909,46 +3626,6 @@ pub unsafe extern "C" fn __wmempcpy_chk(
         std::ptr::copy_nonoverlapping(src, dest, n);
     }
     unsafe { dest.add(n) }
-}
-// __read_chk: fortified read — abort if nbytes > buflen
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __read_chk(
-    fd: c_int,
-    buf: *mut c_void,
-    nbytes: SizeT,
-    buflen: SizeT,
-) -> SSizeT {
-    if nbytes > buflen {
-        unsafe { libc::abort() };
-    }
-    unsafe { super::unistd_abi::read(fd, buf, nbytes) as SSizeT }
-}
-// __readlink_chk: fortified readlink — abort if len > buflen
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __readlink_chk(
-    path: *const c_char,
-    buf: *mut c_char,
-    len: SizeT,
-    buflen: SizeT,
-) -> SSizeT {
-    if len > buflen {
-        unsafe { libc::abort() };
-    }
-    unsafe { super::unistd_abi::readlink(path, buf, len) as SSizeT }
-}
-// __readlinkat_chk: fortified readlinkat — abort if len > buflen
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __readlinkat_chk(
-    dirfd: c_int,
-    path: *const c_char,
-    buf: *mut c_char,
-    len: SizeT,
-    buflen: SizeT,
-) -> SSizeT {
-    if len > buflen {
-        unsafe { libc::abort() };
-    }
-    unsafe { super::unistd_abi::readlinkat(dirfd, path, buf, len) as SSizeT }
 }
 // __syslog_chk: fortified syslog — flag validates priority, then forwards
 // Note: This is variadic in glibc but the passthrough only captures fmt
