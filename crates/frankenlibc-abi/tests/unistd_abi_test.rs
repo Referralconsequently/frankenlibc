@@ -515,3 +515,152 @@ fn euidaccess_missing_path_fails_with_enoent() {
     assert_eq!(rc, -1);
     assert_eq!(errno_value(), libc::ENOENT);
 }
+
+// ---------------------------------------------------------------------------
+// getcontext / setcontext / makecontext / swapcontext tests
+// ---------------------------------------------------------------------------
+
+unsafe extern "C" {
+    fn getcontext(ucp: *mut libc::ucontext_t) -> c_int;
+}
+
+#[test]
+fn getcontext_returns_zero() {
+    let mut ctx: libc::ucontext_t = unsafe { std::mem::zeroed() };
+    let rc = unsafe { getcontext(&mut ctx) };
+    assert_eq!(rc, 0, "getcontext should return 0 on success");
+}
+
+#[test]
+fn getcontext_saves_stack_pointer() {
+    let mut ctx: libc::ucontext_t = unsafe { std::mem::zeroed() };
+    let rc = unsafe { getcontext(&mut ctx) };
+    assert_eq!(rc, 0);
+
+    // RSP should be saved and point somewhere in the current stack
+    let saved_rsp = ctx.uc_mcontext.gregs[libc::REG_RSP as usize];
+    assert_ne!(saved_rsp, 0, "saved RSP should not be zero");
+
+    // It should be reasonably close to our current stack frame
+    let local_var: u64 = 0;
+    let local_addr = &local_var as *const u64 as usize;
+    let diff = (saved_rsp as usize).abs_diff(local_addr);
+    // Stack frames are typically within 64KB of each other
+    assert!(
+        diff < 65536,
+        "saved RSP should be near current stack, diff={diff}"
+    );
+}
+
+#[test]
+fn getcontext_saves_instruction_pointer() {
+    let mut ctx: libc::ucontext_t = unsafe { std::mem::zeroed() };
+    let rc = unsafe { getcontext(&mut ctx) };
+    assert_eq!(rc, 0);
+
+    // RIP should be non-zero and point into code (text segment)
+    let saved_rip = ctx.uc_mcontext.gregs[libc::REG_RIP as usize];
+    assert_ne!(saved_rip, 0, "saved RIP should not be zero");
+}
+
+/// Test makecontext + swapcontext in a subprocess.
+/// Context switching is not safe in multi-threaded test harness,
+/// so we fork a child process to run the actual test.
+#[test]
+fn makecontext_swapcontext_round_trip() {
+    // Fork a subprocess to safely test context switching (avoids SIGSEGV
+    // from multi-threaded test harness conflicts with context manipulation).
+    let result = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(concat!(
+            "cat > /tmp/frankenlibc_ucontext_test.c << 'CEOF'\n",
+            "#include <ucontext.h>\n",
+            "#include <stdio.h>\n",
+            "#include <stdlib.h>\n",
+            "static ucontext_t main_ctx, func_ctx;\n",
+            "static int called = 0;\n",
+            "static void test_func(void) { called = 1; }\n",
+            "int main(void) {\n",
+            "    char stack[65536];\n",
+            "    getcontext(&func_ctx);\n",
+            "    func_ctx.uc_stack.ss_sp = stack;\n",
+            "    func_ctx.uc_stack.ss_size = sizeof(stack);\n",
+            "    func_ctx.uc_link = &main_ctx;\n",
+            "    makecontext(&func_ctx, test_func, 0);\n",
+            "    swapcontext(&main_ctx, &func_ctx);\n",
+            "    if (!called) { fprintf(stderr, \"func not called\\n\"); return 1; }\n",
+            "    printf(\"OK\\n\");\n",
+            "    return 0;\n",
+            "}\n",
+            "CEOF\n",
+            "gcc -o /tmp/frankenlibc_ucontext_test /tmp/frankenlibc_ucontext_test.c && ",
+            "/tmp/frankenlibc_ucontext_test"
+        ))
+        .output();
+
+    match result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.trim() == "OK",
+                "ucontext round-trip test failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Err(e) => {
+            // gcc not available — skip
+            eprintln!("skipping ucontext round-trip test: {e}");
+        }
+    }
+
+    // Cleanup
+    let _ = std::fs::remove_file("/tmp/frankenlibc_ucontext_test.c");
+    let _ = std::fs::remove_file("/tmp/frankenlibc_ucontext_test");
+}
+
+// ---------------------------------------------------------------------------
+// argp_parse stub test
+// ---------------------------------------------------------------------------
+// Note: glibc's argp_parse segfaults on NULL argp pointer.
+// Our native implementation returns EINVAL, but in test mode we link against
+// glibc, so we cannot test with NULL. We instead verify the ABI link exists
+// by constructing a minimal (empty) argp struct.
+
+unsafe extern "C" {
+    fn argp_parse(
+        argp: *const c_void,
+        argc: c_int,
+        argv: *mut *mut c_char,
+        flags: u32,
+        arg_index: *mut c_int,
+        input: *mut c_void,
+    ) -> c_int;
+}
+
+#[test]
+fn argp_parse_empty_args_succeeds() {
+    // Construct a minimal argp struct: all zeroes = no options, no parsers.
+    // struct argp { options, parser, args_doc, doc, children, help_filter, argp_domain }
+    let argp_struct = [0u8; 56]; // sizeof(struct argp) on x86_64
+
+    // Create a minimal argv: just a program name.
+    let prog = b"test\0";
+    let mut argv = [prog.as_ptr() as *mut c_char, std::ptr::null_mut()];
+    let mut arg_index: c_int = 0;
+
+    let rc = unsafe {
+        argp_parse(
+            argp_struct.as_ptr() as *const c_void,
+            1,
+            argv.as_mut_ptr(),
+            0,
+            &mut arg_index,
+            std::ptr::null_mut(),
+        )
+    };
+    // With empty argp and no extra arguments, glibc's argp_parse should succeed (return 0).
+    assert_eq!(
+        rc, 0,
+        "argp_parse with empty argp and no args should succeed"
+    );
+}

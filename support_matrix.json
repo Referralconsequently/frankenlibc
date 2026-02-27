@@ -17245,52 +17245,12 @@
       "source": "malloc_abi.rs"
     },
     {
-      "symbol": "__libc_calloc",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_free",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
       "symbol": "__libc_freeres",
       "status": "Implemented",
       "source": "malloc_abi.rs"
     },
     {
       "symbol": "__libc_init_first",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_mallinfo",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_malloc",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_mallopt",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_memalign",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_pvalloc",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
-    },
-    {
-      "symbol": "__libc_realloc",
       "status": "Implemented",
       "source": "malloc_abi.rs"
     },
@@ -17302,11 +17262,6 @@
     {
       "symbol": "__libc_single_threaded",
       "status": "Implemented"
-    },
-    {
-      "symbol": "__libc_valloc",
-      "status": "Implemented",
-      "source": "malloc_abi.rs"
     },
     {
       "symbol": "__lseek",
@@ -17719,22 +17674,22 @@
     },
     {
       "symbol": "__rpc_thread_createerr",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "__rpc_thread_svc_fdset",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "__rpc_thread_svc_max_pollfd",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "__rpc_thread_svc_pollfd",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18433,12 +18388,12 @@
     },
     {
       "symbol": "_rpc_dtablesize",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "_seterr_reply",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18531,7 +18486,7 @@
     },
     {
       "symbol": "bindresvport",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18541,7 +18496,7 @@
     },
     {
       "symbol": "cbc_crypt",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18591,7 +18546,7 @@
     },
     {
       "symbol": "clnt_perrno",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18606,7 +18561,7 @@
     },
     {
       "symbol": "clnt_sperrno",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18660,7 +18615,7 @@
     },
     {
       "symbol": "des_setparity",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18690,7 +18645,7 @@
     },
     {
       "symbol": "ecb_crypt",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18761,7 +18716,7 @@
     },
     {
       "symbol": "get_myaddress",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18790,7 +18745,7 @@
     },
     {
       "symbol": "getnetname",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18800,7 +18755,7 @@
     },
     {
       "symbol": "getpublickey",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18810,12 +18765,12 @@
     },
     {
       "symbol": "getrpcport",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "getsecretkey",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -18849,7 +18804,7 @@
     },
     {
       "symbol": "host2netname",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -19112,47 +19067,47 @@
     },
     {
       "symbol": "key_decryptsession",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_decryptsession_pk",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_encryptsession",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_encryptsession_pk",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_gendes",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_get_conv",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_secretkey_is_set",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_setnet",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "key_setsecret",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -19243,12 +19198,12 @@
     },
     {
       "symbol": "netname2host",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
       "symbol": "netname2user",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -19317,7 +19272,7 @@
     },
     {
       "symbol": "passwd2des",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -19614,7 +19569,7 @@
     },
     {
       "symbol": "rtime",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -20019,7 +19974,7 @@
     },
     {
       "symbol": "user2netname",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -20139,7 +20094,7 @@
     },
     {
       "symbol": "xdecrypt",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -20449,7 +20404,7 @@
     },
     {
       "symbol": "xdr_void",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -20489,7 +20444,7 @@
     },
     {
       "symbol": "xencrypt",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi"
     },
     {
@@ -20577,10 +20532,10 @@
     }
   ],
   "summary": {
-    "total_exported": 1539,
-    "implemented": 2104,
+    "total_exported": 2767,
+    "implemented": 2108,
     "raw_syscall": 384,
-    "glibc_call_through": 288,
+    "glibc_call_through": 275,
     "stub": 0
   },
   "implemented": 2117,
