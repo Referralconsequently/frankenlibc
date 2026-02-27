@@ -536,6 +536,12 @@ fn mark_kernel_broken() {
 }
 
 fn ensure_minimal_panic_hook() {
+    // In test mode the standard test harness owns the panic hook. Installing our
+    // custom hook would poison the kernel on normal assertion failures, cascading
+    // into false failures in subsequent kernel-dependent tests.
+    #[cfg(test)]
+    return;
+
     if PANIC_HOOK_STATE
         .compare_exchange(
             PANIC_HOOK_UNSET,
@@ -1173,6 +1179,8 @@ mod tests {
             .lock()
             .expect("env lock should not be poisoned")
     }
+
+
 
     fn reset_decision_contract_machine_for_tests() {
         let _ = DECISION_CONTRACT_MACHINE.try_with(|slot| {
