@@ -3205,7 +3205,13 @@ pub unsafe extern "C" fn __open(pathname: *const c_char, flags: c_int) -> c_int 
 pub unsafe extern "C" fn __open64(pathname: *const c_char, flags: c_int) -> c_int {
     unsafe { libc::syscall(libc::SYS_open, pathname, flags, 0) as c_int }
 }
-dlsym_passthrough!(fn __overflow(fp: *mut c_void, c: c_int) -> c_int);
+// __overflow: glibc stdio vtable helper — deterministic fallback stub
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __overflow(fp: *mut c_void, c: c_int) -> c_int {
+    let _ = (fp, c);
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    libc::EOF
+}
 // __pipe: native syscall
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pipe(pipefd: *mut c_int) -> c_int {
@@ -4102,11 +4108,37 @@ pub unsafe extern "C" fn __x86_get_cpuid_feature_leaf(leaf: c_uint, info: *mut c
 // __fentry__: GCC -pg function entry hook — no-op stub
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __fentry__() {}
-dlsym_passthrough!(fn __uflow(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __underflow(fp: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __woverflow(fp: *mut c_void, wc: WcharT) -> WcharT);
-dlsym_passthrough!(fn __wuflow(fp: *mut c_void) -> WcharT);
-dlsym_passthrough!(fn __wunderflow(fp: *mut c_void) -> WcharT);
+// __uflow/__underflow/__w*flow: glibc stdio vtable helpers — deterministic fallback stubs
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __uflow(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    libc::EOF
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __underflow(fp: *mut c_void) -> c_int {
+    let _ = fp;
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    libc::EOF
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __woverflow(fp: *mut c_void, wc: WcharT) -> WcharT {
+    let _ = (fp, wc);
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wuflow(fp: *mut c_void) -> WcharT {
+    let _ = fp;
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __wunderflow(fp: *mut c_void) -> WcharT {
+    let _ = fp;
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
 
 // Profiling — no-op stubs (profiling data is unused in frankenlibc)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
