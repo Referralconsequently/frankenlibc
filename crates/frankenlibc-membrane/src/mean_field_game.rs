@@ -234,8 +234,8 @@ impl MeanFieldGameController {
     /// the empirical distribution against the Nash equilibrium.
     pub fn observe(&mut self, contention_hint: u16) {
         let level = ((contention_hint as usize) * LEVELS / 65536).min(LEVELS - 1);
-        self.contention_counts[level] += 1;
-        self.window_total += 1;
+        self.contention_counts[level] = self.contention_counts[level].saturating_add(1);
+        self.window_total = self.window_total.saturating_add(1);
 
         if self.window_total < MFG_WINDOW {
             return;
@@ -257,7 +257,7 @@ impl MeanFieldGameController {
         if !self.baseline_ready {
             let n = self.baseline_windows as f64 + 1.0;
             self.baseline_mean = ((n - 1.0) * self.baseline_mean + current_mean) / n;
-            self.baseline_windows += 1;
+            self.baseline_windows = self.baseline_windows.saturating_add(1);
             self.baseline_ready = self.baseline_windows >= MFG_BASELINE_WINDOWS;
             self.state = MfgState::Calibrating;
             return;
@@ -269,10 +269,10 @@ impl MeanFieldGameController {
 
         if relative > 1.0 + CONGESTION_CRIT {
             self.state = MfgState::Collapsed;
-            self.congestion_count += 1;
+            self.congestion_count = self.congestion_count.saturating_add(1);
         } else if relative > 1.0 + CONGESTION_WARN {
             self.state = MfgState::Congested;
-            self.congestion_count += 1;
+            self.congestion_count = self.congestion_count.saturating_add(1);
         } else {
             self.state = MfgState::Equilibrium;
         }
@@ -447,5 +447,24 @@ mod tests {
         let s = ctrl.summary();
         assert!(s.equilibrium_contention > 0.0);
         assert!(s.equilibrium_contention < 1.0);
+    }
+
+    #[test]
+    fn congestion_counter_saturates_without_wrap() {
+        let mut ctrl = MeanFieldGameController::new();
+        ctrl.baseline_ready = true;
+        ctrl.baseline_windows = u64::MAX;
+        ctrl.equilibrium_mean = 1e-9;
+        ctrl.window_total = MFG_WINDOW - 1;
+        ctrl.contention_counts[LEVELS - 1] = MFG_WINDOW - 1;
+        ctrl.congestion_count = u64::MAX;
+
+        ctrl.observe(u16::MAX);
+
+        assert_eq!(ctrl.congestion_count(), u64::MAX);
+        assert!(
+            matches!(ctrl.state(), MfgState::Congested | MfgState::Collapsed),
+            "expected congested state after extreme contention"
+        );
     }
 }

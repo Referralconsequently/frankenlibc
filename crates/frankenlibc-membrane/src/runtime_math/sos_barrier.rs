@@ -81,6 +81,8 @@ const FRAGMENTATION_CHURN_BUDGET_PPM: u32 = 500_000;
 const FRAGMENTATION_SCORE_SCALE: i64 = 1_000;
 /// Fixed-point score scale for thread-safety certificate basis values.
 const THREAD_SAFETY_SCORE_SCALE: i64 = 1_000;
+/// Maximum pressure score in milli-units produced by `PressureSensor`.
+const PRESSURE_SCORE_MILLI_MAX: u64 = 100_000;
 /// Practical thread-count ceiling for normalization.
 const THREAD_SAFETY_MAX_THREADS: u32 = 1_024;
 /// Practical writer-overflow ceiling (writers above 1 touching same arena).
@@ -284,6 +286,34 @@ pub fn depth_to_arena_utilization_ppm(depth: u32) -> u32 {
     (numer / denom) as u32
 }
 
+#[inline]
+fn score_milli_to_ppm(score_milli: u64) -> u32 {
+    let clamped = score_milli.min(PRESSURE_SCORE_MILLI_MAX);
+    u32::try_from(clamped.saturating_mul(10)).unwrap_or(u32::MAX)
+}
+
+/// Compose depth-derived arena pressure with live runtime pressure telemetry.
+///
+/// The pressure sensor emits milli-scores in `[0, 100_000]` (0..100). We
+/// convert to ppm and apply a small surge projection so sudden bursts are not
+/// hidden by EWMA lag.
+#[must_use]
+pub fn compose_memory_pressure_ppm(
+    depth: u32,
+    pressure_score_milli: u64,
+    pressure_raw_score_milli: u64,
+) -> u32 {
+    let depth_ppm = depth_to_arena_utilization_ppm(depth);
+    let score_ppm = score_milli_to_ppm(pressure_score_milli);
+    let raw_ppm = score_milli_to_ppm(pressure_raw_score_milli);
+    let surge_ppm = raw_ppm.saturating_sub(score_ppm);
+    let projected_ppm = score_ppm
+        .saturating_add(surge_ppm / 2)
+        .max(raw_ppm / 2)
+        .min(1_000_000);
+    depth_ppm.max(projected_ppm)
+}
+
 /// Evaluate allocator-fragmentation barrier certificate.
 ///
 /// Inputs:
@@ -387,6 +417,8 @@ const BETA_1: i64 = 800;
 const BETA_2: i64 = 600;
 /// β₃: validation_depth × (1 - bloom_fp) reward.
 const BETA_3: i64 = 400;
+/// β₄: direct memory-pressure penalty independent of risk.
+const BETA_4: i64 = 95_000;
 
 /// Evaluate Invariant B (Pointer Provenance Admissibility).
 ///
@@ -427,7 +459,11 @@ pub fn evaluate_provenance_barrier(
     // Reward: validation_depth × (1 - bloom_fp). Full validation + good bloom → safe.
     let reward = BETA_3.saturating_mul(v).saturating_mul(one - b) / (one * one);
 
-    headroom - penalty_1 - penalty_2 + reward
+    // Direct memory pressure penalty: if arena/headroom pressure is high,
+    // force backpressure even when risk-only terms are mild.
+    let penalty_3 = BETA_4.saturating_mul(p) / one;
+
+    headroom - penalty_1 - penalty_2 - penalty_3 + reward
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,6 +1166,25 @@ mod tests {
         assert_eq!(depth_to_arena_utilization_ppm(100_000), 1_000_000);
     }
 
+    #[test]
+    fn compose_memory_pressure_prefers_runtime_signal_when_higher() {
+        let low_depth_pressure = compose_memory_pressure_ppm(128, 90_000, 100_000);
+        assert!(
+            low_depth_pressure >= 900_000,
+            "runtime pressure should dominate low depth pressure, got {low_depth_pressure}"
+        );
+    }
+
+    #[test]
+    fn compose_memory_pressure_recovers_when_runtime_signal_drops() {
+        let high = compose_memory_pressure_ppm(128, 90_000, 100_000);
+        let low = compose_memory_pressure_ppm(128, 5_000, 5_000);
+        assert!(
+            high > low,
+            "pressure composition should recover: high={high}, low={low}"
+        );
+    }
+
     // ---- Invariant B (Provenance) Tests ----
 
     #[test]
@@ -1166,6 +1221,43 @@ mod tests {
             800_000, // arena: 80%
         );
         assert!(val < 0, "Expected violation, got {val}");
+    }
+
+    #[test]
+    fn provenance_violates_extreme_memory_pressure_even_low_risk() {
+        // Direct memory-pressure penalty should force backpressure in the
+        // extreme case even when risk-only terms are mild.
+        let val = evaluate_provenance_barrier(10_000, 0, 0, 1_000_000);
+        assert!(val < 0, "Expected memory-pressure violation, got {val}");
+    }
+
+    #[test]
+    fn provenance_memory_pressure_recovers_after_backpressure() {
+        let violated = evaluate_provenance_barrier(10_000, 0, 0, 1_000_000);
+        let recovered = evaluate_provenance_barrier(10_000, 0, 0, 50_000);
+        assert!(violated < 0, "expected violated state at extreme pressure");
+        assert!(
+            recovered > 0,
+            "expected recovery once pressure drops, got {recovered}"
+        );
+    }
+
+    #[test]
+    fn provenance_nominal_trace_has_bounded_false_positives() {
+        let mut violations = 0u32;
+        for i in 0..10_000u32 {
+            let risk = 5_000 + (i % 15_000);
+            let depth = if i % 8 == 0 { 1_000_000 } else { 0 };
+            let projected = 10_000 + (i % 90_000);
+            let arena = 20_000 + (i % 120_000);
+            if evaluate_provenance_barrier(risk, depth, projected, arena) < 0 {
+                violations = violations.saturating_add(1);
+            }
+        }
+        assert!(
+            violations <= 1,
+            "nominal trace should not spuriously backpressure often; violations={violations}"
+        );
     }
 
     #[test]
@@ -1643,8 +1735,9 @@ mod tests {
         // penalty_1 = 800 * 5_000 * 1_000_000 / (1e6 * 1e6) = 800*5000/1e6 = 4
         // rp = 50_000 * 200_000 / 1_000_000 = 10_000
         // penalty_2 = 600 * 10_000 * 1_000_000 / (1e6 * 1e6) = 600*10000/1e6 = 6
+        // penalty_3 = 95_000 * 200_000 / 1_000_000 = 19_000
         // reward = 400 * 0 * 900_000 / (1e6 * 1e6) = 0
-        // total = 50_000 - 4 - 6 + 0 = 49_990
-        assert_eq!(val, 49_990, "Golden value changed: {val}");
+        // total = 50_000 - 4 - 6 - 19_000 + 0 = 30_990
+        assert_eq!(val, 30_990, "Golden value changed: {val}");
     }
 }

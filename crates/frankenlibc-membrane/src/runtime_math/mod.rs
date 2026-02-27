@@ -188,7 +188,10 @@ use self::serre_spectral::{
     InvariantClass, LayerPair, SerreSpectralController, SpectralSequenceState,
 };
 use self::sobol::SobolGenerator;
-use self::sos_barrier::{SosBarrierController, SosBarrierState, depth_to_arena_utilization_ppm};
+use self::sos_barrier::{
+    SosBarrierController, SosBarrierState, compose_memory_pressure_ppm,
+    depth_to_arena_utilization_ppm,
+};
 use self::sos_invariant::{SosInvariantController, SosState};
 use self::sparse::{SparseRecoveryController, SparseState};
 use self::spectral_gap::{SpectralGapMonitor, SpectralGapState};
@@ -908,6 +911,7 @@ pub struct RuntimeMathKernel {
     cached_overload_policy_tag: AtomicU8,
     cached_risk_bonus_ppm: AtomicU64,
     cached_oracle_bias: [AtomicU8; ApiFamily::COUNT],
+    cached_check_orderings: [AtomicU64; 16],
     cached_spectral_phase: AtomicU8,
     cached_signature_state: AtomicU8,
     cached_topological_state: AtomicU8,
@@ -1119,6 +1123,11 @@ impl RuntimeMathKernel {
             cached_overload_policy_tag: AtomicU8::new(OVERLOAD_POLICY_NONE),
             cached_risk_bonus_ppm: AtomicU64::new(0),
             cached_oracle_bias: std::array::from_fn(|_| AtomicU8::new(1)),
+            cached_check_orderings: std::array::from_fn(|_| {
+                AtomicU64::new(crate::check_oracle::pack_ordering(
+                    &crate::check_oracle::DEFAULT_ORDER,
+                ))
+            }),
             cached_spectral_phase: AtomicU8::new(0),
             cached_signature_state: AtomicU8::new(0),
             cached_topological_state: AtomicU8::new(0),
@@ -2175,13 +2184,12 @@ impl RuntimeMathKernel {
         aligned: bool,
         recent_page: bool,
     ) -> [CheckStage; 7] {
-        let ctx = CheckContext {
-            family: family as u8,
-            aligned,
-            recent_page,
-        };
-        let oracle = self.sampled_oracle.lock();
-        *oracle.get_ordering(&ctx)
+        let _ = recent_page;
+        let family_idx = (family as usize).min(7);
+        let aligned_idx = if aligned { 1 } else { 0 };
+        let ctx_idx = (family_idx * 2 + aligned_idx) % 16;
+        let packed = self.cached_check_orderings[ctx_idx].load(Ordering::Relaxed);
+        crate::check_oracle::unpack_ordering(packed)
     }
 
     /// Feed exact stage-exit outcomes for the contextual check oracle.
@@ -2207,6 +2215,13 @@ impl RuntimeMathKernel {
         let refreshed = *oracle.get_ordering(&ctx);
         let bias = oracle_bias_from_ordering(&refreshed, mode);
         self.cached_oracle_bias[usize::from(family as u8)].store(bias, Ordering::Relaxed);
+        let family_idx = (family as usize).min(7);
+        let aligned_idx = if aligned { 1 } else { 0 };
+        let ctx_idx = (family_idx * 2 + aligned_idx) % 16;
+        self.cached_check_orderings[ctx_idx].store(
+            crate::check_oracle::pack_ordering(&refreshed),
+            Ordering::Relaxed,
+        );
     }
 
     /// Feed observed runtime outcome back into online controllers.
@@ -3250,7 +3265,26 @@ impl RuntimeMathKernel {
                     };
                     let depth = current_depth() as u32;
                     let arena_utilization_ppm = depth_to_arena_utilization_ppm(depth);
-                    barrier.evaluate_provenance(risk_ppm, depth_ppm, 0, arena_utilization_ppm);
+                    let pressure_score_milli =
+                        self.cached_pressure_score_milli.load(Ordering::Relaxed);
+                    let pressure_raw_score_milli =
+                        self.cached_pressure_raw_score_milli.load(Ordering::Relaxed);
+                    let arena_pressure_ppm = compose_memory_pressure_ppm(
+                        depth,
+                        pressure_score_milli,
+                        pressure_raw_score_milli,
+                    );
+                    // Use raw pressure as a conservative proxy for projected demand.
+                    let projected_pressure_ppm = u32::try_from(pressure_raw_score_milli)
+                        .unwrap_or(u32::MAX)
+                        .saturating_mul(10)
+                        .min(1_000_000);
+                    barrier.evaluate_provenance(
+                        risk_ppm,
+                        depth_ppm,
+                        projected_pressure_ppm,
+                        arena_pressure_ppm,
+                    );
                     if matches!(family, ApiFamily::Allocator) {
                         barrier.note_allocator_observation(adverse, depth);
                     }
@@ -4034,6 +4068,14 @@ impl RuntimeMathKernel {
             let mut oracle = self.sampled_oracle.lock();
             let ordering_used = *oracle.get_ordering(&ctx);
             oracle.report_outcome(&ctx, &ordering_used, exit_stage);
+            let refreshed = *oracle.get_ordering(&ctx);
+            let family_idx = (family as usize).min(7);
+            let aligned_idx = if ctx.aligned { 1 } else { 0 };
+            let ctx_idx = (family_idx * 2 + aligned_idx) % 16;
+            self.cached_check_orderings[ctx_idx].store(
+                crate::check_oracle::pack_ordering(&refreshed),
+                Ordering::Relaxed,
+            );
         }
     }
 
@@ -4613,7 +4655,16 @@ impl RuntimeMathKernel {
         };
         oracle.report_outcome(&oracle_ctx, &ordering, exit_stage);
 
-        let bias = oracle_bias_from_ordering(&ordering, mode);
+        let refreshed = *oracle.get_ordering(&oracle_ctx);
+        let family_idx = (ctx.family as usize).min(7);
+        let aligned_idx = if oracle_ctx.aligned { 1 } else { 0 };
+        let ctx_idx = (family_idx * 2 + aligned_idx) % 16;
+        self.cached_check_orderings[ctx_idx].store(
+            crate::check_oracle::pack_ordering(&refreshed),
+            Ordering::Relaxed,
+        );
+
+        let bias = oracle_bias_from_ordering(&refreshed, mode);
         self.cached_oracle_bias[usize::from(ctx.family as u8)].store(bias, Ordering::Relaxed);
     }
 }

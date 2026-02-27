@@ -106,9 +106,12 @@ impl ConstrainedBanditRouter {
         // Utility model:
         // - latency penalty in milli-units
         // - heavy penalty for adverse outcomes
-        let latency_penalty = (estimated_cost_ns as i64).saturating_mul(8);
+        let clamped_cost_ns = estimated_cost_ns.min(i64::MAX as u64) as i64;
+        let latency_penalty = clamped_cost_ns.saturating_mul(8);
         let adverse_penalty = if adverse { 20_000 } else { 0 };
-        let utility = 100_000 - latency_penalty - adverse_penalty;
+        let utility = 100_000_i64
+            .saturating_sub(latency_penalty)
+            .saturating_sub(adverse_penalty);
         self.utility_milli[slot].fetch_add(utility, Ordering::Relaxed);
 
         // Cadenced UCB recomputation.
@@ -204,5 +207,22 @@ mod tests {
         // (default Full until cadence recompute).
         let p3 = router.select_profile(ApiFamily::Allocator, SafetyLevel::Strict, 10_000, 0);
         assert_eq!(p3, ValidationProfile::Full);
+    }
+
+    #[test]
+    fn extreme_cost_does_not_wrap_to_positive_utility() {
+        let router = ConstrainedBanditRouter::new();
+        let family = ApiFamily::Allocator;
+        let family_idx = usize::from(family as u8);
+        let fast_slot = idx(family_idx, ARM_FAST);
+
+        router.observe(family, ValidationProfile::Fast, u64::MAX, false);
+        let utility = router.utility_milli[fast_slot].load(Ordering::Relaxed);
+
+        // Extreme latency should never become a wrapped positive utility.
+        assert!(
+            utility <= 0,
+            "expected non-positive utility for extreme cost, got {utility}"
+        );
     }
 }

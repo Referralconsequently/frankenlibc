@@ -327,7 +327,7 @@ impl RoughPathMonitor {
             let alpha = 1.0 / (self.baseline_windows as f64 + 1.0);
             self.baseline.blend(&sig, alpha);
             self.baseline_norm = self.baseline.norm();
-            self.baseline_windows += 1;
+            self.baseline_windows = self.baseline_windows.saturating_add(1);
             self.baseline_ready = self.baseline_windows >= BASELINE_WINDOWS;
             self.state = SignatureState::Calibrating;
             return;
@@ -343,7 +343,7 @@ impl RoughPathMonitor {
 
         if score > ANOMALY_THRESHOLD {
             self.state = SignatureState::Anomalous;
-            self.anomaly_count += 1;
+            self.anomaly_count = self.anomaly_count.saturating_add(1);
         } else {
             self.state = SignatureState::Normal;
             // Slow adaptation during normal operation.
@@ -541,5 +541,26 @@ mod tests {
             "S³₀₁₂ = {}, expected 1.0",
             sig.level3[idx]
         );
+    }
+
+    #[test]
+    fn anomaly_counter_saturates_without_wrap() {
+        let mut monitor = RoughPathMonitor::new();
+        monitor.baseline_ready = true;
+        monitor.baseline_norm = 1e-9;
+        monitor.baseline_windows = u64::MAX;
+        monitor.anomaly_count = u64::MAX;
+        monitor.count = SIG_WINDOW;
+        monitor.write_pos = 0;
+
+        for i in 0..SIG_WINDOW {
+            let v = if i < SIG_WINDOW / 2 { 100.0 } else { -100.0 };
+            monitor.window[i] = [v, -v, v, -v];
+        }
+
+        monitor.recompute();
+
+        assert_eq!(monitor.anomaly_count(), u64::MAX);
+        assert_eq!(monitor.state(), SignatureState::Anomalous);
     }
 }

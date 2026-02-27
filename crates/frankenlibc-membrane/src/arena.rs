@@ -19,9 +19,6 @@ use crate::tls_cache::bump_tls_cache_epoch;
 /// Maximum quarantine queue size in bytes.
 const QUARANTINE_MAX_BYTES: usize = 64 * 1024 * 1024; // 64 MB
 
-/// Maximum quarantine queue entry count.
-const QUARANTINE_MAX_ENTRIES: usize = 65_536;
-
 /// Number of shards for arena locks (power of 2).
 const NUM_SHARDS: usize = 16;
 
@@ -366,7 +363,7 @@ impl AllocationArena {
         let mut drained = Vec::new();
 
         while shard.quarantine_bytes > QUARANTINE_MAX_BYTES
-            || shard.quarantine.len() > QUARANTINE_MAX_ENTRIES
+            || shard.quarantine.len() > crate::quarantine_controller::current_depth()
         {
             let Some(entry) = shard.quarantine.pop_front() else {
                 break;
@@ -560,8 +557,9 @@ mod tests {
 
         let mut shard = arena.shards[0].lock();
 
+        let max_entries = crate::quarantine_controller::current_depth();
         let mut oldest_user = 0usize;
-        for idx in 0..=QUARANTINE_MAX_ENTRIES {
+        for idx in 0..=max_entries {
             let raw = alloc_block(total_size, align);
             let user = raw + align;
             if idx == 0 {
@@ -578,7 +576,7 @@ mod tests {
 
         assert_eq!(
             shard.quarantine.len(),
-            QUARANTINE_MAX_ENTRIES + 1,
+            max_entries + 1,
             "test setup must exceed entry-count threshold by exactly one"
         );
         assert!(
@@ -595,12 +593,12 @@ mod tests {
         );
         assert_eq!(
             shard.quarantine.len(),
-            QUARANTINE_MAX_ENTRIES,
+            max_entries,
             "drain should stop once count is back at limit"
         );
         assert_eq!(
             shard.quarantine_bytes,
-            QUARANTINE_MAX_ENTRIES * total_size,
+            max_entries * total_size,
             "exactly one entry worth of bytes should be removed"
         );
 

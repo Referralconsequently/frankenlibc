@@ -230,8 +230,8 @@ impl SchrodingerBridgeController {
         if action_idx >= ACT {
             return;
         }
-        self.action_counts[action_idx] += 1;
-        self.window_total += 1;
+        self.action_counts[action_idx] = self.action_counts[action_idx].saturating_add(1);
+        self.window_total = self.window_total.saturating_add(1);
 
         if self.window_total >= BRIDGE_WINDOW as u64 {
             self.recompute();
@@ -286,7 +286,7 @@ impl SchrodingerBridgeController {
         if !self.baseline_ready {
             let alpha = 1.0 / (self.baseline_windows as f64 + 1.0);
             self.baseline_distance = (1.0 - alpha) * self.baseline_distance + alpha * distance;
-            self.baseline_windows += 1;
+            self.baseline_windows = self.baseline_windows.saturating_add(1);
             self.baseline_ready = self.baseline_windows >= BASELINE_WINDOWS;
             self.state = BridgeState::Calibrating;
             return;
@@ -300,7 +300,7 @@ impl SchrodingerBridgeController {
 
         if score > TRANSITION_THRESHOLD {
             self.state = BridgeState::Transitioning;
-            self.transition_count += 1;
+            self.transition_count = self.transition_count.saturating_add(1);
         } else {
             self.state = BridgeState::Stable;
             self.baseline_distance = 0.95 * self.baseline_distance + 0.05 * distance;
@@ -485,5 +485,21 @@ mod tests {
         let s = ctrl.summary();
         assert!(s.transport_distance >= 0.0);
         assert!(s.transition_count == ctrl.transition_count());
+    }
+
+    #[test]
+    fn transition_counter_saturates_without_wrap() {
+        let mut ctrl = SchrodingerBridgeController::new();
+        ctrl.baseline_ready = true;
+        ctrl.baseline_windows = u64::MAX;
+        ctrl.baseline_distance = 1e-9;
+        ctrl.transition_count = u64::MAX;
+        ctrl.window_total = (BRIDGE_WINDOW - 1) as u64;
+        ctrl.action_counts[3] = (BRIDGE_WINDOW - 1) as u64;
+
+        ctrl.observe_action(3);
+
+        assert_eq!(ctrl.transition_count(), u64::MAX);
+        assert_eq!(ctrl.state(), BridgeState::Transitioning);
     }
 }

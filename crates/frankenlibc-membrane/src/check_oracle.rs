@@ -71,6 +71,41 @@ impl CheckStage {
     pub fn can_accept(self) -> bool {
         matches!(self, CheckStage::TlsCache)
     }
+
+    /// Convert from u8 representation.
+    pub const fn from_u8(val: u8) -> Self {
+        match val {
+            0 => CheckStage::Null,
+            1 => CheckStage::TlsCache,
+            2 => CheckStage::Bloom,
+            3 => CheckStage::Arena,
+            4 => CheckStage::Fingerprint,
+            5 => CheckStage::Canary,
+            _ => CheckStage::Bounds,
+        }
+    }
+}
+
+/// Pack an ordering into a u64 (4 bits per stage).
+pub fn pack_ordering(ordering: &[CheckStage; NUM_STAGES]) -> u64 {
+    let mut packed = 0u64;
+    let mut i = 0;
+    while i < NUM_STAGES {
+        packed |= (ordering[i] as u64) << (i * 4);
+        i += 1;
+    }
+    packed
+}
+
+/// Unpack an ordering from a u64.
+pub fn unpack_ordering(packed: u64) -> [CheckStage; NUM_STAGES] {
+    let mut ordering = [CheckStage::Null; NUM_STAGES];
+    let mut i = 0;
+    while i < NUM_STAGES {
+        ordering[i] = CheckStage::from_u8(((packed >> (i * 4)) & 0xF) as u8);
+        i += 1;
+    }
+    ordering
 }
 
 /// Number of check stages.

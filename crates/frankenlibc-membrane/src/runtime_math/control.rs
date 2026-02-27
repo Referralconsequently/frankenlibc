@@ -38,11 +38,25 @@ impl PrimalDualController {
 
     /// Observe one routed call.
     pub fn observe(&self, estimated_cost_ns: u64, adverse: bool) {
-        let calls = self.observed_calls.fetch_add(1, Ordering::Relaxed) + 1;
-        self.total_cost_ns
-            .fetch_add(estimated_cost_ns, Ordering::Relaxed);
+        let prev_calls = self
+            .observed_calls
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |x| {
+                Some(x.saturating_add(1))
+            })
+            .unwrap_or_else(|x| x);
+        let calls = prev_calls.saturating_add(1);
+
+        let _ = self
+            .total_cost_ns
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |x| {
+                Some(x.saturating_add(estimated_cost_ns))
+            });
         if adverse {
-            self.adverse_events.fetch_add(1, Ordering::Relaxed);
+            let _ = self
+                .adverse_events
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |x| {
+                    Some(x.saturating_add(1))
+                });
         }
 
         // Update multipliers every 128 samples.
@@ -213,5 +227,24 @@ mod tests {
             noisy_hardened.full_validation_trigger_ppm <= calm_hardened.full_validation_trigger_ppm
         );
         assert!(noisy_hardened.repair_trigger_ppm <= calm_hardened.repair_trigger_ppm);
+    }
+
+    #[test]
+    fn observe_saturates_internal_counters() {
+        let ctl = PrimalDualController::new();
+        ctl.observed_calls.store(u64::MAX - 1, Ordering::Relaxed);
+        ctl.total_cost_ns.store(u64::MAX - 3, Ordering::Relaxed);
+        ctl.adverse_events.store(u64::MAX - 1, Ordering::Relaxed);
+
+        ctl.observe(16, true);
+        assert_eq!(ctl.observed_calls.load(Ordering::Relaxed), u64::MAX);
+        assert_eq!(ctl.total_cost_ns.load(Ordering::Relaxed), u64::MAX);
+        assert_eq!(ctl.adverse_events.load(Ordering::Relaxed), u64::MAX);
+
+        // Keep observing at saturation and ensure values remain clamped.
+        ctl.observe(16, true);
+        assert_eq!(ctl.observed_calls.load(Ordering::Relaxed), u64::MAX);
+        assert_eq!(ctl.total_cost_ns.load(Ordering::Relaxed), u64::MAX);
+        assert_eq!(ctl.adverse_events.load(Ordering::Relaxed), u64::MAX);
     }
 }
