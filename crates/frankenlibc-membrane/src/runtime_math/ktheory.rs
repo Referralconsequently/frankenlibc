@@ -387,13 +387,16 @@ mod tests {
     #[test]
     fn summary_coherent() {
         let mut ctrl = KTheoryController::new();
-        for i in 0..128u64 {
+        // Need 64 observations per family for baseline freeze.
+        // 9 families × 64 = 576 minimum.
+        let total = (CALIBRATION_THRESHOLD as u64) * (NUM_FAMILIES as u64);
+        for i in 0..total {
             let family = (i % NUM_FAMILIES as u64) as usize;
             ctrl.observe(family, [0.1, 0.0, 0.0, 0.1]);
         }
         let summary = ctrl.summary();
         assert_eq!(summary.state, KTheoryState::Compatible);
-        assert_eq!(summary.total_observations, 128);
+        assert_eq!(summary.total_observations, total);
     }
 
     #[test]

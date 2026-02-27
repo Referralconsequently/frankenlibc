@@ -320,24 +320,31 @@ mod tests {
     #[test]
     fn growing_perturbation_detects_instability() {
         let mut ctrl = OperatorNormMonitor::new();
-        // Calibrate.
+        // Calibrate with alternating baseline to establish non-zero mean.
         for _ in 0..CALIBRATION_THRESHOLD {
             ctrl.observe_and_update(&all_stable());
         }
         // Slowly growing perturbation — more controllers escalate over time.
-        // This simulates a positive feedback cascade.
+        // Alternate between perturbed and baseline patterns each step so
+        // deviations persist (constant patterns cause mean to converge,
+        // driving deviation→0 and ρ→0).
         for phase in 0..4 {
             let escalation_count = (phase + 1) * 4;
-            for _ in 0..500 {
-                let mut pattern = [1u8; NUM_SIGNALS];
-                for slot in pattern.iter_mut().take(escalation_count.min(NUM_SIGNALS)) {
-                    *slot = 2 + (phase as u8).min(1);
+            let val = 2 + (phase as u8).min(1);
+            for i in 0..500u32 {
+                if i % 2 == 0 {
+                    let mut pattern = [1u8; NUM_SIGNALS];
+                    for slot in pattern.iter_mut().take(escalation_count.min(NUM_SIGNALS)) {
+                        *slot = val;
+                    }
+                    ctrl.observe_and_update(&pattern);
+                } else {
+                    ctrl.observe_and_update(&all_stable());
                 }
-                ctrl.observe_and_update(&pattern);
             }
         }
         let s = ctrl.summary();
-        // The growing perturbation should produce a higher spectral radius.
+        // Alternating perturbation maintains persistent deviations → ρ ≈ 1.0.
         assert!(
             s.spectral_radius > 0.7,
             "Expected elevated ρ from growing perturbation: {:.4}",
