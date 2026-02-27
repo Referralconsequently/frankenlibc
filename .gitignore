@@ -84,13 +84,24 @@ target_*/
 # Agent mail project identity
 .agent-mail-project-id
 
-# SQLite backup/corruption files
+# SQLite backup/corruption/recovery files
 *.sqlite3.bak
 *.sqlite3-wal.bak
 *.sqlite3.corrupt-*
+*.sqlite3.corrupt_*
+*.sqlite3.pre_recovery_*
+storage.recover*.sql
+storage.recovered.sqlite3
 
-# Beads backup files (agent-generated recovery snapshots)
+# Beads backup/recovery files (agent-generated snapshots)
 .beads/*.bak.*
+.beads/*.corrupt_*
+.beads/*.pre_recovery_*
+.beads/*.recover*.sql
+.beads/*.orphan_*
+
+# Ephemeral scratch files
+baseline_decisions
 
 # Remote compilation helper artifacts
 .rch-target/
