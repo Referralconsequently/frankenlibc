@@ -3,12 +3,68 @@
 //! Integration tests for glibc_internal_abi entrypoints.
 
 use frankenlibc_abi::glibc_internal_abi::{
-    inet6_opt_append, inet6_opt_find, inet6_opt_finish, inet6_opt_get_val, inet6_opt_init,
-    inet6_opt_next, inet6_opt_set_val, inet6_rth_add, inet6_rth_getaddr, inet6_rth_init,
-    inet6_rth_reverse, inet6_rth_segments, inet6_rth_space, iruserok, iruserok_af,
-    ns_name_compress, ns_name_ntop, ns_name_pack, ns_name_pton, ns_name_skip,
-    ns_name_uncompress, ns_name_unpack, parse_printf_format, rcmd, rcmd_af, rexec, rexec_af,
-    res_dnok, res_hnok, res_mailok, res_ownok, ruserok, ruserok_af, ruserpass,
+    __asprintf,
+    __nss_configure_lookup,
+    __nss_database_lookup,
+    __nss_group_lookup,
+    __nss_hostname_digits_dots,
+    __nss_hosts_lookup,
+    __nss_next,
+    __nss_passwd_lookup,
+    __printf_fp,
+    _dl_find_object,
+    _obstack_allocated_p,
+    _obstack_begin,
+    _obstack_free,
+    _obstack_memory_used,
+    _obstack_newchunk,
+    _pthread_cleanup_pop,
+    _pthread_cleanup_pop_restore,
+    _pthread_cleanup_push,
+    _pthread_cleanup_push_defer,
+    inet6_opt_append,
+    inet6_opt_find,
+    inet6_opt_finish,
+    inet6_opt_get_val,
+    inet6_opt_init,
+    inet6_opt_next,
+    inet6_opt_set_val,
+    inet6_rth_add,
+    inet6_rth_getaddr,
+    inet6_rth_init,
+    inet6_rth_reverse,
+    inet6_rth_segments,
+    inet6_rth_space,
+    iruserok,
+    iruserok_af,
+    ns_name_compress,
+    ns_name_ntop,
+    ns_name_pack,
+    ns_name_pton,
+    ns_name_skip,
+    ns_name_uncompress,
+    ns_name_unpack,
+    parse_printf_format,
+    printf_size,
+    printf_size_info,
+    rcmd,
+    rcmd_af,
+    // Session 13 additions:
+    register_printf_function,
+    register_printf_modifier,
+    register_printf_specifier,
+    register_printf_type,
+    res_dnok,
+    res_hnok,
+    res_mailok,
+    res_ownok,
+    rexec,
+    rexec_af,
+    ruserok,
+    ruserok_af,
+    ruserpass,
+    xprt_register,
+    xprt_unregister,
 };
 use std::ffi::CString;
 use std::ptr;
@@ -183,7 +239,15 @@ fn ruserok_af_always_denies() {
     let host = CString::new("attacker.example.com").unwrap();
     let user = CString::new("root").unwrap();
     let ruser = CString::new("attacker").unwrap();
-    let result = unsafe { ruserok_af(host.as_ptr(), 0, ruser.as_ptr(), user.as_ptr(), libc::AF_INET) };
+    let result = unsafe {
+        ruserok_af(
+            host.as_ptr(),
+            0,
+            ruser.as_ptr(),
+            user.as_ptr(),
+            libc::AF_INET,
+        )
+    };
     assert_eq!(result, -1);
 }
 
@@ -193,7 +257,16 @@ fn rcmd_returns_enosys() {
     let mut host_ptr = host.as_ptr() as *mut libc::c_char;
     let user = CString::new("user").unwrap();
     let cmd = CString::new("id").unwrap();
-    let result = unsafe { rcmd(&mut host_ptr, 514, user.as_ptr(), user.as_ptr(), cmd.as_ptr(), ptr::null_mut()) };
+    let result = unsafe {
+        rcmd(
+            &mut host_ptr,
+            514,
+            user.as_ptr(),
+            user.as_ptr(),
+            cmd.as_ptr(),
+            ptr::null_mut(),
+        )
+    };
     assert_eq!(result, -1);
     assert_eq!(unsafe { *libc::__errno_location() }, libc::ENOSYS);
 }
@@ -205,7 +278,15 @@ fn rcmd_af_returns_enosys() {
     let user = CString::new("user").unwrap();
     let cmd = CString::new("id").unwrap();
     let result = unsafe {
-        rcmd_af(&mut host_ptr, 514, user.as_ptr(), user.as_ptr(), cmd.as_ptr(), ptr::null_mut(), libc::AF_INET)
+        rcmd_af(
+            &mut host_ptr,
+            514,
+            user.as_ptr(),
+            user.as_ptr(),
+            cmd.as_ptr(),
+            ptr::null_mut(),
+            libc::AF_INET,
+        )
     };
     assert_eq!(result, -1);
     assert_eq!(unsafe { *libc::__errno_location() }, libc::ENOSYS);
@@ -218,7 +299,16 @@ fn rexec_returns_enosys() {
     let user = CString::new("user").unwrap();
     let pass = CString::new("pass").unwrap();
     let cmd = CString::new("id").unwrap();
-    let result = unsafe { rexec(&mut host_ptr, 512, user.as_ptr(), pass.as_ptr(), cmd.as_ptr(), ptr::null_mut()) };
+    let result = unsafe {
+        rexec(
+            &mut host_ptr,
+            512,
+            user.as_ptr(),
+            pass.as_ptr(),
+            cmd.as_ptr(),
+            ptr::null_mut(),
+        )
+    };
     assert_eq!(result, -1);
     assert_eq!(unsafe { *libc::__errno_location() }, libc::ENOSYS);
 }
@@ -231,7 +321,15 @@ fn rexec_af_returns_enosys() {
     let pass = CString::new("pass").unwrap();
     let cmd = CString::new("id").unwrap();
     let result = unsafe {
-        rexec_af(&mut host_ptr, 512, user.as_ptr(), pass.as_ptr(), cmd.as_ptr(), ptr::null_mut(), libc::AF_INET)
+        rexec_af(
+            &mut host_ptr,
+            512,
+            user.as_ptr(),
+            pass.as_ptr(),
+            cmd.as_ptr(),
+            ptr::null_mut(),
+            libc::AF_INET,
+        )
     };
     assert_eq!(result, -1);
     assert_eq!(unsafe { *libc::__errno_location() }, libc::ENOSYS);
@@ -750,9 +848,7 @@ fn inet6_opt_get_val_reads_back_data() {
 
     // Read it back.
     let mut readback: u32 = 0;
-    let ret = unsafe {
-        inet6_opt_get_val(databuf, 0, &mut readback as *mut _ as *mut _, 4)
-    };
+    let ret = unsafe { inet6_opt_get_val(databuf, 0, &mut readback as *mut _ as *mut _, 4) };
     assert_eq!(ret, 4);
     assert_eq!(readback, 0x12345678);
 }
@@ -847,3 +943,303 @@ fn inet6_rth_init_too_small_returns_null() {
     assert!(bp.is_null());
 }
 
+// ===========================================================================
+// Session 13: printf extension stubs
+// ===========================================================================
+
+#[test]
+fn register_printf_function_returns_enosys() {
+    let r = unsafe { register_printf_function(0, ptr::null_mut(), ptr::null_mut()) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn register_printf_modifier_returns_enosys() {
+    let r = unsafe { register_printf_modifier(ptr::null()) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn register_printf_specifier_returns_enosys() {
+    let r = unsafe { register_printf_specifier(0, ptr::null_mut(), ptr::null_mut()) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn register_printf_type_returns_enosys() {
+    let r = unsafe { register_printf_type(ptr::null_mut()) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn printf_size_returns_negative() {
+    let r = unsafe { printf_size(ptr::null_mut(), ptr::null(), ptr::null()) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn printf_size_info_returns_zero() {
+    let r = unsafe { printf_size_info(ptr::null(), 0, ptr::null_mut()) };
+    assert_eq!(r, 0);
+}
+
+// ===========================================================================
+// Session 13: xprt stubs (no-op)
+// ===========================================================================
+
+#[test]
+fn xprt_register_noop() {
+    // Just verify it doesn't crash
+    unsafe { xprt_register(ptr::null_mut()) };
+}
+
+#[test]
+fn xprt_unregister_noop() {
+    unsafe { xprt_unregister(ptr::null_mut()) };
+}
+
+// ===========================================================================
+// Session 13: NSS stubs
+// ===========================================================================
+
+#[test]
+fn nss_configure_lookup_returns_zero() {
+    let db = CString::new("passwd").unwrap();
+    let service = CString::new("files").unwrap();
+    let r = unsafe { __nss_configure_lookup(db.as_ptr(), service.as_ptr()) };
+    assert_eq!(r, 0); // success (no-op)
+}
+
+#[test]
+fn nss_database_lookup_returns_unavail() {
+    let db = CString::new("passwd").unwrap();
+    let r =
+        unsafe { __nss_database_lookup(db.as_ptr(), ptr::null(), ptr::null(), ptr::null_mut()) };
+    assert_eq!(r, -1); // NSS_STATUS_UNAVAIL
+}
+
+#[test]
+fn nss_group_lookup_returns_unavail() {
+    let name = CString::new("root").unwrap();
+    let r = unsafe {
+        __nss_group_lookup(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            name.as_ptr(),
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn nss_hostname_digits_dots_returns_zero() {
+    let name = CString::new("192.168.1.1").unwrap();
+    let r = unsafe { __nss_hostname_digits_dots(name.as_ptr(), ptr::null_mut()) };
+    assert_eq!(r, 0);
+}
+
+#[test]
+fn nss_hosts_lookup_returns_unavail() {
+    let name = CString::new("localhost").unwrap();
+    let r = unsafe {
+        __nss_hosts_lookup(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            name.as_ptr(),
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn nss_next_returns_unavail() {
+    let name = CString::new("getpwnam_r").unwrap();
+    let r = unsafe { __nss_next(ptr::null_mut(), name.as_ptr(), ptr::null_mut(), 0) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn nss_passwd_lookup_returns_unavail() {
+    let name = CString::new("root").unwrap();
+    let r = unsafe {
+        __nss_passwd_lookup(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            name.as_ptr(),
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(r, -1);
+}
+
+// ===========================================================================
+// Session 13: pthread_cleanup
+// ===========================================================================
+
+#[test]
+fn pthread_cleanup_push_pop_executes_handler() {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static CALLED: AtomicI32 = AtomicI32::new(0);
+
+    unsafe extern "C" fn handler(arg: *mut std::ffi::c_void) {
+        let val = arg as usize as i32;
+        CALLED.store(val, Ordering::SeqCst);
+    }
+
+    // Allocate a __pthread_cleanup_buffer (at least 32 bytes on x86_64)
+    let mut buf = [0u8; 64];
+    let buf_ptr = buf.as_mut_ptr() as *mut std::ffi::c_void;
+
+    CALLED.store(0, Ordering::SeqCst);
+    unsafe {
+        _pthread_cleanup_push(
+            buf_ptr,
+            handler as *mut std::ffi::c_void,
+            42usize as *mut std::ffi::c_void,
+        );
+        _pthread_cleanup_pop(buf_ptr, 1); // execute=1
+    }
+    assert_eq!(CALLED.load(Ordering::SeqCst), 42);
+}
+
+#[test]
+fn pthread_cleanup_pop_no_execute() {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static CALLED2: AtomicI32 = AtomicI32::new(0);
+
+    unsafe extern "C" fn handler2(arg: *mut std::ffi::c_void) {
+        let _ = arg;
+        CALLED2.store(99, Ordering::SeqCst);
+    }
+
+    let mut buf = [0u8; 64];
+    let buf_ptr = buf.as_mut_ptr() as *mut std::ffi::c_void;
+
+    CALLED2.store(0, Ordering::SeqCst);
+    unsafe {
+        _pthread_cleanup_push(buf_ptr, handler2 as *mut std::ffi::c_void, ptr::null_mut());
+        _pthread_cleanup_pop(buf_ptr, 0); // execute=0
+    }
+    assert_eq!(CALLED2.load(Ordering::SeqCst), 0); // handler NOT called
+}
+
+#[test]
+fn pthread_cleanup_push_defer_pop_restore() {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static CALLED3: AtomicI32 = AtomicI32::new(0);
+
+    unsafe extern "C" fn handler3(arg: *mut std::ffi::c_void) {
+        let val = arg as usize as i32;
+        CALLED3.store(val, Ordering::SeqCst);
+    }
+
+    let mut buf = [0u8; 64];
+    let buf_ptr = buf.as_mut_ptr() as *mut std::ffi::c_void;
+
+    CALLED3.store(0, Ordering::SeqCst);
+    unsafe {
+        _pthread_cleanup_push_defer(
+            buf_ptr,
+            handler3 as *mut std::ffi::c_void,
+            7usize as *mut std::ffi::c_void,
+        );
+        _pthread_cleanup_pop_restore(buf_ptr, 1);
+    }
+    assert_eq!(CALLED3.load(Ordering::SeqCst), 7);
+}
+
+// ===========================================================================
+// Session 13: obstack
+// ===========================================================================
+
+// Use libc malloc/free as chunk allocators for obstack tests
+unsafe extern "C" {
+    fn malloc(size: usize) -> *mut std::ffi::c_void;
+    fn free(ptr: *mut std::ffi::c_void);
+}
+
+#[test]
+fn obstack_begin_and_allocated_p() {
+    // struct obstack contains pointers, needs 8-byte alignment
+    let mut obstack_buf = [0u64; 16]; // 128 bytes, naturally 8-byte aligned
+    let h = obstack_buf.as_mut_ptr() as *mut std::ffi::c_void;
+
+    let result = unsafe {
+        _obstack_begin(
+            h,
+            4096,
+            8,
+            malloc as *mut std::ffi::c_void,
+            free as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(result, 1, "obstack_begin should succeed");
+
+    // Memory used should be positive (at least one chunk allocated)
+    let mem = unsafe { _obstack_memory_used(h) };
+    assert!(mem > 0, "memory_used should be > 0 after init");
+
+    // A random stack pointer should NOT be allocated from this obstack
+    let stack_var: i32 = 42;
+    let r = unsafe { _obstack_allocated_p(h, &stack_var as *const i32 as *const std::ffi::c_void) };
+    assert_eq!(r, 0, "stack variable should not be in obstack");
+
+    // Clean up
+    unsafe { _obstack_free(h, ptr::null_mut()) };
+}
+
+#[test]
+fn obstack_newchunk_grows() {
+    let mut obstack_buf = [0u64; 16]; // 8-byte aligned
+    let h = obstack_buf.as_mut_ptr() as *mut std::ffi::c_void;
+
+    let result = unsafe {
+        _obstack_begin(
+            h,
+            64, // small chunk size to force newchunk
+            8,
+            malloc as *mut std::ffi::c_void,
+            free as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(result, 1);
+
+    // Request a new chunk larger than initial
+    unsafe { _obstack_newchunk(h, 256) };
+
+    // Memory should have grown
+    let mem = unsafe { _obstack_memory_used(h) };
+    assert!(mem >= 256, "memory should be at least 256 after newchunk");
+
+    unsafe { _obstack_free(h, ptr::null_mut()) };
+}
+
+// ===========================================================================
+// Session 13: __asprintf, __printf_fp, _dl_find_object
+// ===========================================================================
+
+#[test]
+fn asprintf_internal_returns_enosys() {
+    let mut ptr: *mut i8 = 42usize as *mut i8; // non-null sentinel
+    let fmt = CString::new("hello %d").unwrap();
+    let r = unsafe { __asprintf(&mut ptr, fmt.as_ptr()) };
+    assert_eq!(r, -1);
+    assert!(
+        ptr.is_null(),
+        "__asprintf should set *strp to null on failure"
+    );
+}
+
+#[test]
+fn printf_fp_returns_negative() {
+    let r = unsafe { __printf_fp(ptr::null_mut(), ptr::null(), ptr::null()) };
+    assert_eq!(r, -1);
+}
+
+#[test]
+fn dl_find_object_returns_not_found() {
+    let r = unsafe { _dl_find_object(ptr::null_mut(), ptr::null_mut()) };
+    assert_eq!(r, -1);
+}

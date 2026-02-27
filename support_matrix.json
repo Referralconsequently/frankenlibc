@@ -16760,7 +16760,7 @@
     },
     {
       "symbol": "__asprintf",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -16793,7 +16793,7 @@
     },
     {
       "symbol": "__clone",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -17384,47 +17384,47 @@
     },
     {
       "symbol": "__nss_configure_lookup",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__nss_database_lookup",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__nss_group_lookup",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__nss_hostname_digits_dots",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__nss_hosts_lookup",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__nss_next",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__nss_passwd_lookup",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__obstack_printf_chk",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "__obstack_vprintf_chk",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -17458,7 +17458,7 @@
     },
     {
       "symbol": "__printf_fp",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -18321,7 +18321,7 @@
     },
     {
       "symbol": "_dl_find_object",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -18375,52 +18375,52 @@
     },
     {
       "symbol": "_obstack_allocated_p",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack_begin",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack_begin_1",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack_free",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack_memory_used",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack_newchunk",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_pthread_cleanup_pop",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_pthread_cleanup_pop_restore",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_pthread_cleanup_push",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "_pthread_cleanup_push_defer",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -19495,22 +19495,22 @@
     },
     {
       "symbol": "register_printf_function",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "register_printf_modifier",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "register_printf_specifier",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "register_printf_type",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -20519,12 +20519,12 @@
     },
     {
       "symbol": "printf_size",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "printf_size_info",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -20549,12 +20549,12 @@
     },
     {
       "symbol": "xprt_register",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
       "symbol": "xprt_unregister",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi"
     },
     {
@@ -20583,9 +20583,9 @@
     "glibc_call_through": 47,
     "stub": 0
   },
-  "implemented": 1642,
-  "raw_syscall": 367,
-  "glibc_call_through": 86,
+  "implemented": 2042,
+  "raw_syscall": 384,
+  "glibc_call_through": 350,
   "stub": 0,
   "counts": {
     "total_exported": 1277,

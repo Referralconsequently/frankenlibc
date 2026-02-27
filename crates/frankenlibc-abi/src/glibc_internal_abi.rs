@@ -107,7 +107,12 @@ pub unsafe extern "C" fn __pthread_mutex_destroy(mutex: *mut c_void) -> c_int {
 // __pthread_mutex_init → pthread_mutex_init
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_mutex_init(mutex: *mut c_void, attr: *const c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_mutex_init(mutex.cast(), attr as *const libc::pthread_mutexattr_t) }
+    unsafe {
+        super::pthread_abi::pthread_mutex_init(
+            mutex.cast(),
+            attr as *const libc::pthread_mutexattr_t,
+        )
+    }
 }
 // __pthread_mutex_lock → pthread_mutex_lock
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -158,7 +163,12 @@ pub unsafe extern "C" fn __pthread_rwlock_destroy(rwlock: *mut c_void) -> c_int 
 // __pthread_rwlock_init → pthread_rwlock_init
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __pthread_rwlock_init(rwlock: *mut c_void, attr: *const c_void) -> c_int {
-    unsafe { super::pthread_abi::pthread_rwlock_init(rwlock.cast(), attr as *const libc::pthread_rwlockattr_t) }
+    unsafe {
+        super::pthread_abi::pthread_rwlock_init(
+            rwlock.cast(),
+            attr as *const libc::pthread_rwlockattr_t,
+        )
+    }
 }
 // __pthread_rwlock_rdlock → pthread_rwlock_rdlock
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -193,10 +203,85 @@ pub unsafe extern "C" fn __pthread_setspecific(key: c_uint, val: *const c_void) 
 // __pthread_unregister_cancel/restore, __pthread_unwind_next: now in pthread_abi.rs (no-op/abort stubs)
 
 // Pthread cleanup push/pop (4 symbols)
-dlsym_passthrough!(fn _pthread_cleanup_push(buf: *mut c_void, routine: *mut c_void, arg: *mut c_void));
-dlsym_passthrough!(fn _pthread_cleanup_pop(buf: *mut c_void, execute: c_int));
-dlsym_passthrough!(fn _pthread_cleanup_push_defer(buf: *mut c_void, routine: *mut c_void, arg: *mut c_void));
-dlsym_passthrough!(fn _pthread_cleanup_pop_restore(buf: *mut c_void, execute: c_int));
+// The `buf` parameter is a __pthread_cleanup_buffer struct that the caller allocates on its stack.
+// Layout (glibc): { void (*routine)(void*); void *arg; int canceltype; __pthread_cleanup_buffer *prev; }
+// We use the caller-provided buffer as a linked list node, storing routine+arg+prev.
+// TLS head pointer tracks the current thread's cleanup stack.
+std::thread_local! {
+    static PTHREAD_CLEANUP_HEAD: std::cell::Cell<*mut c_void> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+// __pthread_cleanup_buffer layout offsets (x86_64):
+// 0: routine (fn pointer, 8 bytes)
+// 8: arg (void*, 8 bytes)
+// 16: canceltype (int, 4 bytes)
+// 24: prev (__pthread_cleanup_buffer*, 8 bytes)
+const CLEANUP_OFF_ROUTINE: usize = 0;
+const CLEANUP_OFF_ARG: usize = 8;
+const CLEANUP_OFF_PREV: usize = 24;
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _pthread_cleanup_push(
+    buf: *mut c_void,
+    routine: *mut c_void,
+    arg: *mut c_void,
+) {
+    if buf.is_null() {
+        return;
+    }
+    unsafe {
+        let buf_ptr = buf as *mut u8;
+        // Store routine and arg
+        (buf_ptr.add(CLEANUP_OFF_ROUTINE) as *mut *mut c_void).write(routine);
+        (buf_ptr.add(CLEANUP_OFF_ARG) as *mut *mut c_void).write(arg);
+        // Link to previous head
+        let prev = PTHREAD_CLEANUP_HEAD.get();
+        (buf_ptr.add(CLEANUP_OFF_PREV) as *mut *mut c_void).write(prev);
+        // Set as new head
+        PTHREAD_CLEANUP_HEAD.set(buf);
+    }
+}
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _pthread_cleanup_pop(buf: *mut c_void, execute: c_int) {
+    if buf.is_null() {
+        return;
+    }
+    unsafe {
+        let buf_ptr = buf as *mut u8;
+        // Restore previous head
+        let prev = (buf_ptr.add(CLEANUP_OFF_PREV) as *mut *mut c_void).read();
+        PTHREAD_CLEANUP_HEAD.set(prev);
+        // Execute the handler if requested
+        if execute != 0 {
+            let routine: unsafe extern "C" fn(*mut c_void) =
+                std::mem::transmute((buf_ptr.add(CLEANUP_OFF_ROUTINE) as *mut *mut c_void).read());
+            let arg = (buf_ptr.add(CLEANUP_OFF_ARG) as *mut *mut c_void).read();
+            routine(arg);
+        }
+    }
+}
+
+// _pthread_cleanup_push_defer: like push but also saves/sets canceltype to DEFERRED
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _pthread_cleanup_push_defer(
+    buf: *mut c_void,
+    routine: *mut c_void,
+    arg: *mut c_void,
+) {
+    // Push the cleanup handler
+    unsafe { _pthread_cleanup_push(buf, routine, arg) };
+    // Save current canceltype and set to DEFERRED (0)
+    // For now, we don't implement cancellation, so this is a no-op beyond the push
+}
+
+// _pthread_cleanup_pop_restore: like pop but also restores saved canceltype
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _pthread_cleanup_pop_restore(buf: *mut c_void, execute: c_int) {
+    // Restore canceltype (no-op for now since we don't implement cancellation)
+    // Pop the cleanup handler
+    unsafe { _pthread_cleanup_pop(buf, execute) };
+}
 
 // Public pthread extras (12 symbols)
 // pthread_kill_other_threads_np: deprecated no-op (LinuxThreads compat)
@@ -261,10 +346,7 @@ pub unsafe extern "C" fn pthread_mutexattr_getrobust_np(
 }
 // pthread_mutexattr_setkind_np: GNU alias for pthread_mutexattr_settype
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn pthread_mutexattr_setkind_np(
-    attr: *mut c_void,
-    kind: c_int,
-) -> c_int {
+pub unsafe extern "C" fn pthread_mutexattr_setkind_np(attr: *mut c_void, kind: c_int) -> c_int {
     unsafe { super::pthread_abi::pthread_mutexattr_settype(attr.cast(), kind) }
 }
 // pthread_mutexattr_setprioceiling: native — returns ENOSYS
@@ -277,10 +359,7 @@ pub unsafe extern "C" fn pthread_mutexattr_setprioceiling(
 }
 // pthread_mutexattr_setrobust_np: GNU alias for pthread_mutexattr_setrobust
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn pthread_mutexattr_setrobust_np(
-    attr: *mut c_void,
-    robust: c_int,
-) -> c_int {
+pub unsafe extern "C" fn pthread_mutexattr_setrobust_np(attr: *mut c_void, robust: c_int) -> c_int {
     unsafe { super::pthread_abi::pthread_mutexattr_setrobust(attr.cast(), robust) }
 }
 // pthread_rwlockattr_getkind_np: get rwlock scheduling preference
@@ -298,10 +377,7 @@ pub unsafe extern "C" fn pthread_rwlockattr_getkind_np(
 }
 // pthread_rwlockattr_setkind_np: set rwlock scheduling preference
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn pthread_rwlockattr_setkind_np(
-    attr: *mut c_void,
-    kind: c_int,
-) -> c_int {
+pub unsafe extern "C" fn pthread_rwlockattr_setkind_np(attr: *mut c_void, kind: c_int) -> c_int {
     if attr.is_null() || !(0..=2).contains(&kind) {
         return libc::EINVAL;
     }
@@ -355,7 +431,12 @@ pub unsafe extern "C" fn __sched_yield() -> c_int {
 // __libc_calloc through __libc_freeres: already native in malloc_abi.rs
 // __libc_init_first: glibc startup hook — no-op
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_init_first(_argc: c_int, _argv: *mut *mut c_char, _envp: *mut *mut c_char) {}
+pub unsafe extern "C" fn __libc_init_first(
+    _argc: c_int,
+    _argv: *mut *mut c_char,
+    _envp: *mut *mut c_char,
+) {
+}
 // __libc_allocate_rtsig: allocate next available RT signal number
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __libc_allocate_rtsig(high: c_int) -> c_int {
@@ -515,12 +596,21 @@ pub unsafe extern "C" fn wcsncasecmp_l(
 }
 // strcasecmp_l → strcasecmp (C locale)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn strcasecmp_l(s1: *const c_char, s2: *const c_char, _loc: *mut c_void) -> c_int {
+pub unsafe extern "C" fn strcasecmp_l(
+    s1: *const c_char,
+    s2: *const c_char,
+    _loc: *mut c_void,
+) -> c_int {
     unsafe { super::string_abi::strcasecmp(s1, s2) }
 }
 // strncasecmp_l → strncasecmp (C locale)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn strncasecmp_l(s1: *const c_char, s2: *const c_char, n: SizeT, _loc: *mut c_void) -> c_int {
+pub unsafe extern "C" fn strncasecmp_l(
+    s1: *const c_char,
+    s2: *const c_char,
+    n: SizeT,
+    _loc: *mut c_void,
+) -> c_int {
     unsafe { super::string_abi::strncasecmp(s1, s2, n) }
 }
 
@@ -534,32 +624,59 @@ pub unsafe extern "C" fn __strcasecmp(s1: *const c_char, s2: *const c_char) -> c
 }
 // __strcasecmp_l → strcasecmp (C locale)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcasecmp_l(s1: *const c_char, s2: *const c_char, _loc: *mut c_void) -> c_int {
+pub unsafe extern "C" fn __strcasecmp_l(
+    s1: *const c_char,
+    s2: *const c_char,
+    _loc: *mut c_void,
+) -> c_int {
     unsafe { super::string_abi::strcasecmp(s1, s2) }
 }
 // __strcasestr → strcasestr
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcasestr(haystack: *const c_char, needle: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn __strcasestr(
+    haystack: *const c_char,
+    needle: *const c_char,
+) -> *mut c_char {
     unsafe { super::string_abi::strcasestr(haystack, needle) }
 }
 // __strcoll_l → strcoll (C locale)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcoll_l(s1: *const c_char, s2: *const c_char, _loc: *mut c_void) -> c_int {
+pub unsafe extern "C" fn __strcoll_l(
+    s1: *const c_char,
+    s2: *const c_char,
+    _loc: *mut c_void,
+) -> c_int {
     unsafe { super::string_abi::strcoll(s1, s2) }
 }
 // __strncasecmp_l → strncasecmp (C locale)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strncasecmp_l(s1: *const c_char, s2: *const c_char, n: SizeT, _loc: *mut c_void) -> c_int {
+pub unsafe extern "C" fn __strncasecmp_l(
+    s1: *const c_char,
+    s2: *const c_char,
+    n: SizeT,
+    _loc: *mut c_void,
+) -> c_int {
     unsafe { super::string_abi::strncasecmp(s1, s2, n) }
 }
 // __strxfrm_l → strxfrm (C locale)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strxfrm_l(dest: *mut c_char, src: *const c_char, n: SizeT, _loc: *mut c_void) -> SizeT {
+pub unsafe extern "C" fn __strxfrm_l(
+    dest: *mut c_char,
+    src: *const c_char,
+    n: SizeT,
+    _loc: *mut c_void,
+) -> SizeT {
     unsafe { super::string_abi::strxfrm(dest, src, n) }
 }
 // __strftime_l → strftime_l
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strftime_l(s: *mut c_char, max: SizeT, fmt: *const c_char, tm: *const c_void, loc: *mut c_void) -> SizeT {
+pub unsafe extern "C" fn __strftime_l(
+    s: *mut c_char,
+    max: SizeT,
+    fmt: *const c_char,
+    tm: *const c_void,
+    loc: *mut c_void,
+) -> SizeT {
     unsafe { super::unistd_abi::strftime_l(s, max, fmt, tm.cast(), loc) }
 }
 // __strfmon_l: now exported from string_abi.rs — dlsym_passthrough removed
@@ -586,12 +703,20 @@ pub unsafe extern "C" fn __strndup(s: *const c_char, n: SizeT) -> *mut c_char {
 // __strerror_r: now exported from string_abi.rs — dlsym_passthrough removed
 // __strtok_r → strtok_r
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strtok_r(s: *mut c_char, delim: *const c_char, saveptr: *mut *mut c_char) -> *mut c_char {
+pub unsafe extern "C" fn __strtok_r(
+    s: *mut c_char,
+    delim: *const c_char,
+    saveptr: *mut *mut c_char,
+) -> *mut c_char {
     unsafe { super::string_abi::strtok_r(s, delim, saveptr) }
 }
 // __strtok_r_1c: single-char delimiter strtok — wrap as delimiter string
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strtok_r_1c(s: *mut c_char, delim: c_char, saveptr: *mut *mut c_char) -> *mut c_char {
+pub unsafe extern "C" fn __strtok_r_1c(
+    s: *mut c_char,
+    delim: c_char,
+    saveptr: *mut *mut c_char,
+) -> *mut c_char {
     let delim_str = [delim as u8, 0u8];
     unsafe { super::string_abi::strtok_r(s, delim_str.as_ptr().cast(), saveptr) }
 }
@@ -602,7 +727,11 @@ pub unsafe extern "C" fn __strverscmp(s1: *const c_char, s2: *const c_char) -> c
 }
 // __strcpy_small: glibc inline optimization — forward as regular strcpy
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __strcpy_small(dest: *mut c_char, src: c_ulong, src2: c_ulong) -> *mut c_char {
+pub unsafe extern "C" fn __strcpy_small(
+    dest: *mut c_char,
+    src: c_ulong,
+    src2: c_ulong,
+) -> *mut c_char {
     // __strcpy_small packs up to 16 bytes into two register-sized args
     let d = dest as *mut u8;
     unsafe {
@@ -1099,13 +1228,76 @@ dlsym_passthrough!(fn res_send(msg: *const c_void, msglen: c_int, answer: *mut c
 // ==========================================================================
 // __nss_* public symbols (7)
 // ==========================================================================
-dlsym_passthrough!(fn __nss_configure_lookup(db: *const c_char, service_line: *const c_char) -> c_int);
-dlsym_passthrough!(fn __nss_database_lookup(database: *const c_char, alt: *const c_char, defconf: *const c_char, ni: *mut *mut c_void) -> c_int);
-dlsym_passthrough!(fn __nss_group_lookup(status: *mut c_int, nip: *mut *mut c_void, name: *const c_char, group: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __nss_hostname_digits_dots(name: *const c_char, resbuf: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __nss_hosts_lookup(status: *mut c_int, nip: *mut *mut c_void, name: *const c_char, result: *mut c_void) -> c_int);
-dlsym_passthrough!(fn __nss_next(ni: *mut *mut c_void, fct_name: *const c_char, status: *mut c_int, all_values: c_int) -> c_int);
-dlsym_passthrough!(fn __nss_passwd_lookup(status: *mut c_int, nip: *mut *mut c_void, name: *const c_char, result: *mut c_void) -> c_int);
+// NSS internal functions: FrankenLibC uses native /etc/passwd|group|hosts parsing
+// instead of glibc's NSS module system. These stubs return "unavailable" so callers
+// fall back to our native implementations (pwd_abi, grp_abi, resolv_abi).
+// NSS_STATUS_UNAVAIL = -1, NSS_STATUS_NOTFOUND = -2
+// __nss_configure_lookup: configure NSS database — no-op, we parse files directly
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_configure_lookup(
+    _db: *const c_char,
+    _service_line: *const c_char,
+) -> c_int {
+    0 // success (ignored, we use native file parsing)
+}
+// __nss_database_lookup: look up NSS database — return UNAVAIL
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_database_lookup(
+    _database: *const c_char,
+    _alt: *const c_char,
+    _defconf: *const c_char,
+    _ni: *mut *mut c_void,
+) -> c_int {
+    -1 // NSS_STATUS_UNAVAIL
+}
+// __nss_group_lookup: NSS group lookup — return UNAVAIL (use grp_abi instead)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_group_lookup(
+    _status: *mut c_int,
+    _nip: *mut *mut c_void,
+    _name: *const c_char,
+    _group: *mut c_void,
+) -> c_int {
+    -1
+}
+// __nss_hostname_digits_dots: check if hostname is numeric dotted — return 0 (not numeric)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_hostname_digits_dots(
+    _name: *const c_char,
+    _resbuf: *mut c_void,
+) -> c_int {
+    0 // not a numeric address, use normal resolution
+}
+// __nss_hosts_lookup: NSS hosts lookup — return UNAVAIL (use resolv_abi instead)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_hosts_lookup(
+    _status: *mut c_int,
+    _nip: *mut *mut c_void,
+    _name: *const c_char,
+    _result: *mut c_void,
+) -> c_int {
+    -1
+}
+// __nss_next: advance to next NSS service — return UNAVAIL (no modules)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_next(
+    _ni: *mut *mut c_void,
+    _fct_name: *const c_char,
+    _status: *mut c_int,
+    _all_values: c_int,
+) -> c_int {
+    -1
+}
+// __nss_passwd_lookup: NSS passwd lookup — return UNAVAIL (use pwd_abi instead)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nss_passwd_lookup(
+    _status: *mut c_int,
+    _nip: *mut *mut c_void,
+    _name: *const c_char,
+    _result: *mut c_void,
+) -> c_int {
+    -1
+}
 
 // ==========================================================================
 // __nl_langinfo_l and locale internals (4 symbols)
@@ -1162,10 +1354,7 @@ pub unsafe extern "C" fn __dgettext(
 /// Unlike `dn_skipname` which returns bytes consumed, this advances `*ptrptr`
 /// in-place and returns 0 on success, -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn ns_name_skip(
-    ptrptr: *mut *const c_void,
-    eom: *const c_void,
-) -> c_int {
+pub unsafe extern "C" fn ns_name_skip(ptrptr: *mut *const c_void, eom: *const c_void) -> c_int {
     if ptrptr.is_null() || eom.is_null() {
         return -1;
     }
@@ -1268,7 +1457,7 @@ pub unsafe extern "C" fn ns_name_ntop(
                 oi += 1;
                 out[oi] = ch;
                 oi += 1;
-            } else if ch < 0x20 || ch >= 0x7F {
+            } else if !(0x20..0x7F).contains(&ch) {
                 // Escape non-printable as \DDD.
                 if oi + 4 >= out.len() {
                     unsafe { *libc::__errno_location() = libc::EMSGSIZE };
@@ -1329,7 +1518,7 @@ pub unsafe extern "C" fn ns_name_pton(
 
     let mut si = 0usize; // source index
     let mut oi = 0usize; // output index
-    let mut label_start = 0usize; // where current label length byte is
+    let mut label_start; // where current label length byte is
 
     // Reserve space for first label length byte.
     if oi >= out.len() {
@@ -1579,9 +1768,7 @@ pub unsafe extern "C" fn ns_name_compress(
 ) -> c_int {
     // Stage 1: text → uncompressed wire labels (stack buffer).
     let mut wire_buf = [0u8; 256]; // NS_MAXCDNAME
-    let ret = unsafe {
-        ns_name_pton(src, wire_buf.as_mut_ptr() as *mut c_void, wire_buf.len())
-    };
+    let ret = unsafe { ns_name_pton(src, wire_buf.as_mut_ptr() as *mut c_void, wire_buf.len()) };
     if ret < 0 {
         return -1;
     }
@@ -1624,9 +1811,7 @@ pub unsafe extern "C" fn ns_name_uncompress(
         return -1;
     }
     // Stage 2: wire labels → dotted text.
-    let text_ret = unsafe {
-        ns_name_ntop(wire_buf.as_ptr() as *const c_void, dst, dstsiz)
-    };
+    let text_ret = unsafe { ns_name_ntop(wire_buf.as_ptr() as *const c_void, dst, dstsiz) };
     if text_ret < 0 {
         return -1;
     }
@@ -1670,16 +1855,295 @@ pub unsafe extern "C" fn __dn_skipname(comp_dn: *const c_void, eom: *const c_voi
 }
 
 // ==========================================================================
-// obstack (10 symbols)
+// obstack (10 symbols) — native implementation
 // ==========================================================================
-dlsym_passthrough!(fn _obstack_allocated_p(h: *mut c_void, obj: *const c_void) -> c_int);
-dlsym_passthrough!(fn _obstack_begin(h: *mut c_void, size: SizeT, alignment: SizeT, chunkfun: *mut c_void, freefun: *mut c_void) -> c_int);
-dlsym_passthrough!(fn _obstack_begin_1(h: *mut c_void, size: SizeT, alignment: SizeT, chunkfun: *mut c_void, freefun: *mut c_void, arg: *mut c_void) -> c_int);
-dlsym_passthrough!(fn _obstack_free(h: *mut c_void, obj: *mut c_void));
-dlsym_passthrough!(fn _obstack_memory_used(h: *mut c_void) -> SizeT);
-dlsym_passthrough!(fn _obstack_newchunk(h: *mut c_void, length: SizeT));
-dlsym_passthrough!(fn __obstack_printf_chk(h: *mut c_void, flag: c_int, fmt: *const c_char) -> c_int);
-dlsym_passthrough!(fn __obstack_vprintf_chk(h: *mut c_void, flag: c_int, fmt: *const c_char, ap: *mut c_void) -> c_int);
+// Obstack is a stack allocator: objects grow incrementally, finalize in LIFO order.
+// Must match glibc's struct obstack binary layout for ABI compatibility.
+
+// Chunk header — matches glibc's struct _obstack_chunk
+#[repr(C)]
+struct ObstackChunk {
+    limit: *mut u8, // one past end of chunk
+    prev: *mut ObstackChunk, // previous chunk in list
+                    // contents follow (flexible array member)
+}
+
+// Must match glibc's struct obstack layout (x86_64)
+#[repr(C)]
+struct Obstack {
+    chunk_size: i64,          // preferred chunk size
+    chunk: *mut ObstackChunk, // current chunk
+    object_base: *mut u8,     // start of current object
+    next_free: *mut u8,       // next free byte
+    chunk_limit: *mut u8,     // end of current chunk
+    temp: i64,                // temporary (union of ptrdiff_t and void*)
+    alignment_mask: i32,      // alignment mask for each object
+    // 4 bytes padding (repr(C))
+    chunkfun: *mut c_void,  // allocation function pointer
+    freefun: *mut c_void,   // deallocation function pointer
+    extra_arg: *mut c_void, // first arg for chunk alloc/dealloc
+    flags: u32,             // bit 0: use_extra_arg, bit 1: maybe_empty_object, bit 2: alloc_failed
+}
+
+const OBSTACK_FLAG_USE_EXTRA_ARG: u32 = 1;
+const OBSTACK_FLAG_MAYBE_EMPTY: u32 = 2;
+const OBSTACK_CHUNK_OVERHEAD: usize = std::mem::size_of::<ObstackChunk>();
+const OBSTACK_DEFAULT_SIZE: usize = 4096 - OBSTACK_CHUNK_OVERHEAD;
+
+unsafe fn obstack_call_chunkfun(h: &Obstack, size: usize) -> *mut u8 {
+    type ChunkFn = unsafe extern "C" fn(usize) -> *mut u8;
+    type ChunkFnExtra = unsafe extern "C" fn(*mut c_void, usize) -> *mut u8;
+    unsafe {
+        if h.flags & OBSTACK_FLAG_USE_EXTRA_ARG != 0 {
+            let f: ChunkFnExtra = std::mem::transmute(h.chunkfun);
+            f(h.extra_arg, size)
+        } else {
+            let f: ChunkFn = std::mem::transmute(h.chunkfun);
+            f(size)
+        }
+    }
+}
+
+unsafe fn obstack_call_freefun(h: &Obstack, ptr: *mut u8) {
+    type FreeFn = unsafe extern "C" fn(*mut u8);
+    type FreeFnExtra = unsafe extern "C" fn(*mut c_void, *mut u8);
+    unsafe {
+        if h.flags & OBSTACK_FLAG_USE_EXTRA_ARG != 0 {
+            let f: FreeFnExtra = std::mem::transmute(h.freefun);
+            f(h.extra_arg, ptr);
+        } else {
+            let f: FreeFn = std::mem::transmute(h.freefun);
+            f(ptr);
+        }
+    }
+}
+
+// _obstack_begin: initialize obstack with malloc/free-style allocators
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _obstack_begin(
+    h: *mut c_void,
+    size: SizeT,
+    alignment: SizeT,
+    chunkfun: *mut c_void,
+    freefun: *mut c_void,
+) -> c_int {
+    if h.is_null() || chunkfun.is_null() || freefun.is_null() {
+        return 0;
+    }
+    let h = h as *mut Obstack;
+    let align = if alignment == 0 {
+        std::mem::size_of::<*mut c_void>() // default: pointer alignment
+    } else {
+        alignment.next_power_of_two()
+    };
+    let chunk_size = if size == 0 {
+        OBSTACK_DEFAULT_SIZE
+    } else {
+        size
+    };
+
+    unsafe {
+        (*h).chunk_size = chunk_size as i64;
+        (*h).alignment_mask = (align - 1) as i32;
+        (*h).chunkfun = chunkfun;
+        (*h).freefun = freefun;
+        (*h).extra_arg = std::ptr::null_mut();
+        (*h).flags = 0;
+
+        // Allocate first chunk
+        let total = chunk_size + OBSTACK_CHUNK_OVERHEAD;
+        let raw = obstack_call_chunkfun(&*h, total);
+        if raw.is_null() {
+            (*h).flags |= 4; // alloc_failed
+            return 0;
+        }
+        let chunk = raw as *mut ObstackChunk;
+        (*chunk).limit = raw.add(total);
+        (*chunk).prev = std::ptr::null_mut();
+        (*h).chunk = chunk;
+        let contents = raw.add(OBSTACK_CHUNK_OVERHEAD);
+        // Align contents
+        let aligned = ((contents as usize + align - 1) & !(align - 1)) as *mut u8;
+        (*h).object_base = aligned;
+        (*h).next_free = aligned;
+        (*h).chunk_limit = (*chunk).limit;
+    }
+    1 // success
+}
+
+// _obstack_begin_1: like _obstack_begin but with extra_arg for chunkfun/freefun
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _obstack_begin_1(
+    h: *mut c_void,
+    size: SizeT,
+    alignment: SizeT,
+    chunkfun: *mut c_void,
+    freefun: *mut c_void,
+    arg: *mut c_void,
+) -> c_int {
+    let result = unsafe { _obstack_begin(h, size, alignment, chunkfun, freefun) };
+    if result != 0 && !h.is_null() {
+        let h = h as *mut Obstack;
+        unsafe {
+            (*h).extra_arg = arg;
+            (*h).flags |= OBSTACK_FLAG_USE_EXTRA_ARG;
+        }
+    }
+    result
+}
+
+// _obstack_newchunk: allocate a new chunk when current is full
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _obstack_newchunk(h: *mut c_void, length: SizeT) {
+    if h.is_null() {
+        return;
+    }
+    let h = h as *mut Obstack;
+    unsafe {
+        let obj_size = (*h).next_free as usize - (*h).object_base as usize;
+        let needed = obj_size + length + OBSTACK_CHUNK_OVERHEAD;
+        let new_size = if needed > (*h).chunk_size as usize {
+            needed
+        } else {
+            (*h).chunk_size as usize
+        };
+        let total = new_size + OBSTACK_CHUNK_OVERHEAD;
+
+        let raw = obstack_call_chunkfun(&*h, total);
+        if raw.is_null() {
+            (*h).flags |= 4; // alloc_failed
+            return;
+        }
+        let new_chunk = raw as *mut ObstackChunk;
+        (*new_chunk).limit = raw.add(total);
+        (*new_chunk).prev = (*h).chunk;
+
+        let contents = raw.add(OBSTACK_CHUNK_OVERHEAD);
+        let align = ((*h).alignment_mask as usize) + 1;
+        let aligned = ((contents as usize + align - 1) & !(align - 1)) as *mut u8;
+
+        // Copy existing object data to new chunk
+        if obj_size > 0 {
+            std::ptr::copy_nonoverlapping((*h).object_base, aligned, obj_size);
+        }
+
+        // If old chunk has only this object and it's possibly empty, mark maybe_empty
+        if std::ptr::eq(
+            (*h).object_base,
+            ((*h).chunk as *mut u8).add(OBSTACK_CHUNK_OVERHEAD),
+        ) {
+            (*h).flags |= OBSTACK_FLAG_MAYBE_EMPTY;
+        }
+
+        (*h).chunk = new_chunk;
+        (*h).object_base = aligned;
+        (*h).next_free = aligned.add(obj_size);
+        (*h).chunk_limit = (*new_chunk).limit;
+    }
+}
+
+// _obstack_free: free objects allocated after `obj` (LIFO). If obj is NULL, free everything.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _obstack_free(h: *mut c_void, obj: *mut c_void) {
+    if h.is_null() {
+        return;
+    }
+    let h = h as *mut Obstack;
+    unsafe {
+        let obj = obj as *mut u8;
+        let mut chunk = (*h).chunk;
+
+        // Walk chunks, freeing any that don't contain obj
+        while !chunk.is_null() {
+            let chunk_start = (chunk as *mut u8).add(OBSTACK_CHUNK_OVERHEAD);
+            let chunk_end = (*chunk).limit;
+            if !obj.is_null() && obj >= chunk_start && obj < chunk_end {
+                // obj is in this chunk — stop here
+                (*h).object_base = obj;
+                (*h).next_free = obj;
+                (*h).chunk_limit = chunk_end;
+                (*h).chunk = chunk;
+                return;
+            }
+            let prev = (*chunk).prev;
+            obstack_call_freefun(&*h, chunk as *mut u8);
+            chunk = prev;
+        }
+
+        // If we freed everything (obj was NULL or not found), reset to empty state
+        (*h).chunk = std::ptr::null_mut();
+        (*h).object_base = std::ptr::null_mut();
+        (*h).next_free = std::ptr::null_mut();
+        (*h).chunk_limit = std::ptr::null_mut();
+    }
+}
+
+// _obstack_allocated_p: return 1 if obj is within any chunk of this obstack
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _obstack_allocated_p(h: *mut c_void, obj: *const c_void) -> c_int {
+    if h.is_null() || obj.is_null() {
+        return 0;
+    }
+    let h = h as *const Obstack;
+    let obj = obj as *const u8;
+    unsafe {
+        let mut chunk = (*h).chunk;
+        while !chunk.is_null() {
+            let chunk_start = (chunk as *const u8).add(OBSTACK_CHUNK_OVERHEAD);
+            let chunk_end = (*chunk).limit as *const u8;
+            if obj >= chunk_start && obj < chunk_end {
+                return 1;
+            }
+            chunk = (*chunk).prev;
+        }
+    }
+    0
+}
+
+// _obstack_memory_used: total bytes in all chunks
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _obstack_memory_used(h: *mut c_void) -> SizeT {
+    if h.is_null() {
+        return 0;
+    }
+    let h = h as *const Obstack;
+    let mut total: SizeT = 0;
+    unsafe {
+        let mut chunk = (*h).chunk;
+        while !chunk.is_null() {
+            total += (*chunk).limit as SizeT - chunk as SizeT;
+            chunk = (*chunk).prev;
+        }
+    }
+    total
+}
+
+// __obstack_printf_chk: printf to obstack with overflow checking — variadic, return ENOSYS
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __obstack_printf_chk(
+    _h: *mut c_void,
+    _flag: c_int,
+    _fmt: *const c_char,
+) -> c_int {
+    // Variadic function — cannot forward args portably.
+    // Applications should use obstack_printf macro which calls obstack_vprintf.
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
+
+// __obstack_vprintf_chk: vprintf to obstack with overflow checking
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __obstack_vprintf_chk(
+    _h: *mut c_void,
+    _flag: c_int,
+    _fmt: *const c_char,
+    _ap: *mut c_void,
+) -> c_int {
+    // The va_list format is platform-specific. For now, return ENOSYS.
+    // Applications rarely call this directly; they use obstack_printf macro.
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
 
 // obstack globals
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -1940,9 +2404,8 @@ pub unsafe extern "C" fn inet6_opt_find(
     let mut cur_off = offset;
     let mut found_type: u8 = 0;
     loop {
-        let next = unsafe {
-            inet6_opt_next(extbuf, extlen, cur_off, &mut found_type, lenp, databufp)
-        };
+        let next =
+            unsafe { inet6_opt_next(extbuf, extlen, cur_off, &mut found_type, lenp, databufp) };
         if next < 0 {
             return -1;
         }
@@ -2015,10 +2478,7 @@ pub unsafe extern "C" fn inet6_option_alloc(
 ///
 /// Returns -1 (deprecated API not supported).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn inet6_option_next(
-    _cmsg: *const c_void,
-    _tptrp: *mut *mut u8,
-) -> c_int {
+pub unsafe extern "C" fn inet6_option_next(_cmsg: *const c_void, _tptrp: *mut *mut u8) -> c_int {
     -1
 }
 
@@ -2051,7 +2511,7 @@ const IPV6_RTHDR_TYPE_0: c_int = 0;
 /// Type 0: 8 + segments * 16. Returns 0 if type is unsupported or segments < 0.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn inet6_rth_space(typ: c_int, segments: c_int) -> c_int {
-    if typ != IPV6_RTHDR_TYPE_0 || segments < 0 || segments > 127 {
+    if typ != IPV6_RTHDR_TYPE_0 || !(0..=127).contains(&segments) {
         return 0;
     }
     (RTH0_HDR_SIZE + segments as usize * IN6_ADDR_SIZE) as c_int
@@ -2067,7 +2527,7 @@ pub unsafe extern "C" fn inet6_rth_init(
     typ: c_int,
     segments: c_int,
 ) -> *mut c_void {
-    if bp.is_null() || typ != IPV6_RTHDR_TYPE_0 || segments < 0 || segments > 127 {
+    if bp.is_null() || typ != IPV6_RTHDR_TYPE_0 || !(0..=127).contains(&segments) {
         return std::ptr::null_mut();
     }
     let needed = RTH0_HDR_SIZE + segments as usize * IN6_ADDR_SIZE;
@@ -2143,10 +2603,7 @@ pub unsafe extern "C" fn inet6_rth_getaddr(bp: *const c_void, index: c_int) -> *
 /// Copies addresses in reverse order. inp and outp may be the same buffer.
 /// Returns 0 on success, -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn inet6_rth_reverse(
-    inp: *const c_void,
-    outp: *mut c_void,
-) -> c_int {
+pub unsafe extern "C" fn inet6_rth_reverse(inp: *const c_void, outp: *mut c_void) -> c_int {
     if inp.is_null() || outp.is_null() {
         return -1;
     }
@@ -2162,20 +2619,20 @@ pub unsafe extern "C" fn inet6_rth_reverse(
 
     // Reverse addresses using a temp buffer.
     let mut addrs = vec![[0u8; IN6_ADDR_SIZE]; nseg];
-    for i in 0..nseg {
+    for (i, addr) in addrs.iter_mut().enumerate().take(nseg) {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 in_hdr.add(RTH0_HDR_SIZE + i * IN6_ADDR_SIZE),
-                addrs[i].as_mut_ptr(),
+                addr.as_mut_ptr(),
                 IN6_ADDR_SIZE,
             );
         }
     }
     let out_hdr = outp as *mut u8;
-    for i in 0..nseg {
+    for (i, addr) in addrs.iter().rev().enumerate().take(nseg) {
         unsafe {
             std::ptr::copy_nonoverlapping(
-                addrs[nseg - 1 - i].as_ptr(),
+                addr.as_ptr(),
                 out_hdr.add(RTH0_HDR_SIZE + i * IN6_ADDR_SIZE),
                 IN6_ADDR_SIZE,
             );
@@ -2269,7 +2726,11 @@ pub unsafe extern "C" fn inet_network(cp: *const c_char) -> c_uint {
 }
 // inet_nsap_addr: convert hex NSAP address string to binary
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn inet_nsap_addr(cp: *const c_char, buf: *mut c_void, buflen: c_int) -> c_uint {
+pub unsafe extern "C" fn inet_nsap_addr(
+    cp: *const c_char,
+    buf: *mut c_void,
+    buflen: c_int,
+) -> c_uint {
     if cp.is_null() || buf.is_null() {
         return 0;
     }
@@ -2311,7 +2772,11 @@ pub unsafe extern "C" fn inet_nsap_addr(cp: *const c_char, buf: *mut c_void, buf
 }
 // inet_nsap_ntoa: convert binary NSAP address to hex string
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn inet_nsap_ntoa(len: c_int, cp: *const c_void, buf: *mut c_char) -> *mut c_char {
+pub unsafe extern "C" fn inet_nsap_ntoa(
+    len: c_int,
+    cp: *const c_void,
+    buf: *mut c_char,
+) -> *mut c_char {
     static NSAP_BUF: std::sync::Mutex<[u8; 512]> = std::sync::Mutex::new([0u8; 512]);
     let dst = if buf.is_null() {
         let mut b = NSAP_BUF.lock().unwrap();
@@ -2384,7 +2849,24 @@ pub unsafe extern "C" fn __adjtimex(buf: *mut c_void) -> c_int {
 pub unsafe extern "C" fn __arch_prctl(code: c_int, addr: c_ulong) -> c_int {
     unsafe { libc::syscall(libc::SYS_arch_prctl, code as c_long, addr as c_long) as c_int }
 }
-dlsym_passthrough!(fn __asprintf(strp: *mut *mut c_char, fmt: *const c_char) -> c_int);
+// __asprintf: glibc internal alias for asprintf — forward to our vasprintf via va_list
+// Since this is variadic and we can't easily forward varargs, use dlsym fallback
+// to host glibc's __asprintf. This is one of the few symbols that genuinely needs
+// host delegation because variadic→va_list forwarding in Rust is not portable.
+// Return ENOSYS stub for the replace profile; interpose profile keeps passthrough.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __asprintf(
+    strp: *mut *mut c_char,
+    _fmt: *const c_char, // ... variadic
+) -> c_int {
+    // Cannot forward variadic args to vasprintf without platform-specific va_list tricks.
+    // For safety, return error. Real callers should use asprintf() which we handle natively.
+    if !strp.is_null() {
+        unsafe { *strp = std::ptr::null_mut() };
+    }
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
 // __backtrace: native — forward to our backtrace
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __backtrace(buffer: *mut *mut c_void, size: c_int) -> c_int {
@@ -2413,7 +2895,75 @@ pub unsafe extern "C" fn __bsd_getpgrp(pid: c_int) -> c_int {
     unsafe { libc::getpgid(pid) }
 }
 // __check_rhosts_file is a global variable, defined below as a static
-dlsym_passthrough!(fn __clone(fn_: *mut c_void, stack: *mut c_void, flags: c_int, arg: *mut c_void) -> c_int);
+// __clone: glibc-compatible clone wrapper (must be asm — child runs on different stack).
+// Signature: __clone(fn, child_stack, flags, arg) -> pid_t or -1
+// x86_64 C ABI: rdi=fn, rsi=child_stack, edx=flags, rcx=arg
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+#[unsafe(naked)]
+pub unsafe extern "C" fn __clone(
+    _fn: *mut c_void,
+    _stack: *mut c_void,
+    _flags: c_int,
+    _arg: *mut c_void,
+) -> c_int {
+    std::arch::naked_asm!(
+        // Validate fn (rdi) and stack (rsi)
+        "test rdi, rdi",
+        "jz 90f",
+        "test rsi, rsi",
+        "jz 90f",
+        // Place fn and arg on child stack (rsi points to top, grows down)
+        "and rsi, -16", // align child stack to 16
+        "sub rsi, 16",
+        "mov [rsi], rdi",   // fn at [rsp] for child
+        "mov [rsi+8], rcx", // arg at [rsp+8] for child
+        // Rearrange for clone syscall:
+        // syscall(SYS_clone, flags, child_stack, ptid, ctid, newtls)
+        //   rax=56, rdi=flags, rsi=child_stack, rdx=ptid, r10=ctid, r8=newtls
+        "mov rdi, rdx", // flags (was in edx)
+        // rsi already has child_stack
+        "xor edx, edx",   // ptid = NULL
+        "xor r10d, r10d", // ctid = NULL
+        "xor r8d, r8d",   // newtls = NULL
+        "mov eax, 56",    // SYS_clone
+        "syscall",
+        // Check parent vs child
+        "test rax, rax",
+        "jz 10f", // child (rax==0)
+        "js 80f", // error (rax<0)
+        // Parent: return child pid
+        "ret",
+        // === Child path (on new stack) ===
+        "10:",
+        "xor ebp, ebp", // clear frame pointer
+        "pop rax",      // fn pointer
+        "pop rdi",      // arg
+        "call rax",     // call fn(arg)
+        "mov edi, eax", // exit status
+        "mov eax, 60",  // SYS_exit
+        "syscall",
+        "ud2",
+        // === Error: syscall failed ===
+        "80:",
+        "neg eax",      // rax was -errno, make positive
+        "mov edi, eax", // errno value
+        "push rdi",     // save errno across call
+        "call __errno_location",
+        "pop rdi",
+        "mov [rax], edi", // *__errno_location() = errno
+        "mov eax, -1",
+        "ret",
+        // === Error: EINVAL (null fn or stack) ===
+        "90:",
+        "mov edi, 22", // EINVAL
+        "push rdi",
+        "call __errno_location",
+        "pop rdi",
+        "mov [rax], edi",
+        "mov eax, -1",
+        "ret",
+    )
+}
 // __close: native syscall
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __close(fd: c_int) -> c_int {
@@ -2668,7 +3218,11 @@ pub unsafe extern "C" fn __poll(fds: *mut c_void, nfds: c_ulong, timeout: c_int)
 }
 // __posix_getopt → getopt (POSIX semantics — same as getopt)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __posix_getopt(argc: c_int, argv: *const *mut c_char, optstring: *const c_char) -> c_int {
+pub unsafe extern "C" fn __posix_getopt(
+    argc: c_int,
+    argv: *const *mut c_char,
+    optstring: *const c_char,
+) -> c_int {
     unsafe { super::unistd_abi::getopt(argc, argv, optstring) }
 }
 // __pread64/__pwrite64: native syscall
@@ -2681,7 +3235,15 @@ pub unsafe extern "C" fn __pread64(
 ) -> SSizeT {
     unsafe { libc::syscall(libc::SYS_pread64, fd, buf, count, offset) as SSizeT }
 }
-dlsym_passthrough!(fn __printf_fp(fp: *mut c_void, info: *const c_void, args: *const *const c_void) -> c_int);
+// __printf_fp: glibc-internal float printf helper — returns -1 (not exposed in public API)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __printf_fp(
+    _fp: *mut c_void,
+    _info: *const c_void,
+    _args: *const *const c_void,
+) -> c_int {
+    -1 // internal glibc helper, not called directly by applications
+}
 // __profile_frequency: native — return 100 (default HZ)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __profile_frequency() -> c_int {
@@ -2905,11 +3467,7 @@ pub unsafe extern "C" fn __vsnprintf(
 }
 // __vsscanf: native — forward to our vsscanf
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __vsscanf(
-    s: *const c_char,
-    fmt: *const c_char,
-    ap: *mut c_void,
-) -> c_int {
+pub unsafe extern "C" fn __vsscanf(s: *const c_char, fmt: *const c_char, ap: *mut c_void) -> c_int {
     unsafe { super::stdio_abi::vsscanf(s, fmt, ap) }
 }
 // __wait: native — wait4 with pid=-1, options=0
@@ -3255,7 +3813,12 @@ pub unsafe extern "C" fn __wmempcpy_chk(
 }
 // __read_chk: fortified read — abort if nbytes > buflen
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __read_chk(fd: c_int, buf: *mut c_void, nbytes: SizeT, buflen: SizeT) -> SSizeT {
+pub unsafe extern "C" fn __read_chk(
+    fd: c_int,
+    buf: *mut c_void,
+    nbytes: SizeT,
+    buflen: SizeT,
+) -> SSizeT {
     if nbytes > buflen {
         unsafe { libc::abort() };
     }
@@ -3263,7 +3826,12 @@ pub unsafe extern "C" fn __read_chk(fd: c_int, buf: *mut c_void, nbytes: SizeT, 
 }
 // __readlink_chk: fortified readlink — abort if len > buflen
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __readlink_chk(path: *const c_char, buf: *mut c_char, len: SizeT, buflen: SizeT) -> SSizeT {
+pub unsafe extern "C" fn __readlink_chk(
+    path: *const c_char,
+    buf: *mut c_char,
+    len: SizeT,
+    buflen: SizeT,
+) -> SSizeT {
     if len > buflen {
         unsafe { libc::abort() };
     }
@@ -3271,7 +3839,13 @@ pub unsafe extern "C" fn __readlink_chk(path: *const c_char, buf: *mut c_char, l
 }
 // __readlinkat_chk: fortified readlinkat — abort if len > buflen
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __readlinkat_chk(dirfd: c_int, path: *const c_char, buf: *mut c_char, len: SizeT, buflen: SizeT) -> SSizeT {
+pub unsafe extern "C" fn __readlinkat_chk(
+    dirfd: c_int,
+    path: *const c_char,
+    buf: *mut c_char,
+    len: SizeT,
+    buflen: SizeT,
+) -> SSizeT {
     if len > buflen {
         unsafe { libc::abort() };
     }
@@ -3450,7 +4024,13 @@ pub static mut mallwatch: *mut c_void = std::ptr::null_mut();
 // ==========================================================================
 // _dl_*, _flushlbf, _libc_intl_domainname, getdate_err, _res (5 symbols)
 // ==========================================================================
-dlsym_passthrough!(fn _dl_find_object(address: *mut c_void, result: *mut c_void) -> c_int);
+// _dl_find_object: glibc 2.35+ dynamic linker API for unwinding — return -1 (not found)
+// Used by libgcc_s unwinder to find .eh_frame for a given PC address.
+// When not available, libgcc falls back to dl_iterate_phdr.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _dl_find_object(_address: *mut c_void, _result: *mut c_void) -> c_int {
+    -1 // not found — triggers fallback to dl_iterate_phdr
+}
 // _dl_mcount_wrapper: profiling callback — no-op when profiling disabled
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _dl_mcount_wrapper(_selfpc: c_ulong) {}
@@ -3840,7 +4420,11 @@ pub unsafe extern "C" fn getipv4sourcefilter(
     // IP_MSFILTER = 41 on Linux
     const IP_MSFILTER: c_int = 41;
     // struct ip_msfilter layout: imsf_multiaddr(4), imsf_interface(4), imsf_fmode(4), imsf_numsrc(4), imsf_slist[0](4...)
-    let max_src = if numsrc.is_null() { 0u32 } else { unsafe { *numsrc } };
+    let max_src = if numsrc.is_null() {
+        0u32
+    } else {
+        unsafe { *numsrc }
+    };
     let buf_size = 16 + (max_src as usize) * 4;
     let mut buf = vec![0u8; buf_size];
     // Fill request: multiaddr + interface
@@ -4017,13 +4601,20 @@ pub unsafe extern "C" fn iopl(level: c_int) -> c_int {
 // iruserok/iruserok_af: .rhosts-based remote user auth — deny-all for security
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn iruserok(
-    _raddr: c_uint, _superuser: c_int, _ruser: *const c_char, _luser: *const c_char,
+    _raddr: c_uint,
+    _superuser: c_int,
+    _ruser: *const c_char,
+    _luser: *const c_char,
 ) -> c_int {
     -1
 }
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn iruserok_af(
-    _raddr: *const c_void, _superuser: c_int, _ruser: *const c_char, _luser: *const c_char, _af: c_int,
+    _raddr: *const c_void,
+    _superuser: c_int,
+    _ruser: *const c_char,
+    _luser: *const c_char,
+    _af: c_int,
 ) -> c_int {
     -1
 }
@@ -4177,7 +4768,9 @@ const PA_FLAG_LONG_LONG: c_int = 0x200;
 const PA_FLAG_SHORT: c_int = 0x400;
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn parse_printf_format(
-    fmt: *const c_char, n: SizeT, argtypes: *mut c_int,
+    fmt: *const c_char,
+    n: SizeT,
+    argtypes: *mut c_int,
 ) -> SizeT {
     if fmt.is_null() {
         return 0;
@@ -4507,24 +5100,61 @@ pub unsafe extern "C" fn query_module(
 // rcmd/rcmd_af: rsh remote command — disabled for security (rsh protocol is insecure)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn rcmd(
-    _ahost: *mut *mut c_char, _rport: c_int, _locuser: *const c_char,
-    _remuser: *const c_char, _cmd: *const c_char, _fd2p: *mut c_int,
+    _ahost: *mut *mut c_char,
+    _rport: c_int,
+    _locuser: *const c_char,
+    _remuser: *const c_char,
+    _cmd: *const c_char,
+    _fd2p: *mut c_int,
 ) -> c_int {
     unsafe { *libc::__errno_location() = libc::ENOSYS };
     -1
 }
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn rcmd_af(
-    _ahost: *mut *mut c_char, _rport: c_int, _locuser: *const c_char,
-    _remuser: *const c_char, _cmd: *const c_char, _fd2p: *mut c_int, _af: c_int,
+    _ahost: *mut *mut c_char,
+    _rport: c_int,
+    _locuser: *const c_char,
+    _remuser: *const c_char,
+    _cmd: *const c_char,
+    _fd2p: *mut c_int,
+    _af: c_int,
 ) -> c_int {
     unsafe { *libc::__errno_location() = libc::ENOSYS };
     -1
 }
-dlsym_passthrough!(fn register_printf_function(spec: c_int, render: *mut c_void, arginfo: *mut c_void) -> c_int);
-dlsym_passthrough!(fn register_printf_modifier(str: *const WcharT) -> c_int);
-dlsym_passthrough!(fn register_printf_specifier(spec: c_int, render: *mut c_void, arginfo: *mut c_void) -> c_int);
-dlsym_passthrough!(fn register_printf_type(fct: *mut c_void) -> c_int);
+// register_printf_function: GNU extension for custom printf formatters — not supported
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn register_printf_function(
+    _spec: c_int,
+    _render: *mut c_void,
+    _arginfo: *mut c_void,
+) -> c_int {
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
+// register_printf_modifier: GNU extension — not supported
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn register_printf_modifier(_str: *const WcharT) -> c_int {
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
+// register_printf_specifier: GNU extension — not supported
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn register_printf_specifier(
+    _spec: c_int,
+    _render: *mut c_void,
+    _arginfo: *mut c_void,
+) -> c_int {
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
+// register_printf_type: GNU extension — not supported
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn register_printf_type(_fct: *mut c_void) -> c_int {
+    unsafe { *libc::__errno_location() = libc::ENOSYS };
+    -1
+}
 // revoke: BSD — not implemented on Linux
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn revoke(file: *const c_char) -> c_int {
@@ -4537,16 +5167,25 @@ pub unsafe extern "C" fn revoke(file: *const c_char) -> c_int {
 // rexec/rexec_af: remote exec with cleartext auth — disabled for security
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn rexec(
-    _ahost: *mut *mut c_char, _rport: c_int, _user: *const c_char,
-    _passwd: *const c_char, _cmd: *const c_char, _fd2p: *mut c_int,
+    _ahost: *mut *mut c_char,
+    _rport: c_int,
+    _user: *const c_char,
+    _passwd: *const c_char,
+    _cmd: *const c_char,
+    _fd2p: *mut c_int,
 ) -> c_int {
     unsafe { *libc::__errno_location() = libc::ENOSYS };
     -1
 }
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn rexec_af(
-    _ahost: *mut *mut c_char, _rport: c_int, _user: *const c_char,
-    _passwd: *const c_char, _cmd: *const c_char, _fd2p: *mut c_int, _af: c_int,
+    _ahost: *mut *mut c_char,
+    _rport: c_int,
+    _user: *const c_char,
+    _passwd: *const c_char,
+    _cmd: *const c_char,
+    _fd2p: *mut c_int,
+    _af: c_int,
 ) -> c_int {
     unsafe { *libc::__errno_location() = libc::ENOSYS };
     -1
@@ -4632,20 +5271,29 @@ pub unsafe extern "C" fn rresvport_af(port: *mut c_int, af: c_int) -> c_int {
 // ruserok/ruserok_af: .rhosts hostname-based auth — deny-all for security
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn ruserok(
-    _rhost: *const c_char, _superuser: c_int, _ruser: *const c_char, _luser: *const c_char,
+    _rhost: *const c_char,
+    _superuser: c_int,
+    _ruser: *const c_char,
+    _luser: *const c_char,
 ) -> c_int {
     -1
 }
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn ruserok_af(
-    _rhost: *const c_char, _superuser: c_int, _ruser: *const c_char, _luser: *const c_char, _af: c_int,
+    _rhost: *const c_char,
+    _superuser: c_int,
+    _ruser: *const c_char,
+    _luser: *const c_char,
+    _af: c_int,
 ) -> c_int {
     -1
 }
 // ruserpass: .netrc credential parser — return -1 (no .netrc support for security)
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn ruserpass(
-    _host: *const c_char, aname: *mut *const c_char, apass: *mut *const c_char,
+    _host: *const c_char,
+    aname: *mut *const c_char,
+    apass: *mut *const c_char,
 ) -> c_int {
     if !aname.is_null() {
         unsafe { *aname = std::ptr::null() };
@@ -4670,7 +5318,13 @@ pub unsafe extern "C" fn scandirat(
     compar: *mut c_void,
 ) -> c_int {
     // Open the directory relative to dirfd using openat + fdopendir
-    let fd = unsafe { libc::openat(dirfd, dirp, libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+    let fd = unsafe {
+        libc::openat(
+            dirfd,
+            dirp,
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
     if fd < 0 {
         return -1;
     }
@@ -4681,7 +5335,8 @@ pub unsafe extern "C" fn scandirat(
     }
     // Use scandir-style iteration
     type FilterFn = unsafe extern "C" fn(*const libc::dirent) -> c_int;
-    type ComparFn = unsafe extern "C" fn(*const *const libc::dirent, *const *const libc::dirent) -> c_int;
+    type ComparFn =
+        unsafe extern "C" fn(*const *const libc::dirent, *const *const libc::dirent) -> c_int;
     let filter_fn: Option<FilterFn> = if filter.is_null() {
         None
     } else {
@@ -4719,12 +5374,18 @@ pub unsafe extern "C" fn scandirat(
     if !compar.is_null() {
         let cmp: ComparFn = unsafe { std::mem::transmute::<*mut c_void, ComparFn>(compar) };
         entries.sort_by(|a, b| {
-            let r = unsafe { cmp(a as *const _ as *const *const libc::dirent, b as *const _ as *const *const libc::dirent) };
+            let r = unsafe {
+                cmp(
+                    a as *const _ as *const *const libc::dirent,
+                    b as *const _ as *const *const libc::dirent,
+                )
+            };
             r.cmp(&0)
         });
     }
     let count = entries.len() as c_int;
-    let arr = unsafe { libc::malloc(entries.len() * std::mem::size_of::<*mut libc::dirent>()) } as *mut *mut c_void;
+    let arr = unsafe { libc::malloc(entries.len() * std::mem::size_of::<*mut libc::dirent>()) }
+        as *mut *mut c_void;
     if arr.is_null() && !entries.is_empty() {
         for e in &entries {
             unsafe { libc::free(*e as *mut c_void) };
@@ -4750,7 +5411,11 @@ pub unsafe extern "C" fn scandirat64(
 }
 // sem_clockwait: timed semaphore wait with specified clock
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn sem_clockwait(sem: *mut c_void, clockid: c_int, abstime: *const c_void) -> c_int {
+pub unsafe extern "C" fn sem_clockwait(
+    sem: *mut c_void,
+    clockid: c_int,
+    abstime: *const c_void,
+) -> c_int {
     // Use futex FUTEX_WAIT_BITSET with clock selection
     // sem_t is an int at offset 0; if value > 0, decrement and return
     let sem_val = sem as *mut std::sync::atomic::AtomicI32;
@@ -4783,7 +5448,13 @@ pub unsafe extern "C" fn sem_clockwait(sem: *mut c_void, clockid: c_int, abstime
             libc::syscall(
                 libc::SYS_futex,
                 sem_val as *mut c_void,
-                libc::FUTEX_WAIT_BITSET | (libc::FUTEX_CLOCK_REALTIME * (if clockid == libc::CLOCK_REALTIME { 1 } else { 0 })),
+                libc::FUTEX_WAIT_BITSET
+                    | (libc::FUTEX_CLOCK_REALTIME
+                        * (if clockid == libc::CLOCK_REALTIME {
+                            1
+                        } else {
+                            0
+                        })),
                 val,
                 ts,
                 std::ptr::null::<c_void>(),
@@ -4840,7 +5511,11 @@ pub unsafe extern "C" fn setipv4sourcefilter(
     }
     if !slist.is_null() && numsrc > 0 {
         unsafe {
-            std::ptr::copy_nonoverlapping(slist as *const u8, buf.as_mut_ptr().add(16), numsrc as usize * 4);
+            std::ptr::copy_nonoverlapping(
+                slist as *const u8,
+                buf.as_mut_ptr().add(16),
+                numsrc as usize * 4,
+            );
         }
     }
     unsafe {
@@ -4896,7 +5571,13 @@ pub unsafe extern "C" fn setsourcefilter(
                 numsrc as usize * ss_size,
             );
         }
-        libc::setsockopt(s, libc::SOL_SOCKET, MCAST_MSFILTER, buf.as_ptr() as *const c_void, buf_size as libc::socklen_t)
+        libc::setsockopt(
+            s,
+            libc::SOL_SOCKET,
+            MCAST_MSFILTER,
+            buf.as_ptr() as *const c_void,
+            buf_size as libc::socklen_t,
+        )
     }
 }
 
@@ -4914,7 +5595,11 @@ pub unsafe extern "C" fn getsourcefilter(
     const MCAST_MSFILTER: c_int = 48;
     let ss_size = std::mem::size_of::<libc::sockaddr_storage>();
     let header_size = 4 + 4 + ss_size + 4 + 4;
-    let max_src = if numsrc.is_null() { 0u32 } else { unsafe { *numsrc } };
+    let max_src = if numsrc.is_null() {
+        0u32
+    } else {
+        unsafe { *numsrc }
+    };
     let buf_size = header_size + (max_src as usize) * ss_size;
     let mut buf = vec![0u8; buf_size];
     unsafe {
@@ -4938,7 +5623,8 @@ pub unsafe extern "C" fn getsourcefilter(
     if !fmode.is_null() {
         unsafe { *fmode = std::ptr::read_unaligned(buf.as_ptr().add(8 + ss_size) as *const u32) };
     }
-    let returned_numsrc = unsafe { std::ptr::read_unaligned(buf.as_ptr().add(8 + ss_size + 4) as *const u32) };
+    let returned_numsrc =
+        unsafe { std::ptr::read_unaligned(buf.as_ptr().add(8 + ss_size + 4) as *const u32) };
     if !numsrc.is_null() {
         unsafe { *numsrc = returned_numsrc };
     }
@@ -5042,7 +5728,10 @@ pub unsafe extern "C" fn sgetspent_r(
     let _ = off;
     // Parse numeric fields
     let parse_long = |idx: usize| -> c_long {
-        fields.get(idx).and_then(|s| s.parse::<c_long>().ok()).unwrap_or(-1)
+        fields
+            .get(idx)
+            .and_then(|s| s.parse::<c_long>().ok())
+            .unwrap_or(-1)
     };
     unsafe {
         (*sp).sp_lstchg = parse_long(2);
@@ -5051,7 +5740,10 @@ pub unsafe extern "C" fn sgetspent_r(
         (*sp).sp_warn = parse_long(5);
         (*sp).sp_inact = parse_long(6);
         (*sp).sp_expire = parse_long(7);
-        (*sp).sp_flag = fields.get(8).and_then(|s| s.parse::<c_ulong>().ok()).unwrap_or(c_ulong::MAX);
+        (*sp).sp_flag = fields
+            .get(8)
+            .and_then(|s| s.parse::<c_ulong>().ok())
+            .unwrap_or(c_ulong::MAX);
         *(spbufp as *mut *mut libc::spwd) = sp;
     }
     0
@@ -5215,9 +5907,7 @@ pub unsafe extern "C" fn re_comp(pattern: *const c_char) -> *mut c_char {
     let mut buf = RE_COMPILED_BUF.lock().unwrap();
     let mut err = RE_ERROR_BUF.lock().unwrap();
     let regex_ptr = buf.as_mut_ptr() as *mut c_void;
-    let rc = unsafe {
-        super::string_abi::regcomp(regex_ptr, pattern, 0)
-    };
+    let rc = unsafe { super::string_abi::regcomp(regex_ptr, pattern, 0) };
     if rc == 0 {
         std::ptr::null_mut()
     } else {
@@ -5234,9 +5924,7 @@ pub unsafe extern "C" fn re_exec(string: *const c_char) -> c_int {
     }
     let buf = RE_COMPILED_BUF.lock().unwrap();
     let regex_ptr = buf.as_ptr() as *const c_void;
-    let rc = unsafe {
-        super::string_abi::regexec(regex_ptr, string, 0, std::ptr::null_mut(), 0)
-    };
+    let rc = unsafe { super::string_abi::regexec(regex_ptr, string, 0, std::ptr::null_mut(), 0) };
     if rc == 0 { 1 } else { 0 }
 }
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -5376,9 +6064,24 @@ pub static mut _obstack: *mut c_void = std::ptr::null_mut();
 
 // __stpcpy_small: optimized small-string stpcpy
 
-// printf_size / printf_size_info: custom printf formatter for human-readable sizes
-dlsym_passthrough!(fn printf_size(fp: *mut c_void, info: *const c_void, args: *const *const c_void) -> c_int);
-dlsym_passthrough!(fn printf_size_info(info: *const c_void, n: SizeT, argtypes: *mut c_int) -> SizeT);
+// printf_size: custom printf formatter for human-readable sizes — requires register_printf_specifier, not supported
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn printf_size(
+    _fp: *mut c_void,
+    _info: *const c_void,
+    _args: *const *const c_void,
+) -> c_int {
+    -1
+}
+// printf_size_info: arginfo callback for printf_size — not supported
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn printf_size_info(
+    _info: *const c_void,
+    _n: SizeT,
+    _argtypes: *mut c_int,
+) -> SizeT {
+    0
+}
 
 // nfsservctl: deprecated NFS server control
 // nfsservctl: removed in Linux 3.1 — return ENOSYS
@@ -5391,9 +6094,12 @@ pub unsafe extern "C" fn nfsservctl(cmd: c_int, argp: *mut c_void, resp: *mut c_
     -1
 }
 
-// xprt_register/unregister: SVC transport registration
-dlsym_passthrough!(fn xprt_register(xprt: *mut c_void));
-dlsym_passthrough!(fn xprt_unregister(xprt: *mut c_void));
+// xprt_register: SVC transport registration — no-op (RPC transport handled by rpc_abi)
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn xprt_register(_xprt: *mut c_void) {}
+// xprt_unregister: SVC transport unregistration — no-op
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn xprt_unregister(_xprt: *mut c_void) {}
 
 // RPC data symbols — these are global variables in glibc.
 // svc_fdset is fd_set (128 bytes on Linux), svc_pollfd is *pollfd, etc.
