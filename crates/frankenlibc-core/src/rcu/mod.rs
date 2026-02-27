@@ -21,7 +21,10 @@
 //! their safety invariants. The module requires `#[allow(unsafe_code)]`
 //! because it manages raw pointer lifecycles.
 
-use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use core::hint::spin_loop;
+use core::marker::PhantomData;
+use core::mem::{MaybeUninit, size_of};
+use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering, fence};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,6 +42,9 @@ const EPOCH_OFFLINE: u64 = 0;
 
 /// Cache-line size for padding to avoid false sharing.
 const CACHE_LINE: usize = 64;
+const SEQLOCK_MAX_BYTES: usize = 64;
+const SEQLOCK_LANE_BYTES: usize = 8;
+const SEQLOCK_LANES: usize = SEQLOCK_MAX_BYTES / SEQLOCK_LANE_BYTES;
 
 // ---------------------------------------------------------------------------
 // Per-thread RCU reader state
@@ -502,6 +508,199 @@ impl<T> RcuDomain<T> {
     /// Read the raw pointer value (for testing/debugging).
     pub fn load_raw(&self) -> usize {
         self.ptr.load(Ordering::Acquire)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SeqLock<T> — lock-free readers for small configuration payloads
+// ---------------------------------------------------------------------------
+
+/// Sequence-lock for read-heavy configuration data.
+///
+/// Design goals:
+/// - Readers are lock-free and wait-free when no concurrent writer is active.
+/// - Writers serialize with a monotone sequence counter.
+/// - Payload storage is split across atomic `u64` lanes to avoid torn reads and
+///   undefined behavior from racy non-atomic loads/stores.
+///
+/// Constraints:
+/// - `T` must be `Copy`.
+/// - `size_of::<T>() <= 64` bytes.
+#[repr(C)]
+pub struct SeqLock<T: Copy> {
+    sequence: AtomicU64,
+    lanes: [AtomicU64; SEQLOCK_LANES],
+    _marker: PhantomData<T>,
+}
+
+// SAFETY: all shared state is atomically accessed.
+#[allow(unsafe_code)]
+unsafe impl<T: Copy + Send> Send for SeqLock<T> {}
+#[allow(unsafe_code)]
+unsafe impl<T: Copy + Send + Sync> Sync for SeqLock<T> {}
+
+impl<T: Copy> SeqLock<T> {
+    /// Create a seqlock initialized with `initial`.
+    #[must_use]
+    pub fn new(initial: T) -> Self {
+        assert!(
+            size_of::<T>() <= SEQLOCK_MAX_BYTES,
+            "SeqLock payload exceeds {} bytes (got {})",
+            SEQLOCK_MAX_BYTES,
+            size_of::<T>()
+        );
+
+        let this = Self {
+            sequence: AtomicU64::new(0),
+            lanes: std::array::from_fn(|_| AtomicU64::new(0)),
+            _marker: PhantomData,
+        };
+        this.store_lanes(Self::encode(initial));
+        this
+    }
+
+    /// Read a stable snapshot, retrying until the sequence is consistent.
+    #[must_use]
+    pub fn read(&self) -> T {
+        self.read_with_retries().0
+    }
+
+    /// Read a stable snapshot and return retry count for observability/testing.
+    #[must_use]
+    pub fn read_with_retries(&self) -> (T, u32) {
+        let mut retries = 0u32;
+        loop {
+            let before = self.sequence.load(Ordering::Acquire);
+            if before & 1 == 1 {
+                retries = retries.saturating_add(1);
+                spin_loop();
+                continue;
+            }
+
+            let lanes = self.load_lanes();
+            fence(Ordering::Acquire);
+            let after = self.sequence.load(Ordering::Acquire);
+            if before == after && (after & 1) == 0 {
+                return (Self::decode(lanes), retries);
+            }
+
+            retries = retries.saturating_add(1);
+            spin_loop();
+        }
+    }
+
+    /// Publish an entire new value.
+    pub fn write(&self, value: T) {
+        let writer_seq = self.begin_write();
+        self.store_lanes(Self::encode(value));
+        self.end_write(writer_seq);
+    }
+
+    /// Update the current value in-place under the writer sequence gate.
+    pub fn update<F>(&self, mutate: F)
+    where
+        F: FnOnce(&mut T),
+    {
+        let writer_seq = self.begin_write();
+        let mut value = Self::decode(self.load_lanes());
+        mutate(&mut value);
+        self.store_lanes(Self::encode(value));
+        self.end_write(writer_seq);
+    }
+
+    #[must_use]
+    pub fn sequence(&self) -> u64 {
+        self.sequence.load(Ordering::Acquire)
+    }
+
+    fn begin_write(&self) -> u64 {
+        loop {
+            let current = self.sequence.load(Ordering::Acquire);
+            if current & 1 == 1 {
+                spin_loop();
+                continue;
+            }
+            match self.sequence.compare_exchange(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return current + 1,
+                Err(_) => spin_loop(),
+            }
+        }
+    }
+
+    fn end_write(&self, writer_seq: u64) {
+        fence(Ordering::Release);
+        self.sequence.store(writer_seq + 1, Ordering::Release);
+    }
+
+    fn load_lanes(&self) -> [u64; SEQLOCK_LANES] {
+        let mut lanes = [0u64; SEQLOCK_LANES];
+        for (idx, slot) in self.lanes.iter().enumerate() {
+            lanes[idx] = slot.load(Ordering::Relaxed);
+        }
+        lanes
+    }
+
+    fn store_lanes(&self, lanes: [u64; SEQLOCK_LANES]) {
+        for (slot, lane) in self.lanes.iter().zip(lanes.into_iter()) {
+            slot.store(lane, Ordering::Relaxed);
+        }
+    }
+
+    fn encode(value: T) -> [u64; SEQLOCK_LANES] {
+        let mut bytes = [0u8; SEQLOCK_MAX_BYTES];
+        // SAFETY: `value` is valid for `size_of::<T>()` bytes.
+        #[allow(unsafe_code)]
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                (&value as *const T).cast::<u8>(),
+                bytes.as_mut_ptr(),
+                size_of::<T>(),
+            );
+        }
+
+        let mut lanes = [0u64; SEQLOCK_LANES];
+        let mut idx = 0;
+        while idx < SEQLOCK_LANES {
+            let offset = idx * SEQLOCK_LANE_BYTES;
+            let mut lane = [0u8; SEQLOCK_LANE_BYTES];
+            lane.copy_from_slice(&bytes[offset..offset + SEQLOCK_LANE_BYTES]);
+            lanes[idx] = u64::from_ne_bytes(lane);
+            idx += 1;
+        }
+        lanes
+    }
+
+    fn decode(lanes: [u64; SEQLOCK_LANES]) -> T {
+        let mut bytes = [0u8; SEQLOCK_MAX_BYTES];
+        let mut idx = 0;
+        while idx < SEQLOCK_LANES {
+            let offset = idx * SEQLOCK_LANE_BYTES;
+            bytes[offset..offset + SEQLOCK_LANE_BYTES].copy_from_slice(&lanes[idx].to_ne_bytes());
+            idx += 1;
+        }
+
+        let mut value = MaybeUninit::<T>::uninit();
+        // SAFETY: we copy exactly `size_of::<T>()` bytes from initialized buffer.
+        #[allow(unsafe_code)]
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                value.as_mut_ptr().cast::<u8>(),
+                size_of::<T>(),
+            );
+            value.assume_init()
+        }
+    }
+}
+
+impl<T: Copy + Default> Default for SeqLock<T> {
+    fn default() -> Self {
+        Self::new(T::default())
     }
 }
 
@@ -975,6 +1174,98 @@ mod tests {
         unsafe {
             let _ = Box::from_raw(old);
             let _ = Box::from_raw(v2);
+        }
+    }
+
+    // --- SeqLock tests ---
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct PairChecksum {
+        a: u64,
+        b: u64,
+        checksum: u64,
+    }
+
+    impl PairChecksum {
+        fn new(a: u64, b: u64) -> Self {
+            Self {
+                a,
+                b,
+                checksum: a ^ b,
+            }
+        }
+
+        fn is_consistent(self) -> bool {
+            self.checksum == (self.a ^ self.b)
+        }
+    }
+
+    #[test]
+    fn test_seqlock_roundtrip_u64() {
+        let lock = SeqLock::new(11u64);
+        assert_eq!(lock.read(), 11);
+        lock.write(42);
+        assert_eq!(lock.read(), 42);
+        assert_eq!(lock.sequence() & 1, 0);
+    }
+
+    #[test]
+    fn test_seqlock_update_composes() {
+        let lock = SeqLock::new(PairChecksum::new(2, 9));
+        lock.update(|value| {
+            value.a = value.a.saturating_add(10);
+            value.b = value.b.saturating_add(5);
+            value.checksum = value.a ^ value.b;
+        });
+
+        let snapshot = lock.read();
+        assert_eq!(snapshot, PairChecksum::new(12, 14));
+        assert!(snapshot.is_consistent());
+    }
+
+    #[test]
+    fn test_seqlock_rejects_payloads_over_64_bytes() {
+        let result = std::panic::catch_unwind(|| {
+            let _ = SeqLock::new([0u8; 65]);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_seqlock_concurrent_reads_never_observe_torn_checksum() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+        let lock = Arc::new(SeqLock::new(PairChecksum::new(0, 0)));
+        let running = Arc::new(AtomicBool::new(true));
+
+        let writer_lock = Arc::clone(&lock);
+        let writer_running = Arc::clone(&running);
+        let writer = std::thread::spawn(move || {
+            for i in 1..=50_000u64 {
+                writer_lock.write(PairChecksum::new(i, i.rotate_left(7)));
+            }
+            writer_running.store(false, AtomicOrdering::Release);
+        });
+
+        let mut readers = Vec::new();
+        for _ in 0..4 {
+            let reader_lock = Arc::clone(&lock);
+            let reader_running = Arc::clone(&running);
+            readers.push(std::thread::spawn(move || {
+                while reader_running.load(AtomicOrdering::Acquire) {
+                    let snapshot = reader_lock.read();
+                    assert!(snapshot.is_consistent(), "torn read detected: {snapshot:?}");
+                }
+                // Final read after writer completion.
+                assert!(reader_lock.read().is_consistent());
+            }));
+        }
+
+        writer.join().expect("writer thread panicked");
+        for handle in readers {
+            handle.join().expect("reader thread panicked");
         }
     }
 }

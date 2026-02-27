@@ -992,6 +992,99 @@ impl SosBarrierController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
+
+    const PSD_TOLERANCE: f64 = 1e-6;
+    const PIVOT_TOLERANCE: f64 = 1e-12;
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        let digest = Sha256::digest(bytes);
+        let mut out = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            write!(&mut out, "{byte:02x}").expect("writing digest to String must succeed");
+        }
+        out
+    }
+
+    fn determinant(mut matrix: Vec<Vec<f64>>) -> f64 {
+        let n = matrix.len();
+        if n == 0 {
+            return 1.0;
+        }
+
+        let mut det = 1.0f64;
+        for col in 0..n {
+            let mut pivot = col;
+            let mut pivot_abs = matrix[col][col].abs();
+            for (row, row_vals) in matrix.iter().enumerate().skip(col + 1).take(n - (col + 1)) {
+                let candidate = row_vals[col].abs();
+                if candidate > pivot_abs {
+                    pivot = row;
+                    pivot_abs = candidate;
+                }
+            }
+            if pivot_abs <= PIVOT_TOLERANCE {
+                return 0.0;
+            }
+            if pivot != col {
+                matrix.swap(col, pivot);
+                det = -det;
+            }
+
+            let pivot_value = matrix[col][col];
+            det *= pivot_value;
+            let pivot_row = matrix[col].clone();
+            for row_vals in matrix.iter_mut().skip(col + 1) {
+                let factor = row_vals[col] / pivot_value;
+                for (inner_col, cell) in row_vals.iter_mut().enumerate().skip(col + 1) {
+                    *cell -= factor * pivot_row[inner_col];
+                }
+            }
+        }
+
+        det
+    }
+
+    fn assert_symmetric<const D: usize>(gram: &[[i64; D]; D], label: &str) {
+        for (row, row_vals) in gram.iter().enumerate().take(D) {
+            for (col, value) in row_vals.iter().enumerate().take(D) {
+                assert_eq!(
+                    *value, gram[col][row],
+                    "{label} Gram matrix must be symmetric at ({row},{col})"
+                );
+            }
+        }
+    }
+
+    fn assert_positive_semidefinite_via_principal_minors<const D: usize>(
+        gram: &[[i64; D]; D],
+        label: &str,
+    ) {
+        assert_symmetric(gram, label);
+
+        for mask in 1usize..(1usize << D) {
+            let mut indices = Vec::with_capacity(D);
+            for bit in 0..D {
+                if (mask & (1usize << bit)) != 0 {
+                    indices.push(bit);
+                }
+            }
+
+            let size = indices.len();
+            let mut principal = vec![vec![0.0f64; size]; size];
+            for (row_idx, &row) in indices.iter().enumerate() {
+                for (col_idx, &col) in indices.iter().enumerate() {
+                    principal[row_idx][col_idx] = gram[row][col] as f64;
+                }
+            }
+
+            let minor = determinant(principal);
+            assert!(
+                minor >= -PSD_TOLERANCE,
+                "{label} principal minor for mask {mask:#b} must be non-negative (got {minor})"
+            );
+        }
+    }
 
     #[test]
     fn certificate_hash_matches_static_fragmentation_artifact() {
@@ -1028,6 +1121,25 @@ mod tests {
     }
 
     #[test]
+    fn generated_task_source_hash_matches_checked_in_artifacts() {
+        let fragmentation_task =
+            include_bytes!("../../artifacts/sos/fragmentation_certificate.task");
+        let thread_safety_task =
+            include_bytes!("../../artifacts/sos/thread_safety_certificate.task");
+
+        assert_eq!(
+            FRAGMENTATION_TASK_SOURCE_SHA256_HEX,
+            sha256_hex(fragmentation_task),
+            "fragmentation task source hash must match artifact bytes"
+        );
+        assert_eq!(
+            THREAD_SAFETY_TASK_SOURCE_SHA256_HEX,
+            sha256_hex(thread_safety_task),
+            "thread-safety task source hash must match artifact bytes"
+        );
+    }
+
+    #[test]
     fn certificate_tamper_is_detected() {
         let mut tampered = FRAGMENTATION_GRAM_MATRIX;
         tampered[0][0] += 1;
@@ -1060,6 +1172,22 @@ mod tests {
     }
 
     #[test]
+    fn fragmentation_gram_matrix_is_positive_semidefinite() {
+        assert_positive_semidefinite_via_principal_minors(
+            &FRAGMENTATION_GRAM_MATRIX,
+            "fragmentation",
+        );
+    }
+
+    #[test]
+    fn thread_safety_gram_matrix_is_positive_semidefinite() {
+        assert_positive_semidefinite_via_principal_minors(
+            &THREAD_SAFETY_GRAM_MATRIX,
+            "thread_safety",
+        );
+    }
+
+    #[test]
     fn sos_certificate_const_generic_supports_16d() {
         const D: usize = 16;
         let mut gram = [[0i64; D]; D];
@@ -1074,6 +1202,42 @@ mod tests {
         basis[5] = 3;
         let barrier = cert.evaluate_barrier(&basis, 1);
         assert_eq!(barrier, 1_000 - 109);
+    }
+
+    #[test]
+    fn quadratic_form_saturates_under_extreme_inputs() {
+        let gram = [[i64::MAX, i64::MAX], [i64::MAX, i64::MAX]];
+        let hash = compute_certificate_hash(&gram, 2, i64::MAX);
+        let cert = SosCertificate::<2>::new(gram, hash, 2, i64::MAX);
+        let basis = [i64::MAX, i64::MAX];
+
+        let quadratic = cert.evaluate_quadratic_form(&basis, 1);
+        assert_eq!(quadratic, i64::MAX, "quadratic form must saturate");
+
+        let barrier = cert.evaluate_barrier(&basis, 1);
+        assert_eq!(
+            barrier, 0,
+            "barrier headroom should saturate instead of overflowing"
+        );
+    }
+
+    #[test]
+    fn barrier_evaluators_stay_stable_on_extreme_inputs() {
+        let balanced_fragmentation = evaluate_fragmentation_barrier(0, 0, 0, 0);
+        let extreme_fragmentation =
+            evaluate_fragmentation_barrier(u32::MAX, u32::MAX, u32::MAX, u32::MAX);
+        assert!(
+            extreme_fragmentation <= balanced_fragmentation,
+            "extreme fragmentation must not appear safer than balanced profile"
+        );
+
+        let balanced_thread = evaluate_thread_safety_barrier(1, 1, false, 0, 0);
+        let extreme_thread =
+            evaluate_thread_safety_barrier(u32::MAX, u32::MAX, true, u32::MAX, u32::MAX);
+        assert!(
+            extreme_thread <= balanced_thread,
+            "extreme thread-safety stress must not appear safer than balanced profile"
+        );
     }
 
     #[test]
@@ -1121,6 +1285,33 @@ mod tests {
             val < 0,
             "conflicting writer profile should violate certificate, got {val}"
         );
+    }
+
+    #[test]
+    fn thread_safety_barrier_monotone_in_writer_pressure() {
+        let mut previous = i64::MAX;
+        for concurrent_writers in 1..=6 {
+            let value =
+                evaluate_thread_safety_barrier(96, concurrent_writers, false, 80_000, 60_000);
+            assert!(
+                value <= previous,
+                "writer pressure monotonicity violated at writers={concurrent_writers}: value={value}, previous={previous}"
+            );
+            previous = value;
+        }
+    }
+
+    #[test]
+    fn fragmentation_barrier_monotone_in_size_dispersion() {
+        let mut previous = i64::MAX;
+        for dispersion_ppm in (0..=1_000_000).step_by(100_000) {
+            let value = evaluate_fragmentation_barrier(20_000, 19_500, dispersion_ppm, 350_000);
+            assert!(
+                value <= previous,
+                "dispersion monotonicity violated at dispersion_ppm={dispersion_ppm}: value={value}, previous={previous}"
+            );
+            previous = value;
+        }
     }
 
     #[test]

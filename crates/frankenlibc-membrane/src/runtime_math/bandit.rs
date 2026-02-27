@@ -181,6 +181,25 @@ mod tests {
     }
 
     #[test]
+    fn hardened_contention_gate_prefers_full() {
+        let router = ConstrainedBanditRouter::new();
+        let profile =
+            router.select_profile(ApiFamily::Allocator, SafetyLevel::Hardened, 10_000, 128);
+        assert_eq!(profile, ValidationProfile::Full);
+    }
+
+    #[test]
+    fn strict_mode_high_contention_still_allows_exploration() {
+        let router = ConstrainedBanditRouter::new();
+        let profile = router.select_profile(ApiFamily::Allocator, SafetyLevel::Strict, 10_000, 128);
+        assert_eq!(
+            profile,
+            ValidationProfile::Fast,
+            "strict mode should not force full validation from hardened-only contention gate"
+        );
+    }
+
+    #[test]
     fn observes_utilities() {
         let router = ConstrainedBanditRouter::new();
         router.observe(ApiFamily::StringMemory, ValidationProfile::Fast, 9, false);
@@ -224,5 +243,31 @@ mod tests {
             utility <= 0,
             "expected non-positive utility for extreme cost, got {utility}"
         );
+    }
+
+    #[test]
+    fn cadence_recompute_prefers_fast_when_fast_utility_dominates() {
+        let router = ConstrainedBanditRouter::new();
+        let family = ApiFamily::Allocator;
+
+        // Ensure both arms are observed at least once so cached UCB is consulted.
+        router.observe(family, ValidationProfile::Fast, 4, false);
+        router.observe(family, ValidationProfile::Full, 180, false);
+
+        // Complete one recompute window (total pulls = 64) with Fast clearly dominant.
+        for _ in 0..31 {
+            router.observe(family, ValidationProfile::Fast, 4, false);
+            router.observe(family, ValidationProfile::Full, 220, true);
+        }
+
+        let family_idx = usize::from(family as u8);
+        assert_eq!(
+            router.cached_ucb_profile[family_idx].load(Ordering::Relaxed),
+            ARM_FAST as u8,
+            "cadenced UCB recompute should cache Fast when its utility dominates"
+        );
+
+        let selected = router.select_profile(family, SafetyLevel::Strict, 10_000, 0);
+        assert_eq!(selected, ValidationProfile::Fast);
     }
 }

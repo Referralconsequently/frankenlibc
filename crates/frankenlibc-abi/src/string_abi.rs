@@ -9,7 +9,6 @@ use std::cell::Cell;
 use std::ffi::{CStr, c_char, c_int, c_long, c_longlong, c_ulong, c_ulonglong, c_void};
 
 use frankenlibc_membrane::check_oracle::CheckStage;
-use frankenlibc_membrane::config::SafetyLevel;
 use frankenlibc_membrane::heal::{HealingAction, global_healing_policy};
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
@@ -294,13 +293,6 @@ pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) 
     if dst.is_null() || src.is_null() {
         return std::ptr::null_mut();
     }
-    if !matches!(runtime_policy::mode(), SafetyLevel::Off) {
-        // In strict/hardened runtime modes, use raw delegate copy to avoid
-        // recursive runtime-policy lock cycles from internal Rust/libc memcpy
-        // use under LD_PRELOAD.
-        unsafe { raw_memcpy_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
-        return dst;
-    }
 
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memcpy semantics.
@@ -405,11 +397,6 @@ pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize)
     if dst.is_null() || src.is_null() {
         return std::ptr::null_mut();
     }
-    if !matches!(runtime_policy::mode(), SafetyLevel::Off) {
-        // Mirror memcpy fast path for overlap-safe copies.
-        unsafe { raw_memmove_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
-        return dst;
-    }
 
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memmove semantics.
@@ -513,11 +500,6 @@ pub unsafe extern "C" fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_
     }
     if dst.is_null() {
         return std::ptr::null_mut();
-    }
-    if !matches!(runtime_policy::mode(), SafetyLevel::Off) {
-        // Mirror memcpy/memmove fast path for memset.
-        unsafe { raw_memset_bytes(dst.cast::<u8>(), c as u8, n) };
-        return dst;
     }
 
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
