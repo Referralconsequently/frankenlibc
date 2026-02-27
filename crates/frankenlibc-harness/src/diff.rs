@@ -5,6 +5,7 @@
 pub fn render_diff(expected: &str, actual: &str) -> String {
     #[cfg(feature = "frankentui-ui")]
     {
+        #[allow(clippy::needless_return)]
         return ftui_harness::diff_text(expected, actual);
     }
 
