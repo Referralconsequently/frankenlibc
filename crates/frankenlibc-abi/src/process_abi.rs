@@ -931,10 +931,10 @@ unsafe fn posix_spawn_impl(
                     candidate_paths.push(c);
                 }
             }
-            if candidate_paths.is_empty() {
-                if let Ok(c) = std::ffi::CString::new(file_bytes) {
-                    candidate_paths.push(c);
-                }
+            if candidate_paths.is_empty()
+                && let Ok(c) = std::ffi::CString::new(file_bytes)
+            {
+                candidate_paths.push(c);
             }
         }
     }
