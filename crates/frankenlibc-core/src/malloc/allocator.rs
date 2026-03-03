@@ -7,6 +7,7 @@
 use super::large::LargeAllocator;
 use super::size_class::{self, NUM_SIZE_CLASSES};
 use super::thread_cache::ThreadCache;
+use frankenlibc_membrane::runtime_math::sos_barrier::evaluate_size_class_barrier;
 
 use std::collections::{HashMap, HashSet};
 
@@ -245,6 +246,39 @@ impl MallocState {
             return Some(offset);
         }
 
+        let class_size = size_class::bin_size(bin);
+        let class_membership_valid = class_size >= size && class_size > 0;
+        let size_class_cert_value =
+            evaluate_size_class_barrier(size, class_size, class_membership_valid);
+        let waste_ratio_ppm = if size == 0 {
+            0u64
+        } else {
+            let waste = class_size.saturating_sub(size);
+            ((waste as u128).saturating_mul(1_000_000) / (size as u128))
+                .try_into()
+                .unwrap_or(u64::MAX)
+        };
+        self.record_lifecycle(
+            if size_class_cert_value >= 0 {
+                AllocatorLogLevel::Trace
+            } else {
+                AllocatorLogLevel::Warn
+            },
+            "malloc",
+            "size_class_certificate",
+            None,
+            Some(size),
+            Some(bin),
+            if size_class_cert_value >= 0 {
+                "certificate_pass"
+            } else {
+                "certificate_violation"
+            },
+            format!(
+                "requested_size={size};mapped_class_size={class_size};waste_ratio_ppm={waste_ratio_ppm};cert_value={size_class_cert_value};class_membership_valid={class_membership_valid}"
+            ),
+        );
+
         // Try thread cache first
         if let Some(offset) = self.thread_cache.alloc(bin) {
             self.thread_cache_hits += 1;
@@ -301,7 +335,6 @@ impl MallocState {
         }
 
         // Allocate fresh from slab region
-        let class_size = size_class::bin_size(bin);
         let offset = self.next_offset;
         let Some(next_offset) = self.next_offset.checked_add(class_size) else {
             self.record_lifecycle(

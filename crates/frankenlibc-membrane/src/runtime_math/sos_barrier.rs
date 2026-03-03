@@ -21,7 +21,7 @@
 //!
 //! ## Runtime Design
 //!
-//! Three concrete barrier certificates:
+//! Four concrete barrier certificates:
 //!
 //! - **Invariant B (Pointer Provenance Admissibility)**: hot-path, <15ns,
 //!   4 variables (risk, validation_depth, bloom_fp_rate, arena_pressure),
@@ -34,6 +34,10 @@
 //! - **Thread-Safety Certificate (Concurrent Allocation Integrity)**:
 //!   allocator/threading path, 5 variables (thread pressure, writer overflow,
 //!   owner conflict, free-list skew, epoch lag), degree-2 Gram matrix.
+//!
+//! - **Size-Class Admissibility Certificate (Allocation Mapping Integrity)**:
+//!   allocator path, 4 variables (waste ratio excess, class-membership
+//!   violation, range violation, underflow violation), degree-2 Gram matrix.
 //!
 //! ## References
 //!
@@ -53,6 +57,10 @@ mod generated_thread_safety_certificate {
     include!(concat!(env!("OUT_DIR"), "/sos_thread_safety_generated.rs"));
 }
 
+mod generated_size_class_certificate {
+    include!(concat!(env!("OUT_DIR"), "/sos_size_class_generated.rs"));
+}
+
 // ---------------------------------------------------------------------------
 // Maximum variable count for static arrays.
 // ---------------------------------------------------------------------------
@@ -69,6 +77,11 @@ const THREAD_SAFETY_CERT_DIM: usize = generated_thread_safety_certificate::THREA
 /// Thread-safety barrier budget in milli-units.
 const THREAD_SAFETY_BARRIER_BUDGET_MILLI: i64 =
     generated_thread_safety_certificate::THREAD_SAFETY_BARRIER_BUDGET_MILLI;
+/// Size-class admissibility certificate dimensionality.
+const SIZE_CLASS_CERT_DIM: usize = generated_size_class_certificate::SIZE_CLASS_CERT_DIM;
+/// Size-class admissibility barrier budget in milli-units.
+const SIZE_CLASS_BARRIER_BUDGET_MILLI: i64 =
+    generated_size_class_certificate::SIZE_CLASS_BARRIER_BUDGET_MILLI;
 /// Allowed allocation/free imbalance before certificate penalties begin.
 const FRAGMENTATION_IMBALANCE_BUDGET_PPM: u32 = 200_000;
 /// Allowed size-class dispersion budget before penalties begin.
@@ -81,6 +94,16 @@ const FRAGMENTATION_CHURN_BUDGET_PPM: u32 = 500_000;
 const FRAGMENTATION_SCORE_SCALE: i64 = 1_000;
 /// Fixed-point score scale for thread-safety certificate basis values.
 const THREAD_SAFETY_SCORE_SCALE: i64 = 1_000;
+/// Fixed-point score scale for size-class admissibility certificate basis values.
+const SIZE_CLASS_SCORE_SCALE: i64 = 1_000;
+/// Maximum certified waste ratio in ppm (900k = 90%).
+const SIZE_CLASS_MAX_WASTE_RATIO_PPM: u32 = 900_000;
+/// Class-membership budget in ppm (zero tolerance).
+const SIZE_CLASS_MEMBERSHIP_BUDGET_PPM: u32 = 0;
+/// Size-class range budget in ppm (zero tolerance).
+const SIZE_CLASS_RANGE_BUDGET_PPM: u32 = 0;
+/// Maximum request/mapped size covered by the small-size-class certificate.
+const SIZE_CLASS_MAX_CERTIFIED_REQUEST: usize = 64 * 1024;
 /// Maximum pressure score in milli-units produced by `PressureSensor`.
 const PRESSURE_SCORE_MILLI_MAX: u64 = 100_000;
 /// Practical thread-count ceiling for normalization.
@@ -256,6 +279,32 @@ pub static THREAD_SAFETY_CERTIFICATE: SosCertificate<THREAD_SAFETY_CERT_DIM> = S
     THREAD_SAFETY_BARRIER_BUDGET_MILLI,
 );
 
+/// Size-class-admissibility-certificate Gram matrix synthesized offline.
+///
+/// Basis variables represent excess-over-budget scores (0..1000):
+/// [waste_ratio_excess, class_membership_violation, range_violation, underflow_violation].
+static SIZE_CLASS_GRAM_MATRIX: [[i64; SIZE_CLASS_CERT_DIM]; SIZE_CLASS_CERT_DIM] =
+    generated_size_class_certificate::SIZE_CLASS_GRAM_MATRIX;
+
+/// Offline proof hash for `SIZE_CLASS_GRAM_MATRIX`.
+const SIZE_CLASS_PROOF_HASH: [u8; 32] = generated_size_class_certificate::SIZE_CLASS_PROOF_HASH;
+
+/// Monomial degree for the size-class admissibility quadratic form.
+const SIZE_CLASS_MONOMIAL_DEGREE: u32 =
+    generated_size_class_certificate::SIZE_CLASS_MONOMIAL_DEGREE;
+
+/// SHA-256 over the source `.task` artifact consumed by build-time generation.
+pub const SIZE_CLASS_TASK_SOURCE_SHA256_HEX: &str =
+    generated_size_class_certificate::SIZE_CLASS_TASK_SOURCE_SHA256_HEX;
+
+/// Runtime size-class admissibility certificate artifact.
+pub static SIZE_CLASS_CERTIFICATE: SosCertificate<SIZE_CLASS_CERT_DIM> = SosCertificate::new(
+    SIZE_CLASS_GRAM_MATRIX,
+    SIZE_CLASS_PROOF_HASH,
+    SIZE_CLASS_MONOMIAL_DEGREE,
+    SIZE_CLASS_BARRIER_BUDGET_MILLI,
+);
+
 /// Convert `(value - budget)` excess into a fixed-point score in [0, 1000].
 #[inline]
 fn ppm_excess_to_score(value_ppm: u32, budget_ppm: u32) -> i64 {
@@ -397,6 +446,53 @@ pub fn evaluate_thread_safety_barrier(
     ];
 
     THREAD_SAFETY_CERTIFICATE.evaluate_barrier(&basis, THREAD_SAFETY_SCORE_SCALE)
+}
+
+/// Evaluate size-class admissibility barrier certificate.
+///
+/// Inputs:
+/// - `requested_size`: caller-requested allocation size in bytes.
+/// - `mapped_class_size`: size-class bytes selected by allocator mapping.
+/// - `class_membership_valid`: whether `mapped_class_size` belongs to the active
+///   allocator size-class table.
+///
+/// Output:
+/// - positive => certified-safe headroom,
+/// - negative => certificate violation.
+#[must_use]
+pub fn evaluate_size_class_barrier(
+    requested_size: usize,
+    mapped_class_size: usize,
+    class_membership_valid: bool,
+) -> i64 {
+    let normalized_requested = requested_size.clamp(16, SIZE_CLASS_MAX_CERTIFIED_REQUEST);
+    let mapped = mapped_class_size.max(normalized_requested);
+
+    let waste_ratio_ppm_u128 = (mapped.saturating_sub(normalized_requested) as u128)
+        .saturating_mul(1_000_000)
+        .saturating_div(normalized_requested as u128);
+    let waste_ratio_ppm = u32::try_from(waste_ratio_ppm_u128).unwrap_or(u32::MAX);
+    let membership_violation_ppm = if class_membership_valid { 0 } else { 1_000_000 };
+    let range_violation_ppm =
+        if mapped_class_size == 0 || mapped_class_size > SIZE_CLASS_MAX_CERTIFIED_REQUEST {
+            1_000_000
+        } else {
+            0
+        };
+    let underflow_violation_ppm = if mapped_class_size < normalized_requested {
+        1_000_000
+    } else {
+        0
+    };
+
+    let basis = [
+        ppm_excess_to_score(waste_ratio_ppm, SIZE_CLASS_MAX_WASTE_RATIO_PPM),
+        ppm_excess_to_score(membership_violation_ppm, SIZE_CLASS_MEMBERSHIP_BUDGET_PPM),
+        ppm_excess_to_score(range_violation_ppm, SIZE_CLASS_RANGE_BUDGET_PPM),
+        ppm_excess_to_score(underflow_violation_ppm, SIZE_CLASS_RANGE_BUDGET_PPM),
+    ];
+
+    SIZE_CLASS_CERTIFICATE.evaluate_barrier(&basis, SIZE_CLASS_SCORE_SCALE)
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,10 +1199,19 @@ mod tests {
     }
 
     #[test]
+    fn certificate_hash_matches_static_size_class_artifact() {
+        assert!(
+            SIZE_CLASS_CERTIFICATE.verify_integrity(),
+            "static size-class certificate hash must verify"
+        );
+    }
+
+    #[test]
     fn generated_task_source_hash_is_hex_sha256() {
         for task_hash in [
             FRAGMENTATION_TASK_SOURCE_SHA256_HEX,
             THREAD_SAFETY_TASK_SOURCE_SHA256_HEX,
+            SIZE_CLASS_TASK_SOURCE_SHA256_HEX,
         ] {
             assert_eq!(
                 task_hash.len(),
@@ -1126,6 +1231,7 @@ mod tests {
             include_bytes!("../../artifacts/sos/fragmentation_certificate.task");
         let thread_safety_task =
             include_bytes!("../../artifacts/sos/thread_safety_certificate.task");
+        let size_class_task = include_bytes!("../../artifacts/sos/size_class_certificate.task");
 
         assert_eq!(
             FRAGMENTATION_TASK_SOURCE_SHA256_HEX,
@@ -1136,6 +1242,11 @@ mod tests {
             THREAD_SAFETY_TASK_SOURCE_SHA256_HEX,
             sha256_hex(thread_safety_task),
             "thread-safety task source hash must match artifact bytes"
+        );
+        assert_eq!(
+            SIZE_CLASS_TASK_SOURCE_SHA256_HEX,
+            sha256_hex(size_class_task),
+            "size-class task source hash must match artifact bytes"
         );
     }
 
@@ -1172,6 +1283,22 @@ mod tests {
     }
 
     #[test]
+    fn size_class_certificate_tamper_is_detected() {
+        let mut tampered = SIZE_CLASS_GRAM_MATRIX;
+        tampered[2][2] += 1;
+        let cert = SosCertificate::new(
+            tampered,
+            SIZE_CLASS_PROOF_HASH,
+            SIZE_CLASS_MONOMIAL_DEGREE,
+            SIZE_CLASS_BARRIER_BUDGET_MILLI,
+        );
+        assert!(
+            !cert.verify_integrity(),
+            "tampered size-class Gram matrix must fail hash verification"
+        );
+    }
+
+    #[test]
     fn fragmentation_gram_matrix_is_positive_semidefinite() {
         assert_positive_semidefinite_via_principal_minors(
             &FRAGMENTATION_GRAM_MATRIX,
@@ -1185,6 +1312,11 @@ mod tests {
             &THREAD_SAFETY_GRAM_MATRIX,
             "thread_safety",
         );
+    }
+
+    #[test]
+    fn size_class_gram_matrix_is_positive_semidefinite() {
+        assert_positive_semidefinite_via_principal_minors(&SIZE_CLASS_GRAM_MATRIX, "size_class");
     }
 
     #[test]
@@ -1309,6 +1441,76 @@ mod tests {
             assert!(
                 value <= previous,
                 "dispersion monotonicity violated at dispersion_ppm={dispersion_ppm}: value={value}, previous={previous}"
+            );
+            previous = value;
+        }
+    }
+
+    const TEST_SIZE_CLASS_TABLE: [usize; 34] = [
+        16, 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 288, 320, 352, 384, 448, 512, 640,
+        768, 896, 1024, 1280, 1536, 2048, 2560, 3072, 4096, 8192, 16384, 24576, 32768, 49152,
+        65536,
+    ];
+
+    fn map_request_to_test_class_size(requested_size: usize) -> usize {
+        let normalized = requested_size.max(16);
+        for &class_size in &TEST_SIZE_CLASS_TABLE {
+            if normalized <= class_size {
+                return class_size;
+            }
+        }
+        0
+    }
+
+    #[test]
+    fn size_class_barrier_accepts_current_table_for_full_domain() {
+        for requested_size in 1..=SIZE_CLASS_MAX_CERTIFIED_REQUEST {
+            let mapped_class_size = map_request_to_test_class_size(requested_size);
+            let val = evaluate_size_class_barrier(requested_size, mapped_class_size, true);
+            assert!(
+                val >= 0,
+                "expected certified mapping for requested={requested_size}, mapped={mapped_class_size}, value={val}"
+            );
+        }
+    }
+
+    #[test]
+    fn size_class_barrier_rejects_artificially_bad_mapping() {
+        let val = evaluate_size_class_barrier(17, 256, true);
+        assert!(
+            val < 0,
+            "17-byte request mapped to 256 should violate admissibility, got {val}"
+        );
+    }
+
+    #[test]
+    fn size_class_barrier_rejects_invalid_class_membership() {
+        let val = evaluate_size_class_barrier(128, 130, false);
+        assert!(
+            val < 0,
+            "non-member class size should violate admissibility, got {val}"
+        );
+    }
+
+    #[test]
+    fn size_class_barrier_rejects_out_of_range_mapping() {
+        let val = evaluate_size_class_barrier(64, SIZE_CLASS_MAX_CERTIFIED_REQUEST + 1, true);
+        assert!(
+            val < 0,
+            "out-of-range mapped class must violate admissibility, got {val}"
+        );
+    }
+
+    #[test]
+    fn size_class_barrier_monotone_in_overallocation() {
+        let requested = 17usize;
+        let mappings = [32usize, 64, 128, 256, 512];
+        let mut previous = i64::MAX;
+        for mapped in mappings {
+            let value = evaluate_size_class_barrier(requested, mapped, true);
+            assert!(
+                value <= previous,
+                "expected non-increasing barrier under larger mapping: mapped={mapped}, value={value}, previous={previous}"
             );
             previous = value;
         }

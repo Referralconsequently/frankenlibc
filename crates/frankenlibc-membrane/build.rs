@@ -7,8 +7,10 @@ use sha2::{Digest, Sha256};
 
 const FRAGMENTATION_TASK_PATH: &str = "artifacts/sos/fragmentation_certificate.task";
 const THREAD_SAFETY_TASK_PATH: &str = "artifacts/sos/thread_safety_certificate.task";
+const SIZE_CLASS_TASK_PATH: &str = "artifacts/sos/size_class_certificate.task";
 const GENERATED_FRAGMENTATION_RS_PATH: &str = "sos_fragmentation_generated.rs";
 const GENERATED_THREAD_SAFETY_RS_PATH: &str = "sos_thread_safety_generated.rs";
+const GENERATED_SIZE_CLASS_RS_PATH: &str = "sos_size_class_generated.rs";
 
 #[derive(Debug)]
 struct SosTask {
@@ -35,6 +37,12 @@ fn main() {
         THREAD_SAFETY_TASK_PATH,
         GENERATED_THREAD_SAFETY_RS_PATH,
         "THREAD_SAFETY",
+    );
+    generate_certificate_artifact(
+        &manifest_dir,
+        SIZE_CLASS_TASK_PATH,
+        GENERATED_SIZE_CLASS_RS_PATH,
+        "SIZE_CLASS",
     );
 }
 
