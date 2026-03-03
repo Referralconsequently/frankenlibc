@@ -1,0 +1,14 @@
+{
+  "broken_links": [],
+  "missing_files": [],
+  "missing_headers": [],
+  "missing_scripts": [],
+  "schema_version": "v1",
+  "summary": {
+    "broken_link_count": 0,
+    "missing_file_count": 0,
+    "missing_header_count": 0,
+    "missing_script_count": 0
+  },
+  "tool": "scripts/gentoo/validate-docs.py"
+}
