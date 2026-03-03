@@ -170,7 +170,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     if DLSYM_REENTRY.try_with(|r| r.get()).unwrap_or(true) {
         return unsafe { host_dlsym().map_or(std::ptr::null_mut(), |f| f(handle, symbol)) };
     }
-    
+
     struct DlsymGuard;
     impl Drop for DlsymGuard {
         fn drop(&mut self) {

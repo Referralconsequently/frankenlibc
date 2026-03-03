@@ -39,7 +39,9 @@ struct XdrHandle {
 
 impl XdrHandle {
     fn new() -> Self {
-        Self { data: [0u8; XDR_SIZE] }
+        Self {
+            data: [0u8; XDR_SIZE],
+        }
     }
 
     fn as_mut_ptr(&mut self) -> *mut c_void {
@@ -187,17 +189,11 @@ fn xdr_int32_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: i32 = -999999;
-    assert_eq!(
-        unsafe { xdr_int32_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int32_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: i32 = 0;
-    assert_eq!(
-        unsafe { xdr_int32_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int32_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, -999999);
 }
 
@@ -208,17 +204,11 @@ fn xdr_uint32_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u32 = u32::MAX;
-    assert_eq!(
-        unsafe { xdr_uint32_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint32_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u32 = 0;
-    assert_eq!(
-        unsafe { xdr_uint32_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint32_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, u32::MAX);
 }
 
@@ -328,17 +318,11 @@ fn xdr_u_short_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u16 = 65535;
-    assert_eq!(
-        unsafe { xdr_u_short(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_short(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u16 = 0;
-    assert_eq!(
-        unsafe { xdr_u_short(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_short(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 65535);
 }
 
@@ -349,17 +333,11 @@ fn xdr_u_char_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u8 = 0xFF;
-    assert_eq!(
-        unsafe { xdr_u_char(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_char(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u8 = 0;
-    assert_eq!(
-        unsafe { xdr_u_char(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_char(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 0xFF);
 }
 
@@ -370,17 +348,11 @@ fn xdr_int8_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: i8 = -128;
-    assert_eq!(
-        unsafe { xdr_int8_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int8_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: i8 = 0;
-    assert_eq!(
-        unsafe { xdr_int8_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int8_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, -128);
 }
 
@@ -391,17 +363,11 @@ fn xdr_uint8_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u8 = 200;
-    assert_eq!(
-        unsafe { xdr_uint8_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint8_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u8 = 0;
-    assert_eq!(
-        unsafe { xdr_uint8_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint8_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 200);
 }
 
@@ -412,17 +378,11 @@ fn xdr_int16_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: i16 = i16::MIN;
-    assert_eq!(
-        unsafe { xdr_int16_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int16_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: i16 = 0;
-    assert_eq!(
-        unsafe { xdr_int16_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int16_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, i16::MIN);
 }
 
@@ -433,17 +393,11 @@ fn xdr_uint16_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u16 = 12345;
-    assert_eq!(
-        unsafe { xdr_uint16_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint16_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u16 = 0;
-    assert_eq!(
-        unsafe { xdr_uint16_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint16_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 12345);
 }
 
@@ -473,17 +427,11 @@ fn xdr_u_long_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: c_ulong = 0xCAFEBABE;
-    assert_eq!(
-        unsafe { xdr_u_long(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_long(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: c_ulong = 0;
-    assert_eq!(
-        unsafe { xdr_u_long(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_long(xdr.as_mut_ptr(), &mut out) }, 1);
     // Note: xdr_u_long truncates to 32 bits on wire
     assert_eq!(out as u32, 0xCAFEBABE_u32);
 }
@@ -529,17 +477,11 @@ fn xdr_u_hyper_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u64 = u64::MAX;
-    assert_eq!(
-        unsafe { xdr_u_hyper(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_hyper(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u64 = 0;
-    assert_eq!(
-        unsafe { xdr_u_hyper(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_hyper(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, u64::MAX);
 }
 
@@ -550,17 +492,11 @@ fn xdr_int64_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: i64 = i64::MIN;
-    assert_eq!(
-        unsafe { xdr_int64_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int64_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: i64 = 0;
-    assert_eq!(
-        unsafe { xdr_int64_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int64_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, i64::MIN);
 }
 
@@ -571,17 +507,11 @@ fn xdr_uint64_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u64 = 0xFEDCBA9876543210;
-    assert_eq!(
-        unsafe { xdr_uint64_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint64_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u64 = 0;
-    assert_eq!(
-        unsafe { xdr_uint64_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_uint64_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 0xFEDCBA9876543210);
 }
 
@@ -592,17 +522,11 @@ fn xdr_longlong_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: i64 = -9999999999;
-    assert_eq!(
-        unsafe { xdr_longlong_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_longlong_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: i64 = 0;
-    assert_eq!(
-        unsafe { xdr_longlong_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_longlong_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, -9999999999);
 }
 
@@ -614,17 +538,11 @@ fn xdr_quad_aliases_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: i64 = 0x1122334455667788;
-    assert_eq!(
-        unsafe { xdr_quad_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_quad_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: i64 = 0;
-    assert_eq!(
-        unsafe { xdr_quad_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_quad_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 0x1122334455667788);
 }
 
@@ -669,17 +587,11 @@ fn xdr_double_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: f64 = std::f64::consts::E;
-    assert_eq!(
-        unsafe { xdr_double(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_double(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: f64 = 0.0;
-    assert_eq!(
-        unsafe { xdr_double(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_double(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, std::f64::consts::E);
 }
 
@@ -690,17 +602,11 @@ fn xdr_double_large() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: f64 = f64::MAX;
-    assert_eq!(
-        unsafe { xdr_double(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_double(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: f64 = 0.0;
-    assert_eq!(
-        unsafe { xdr_double(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_double(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, f64::MAX);
 }
 
@@ -722,14 +628,8 @@ fn xdr_multiple_values_sequence() {
 
     assert_eq!(unsafe { xdr_int(xdr.as_mut_ptr(), &mut i_val) }, 1);
     assert_eq!(unsafe { xdr_bool(xdr.as_mut_ptr(), &mut b_val) }, 1);
-    assert_eq!(
-        unsafe { xdr_short(xdr.as_mut_ptr(), &mut s_val) },
-        1
-    );
-    assert_eq!(
-        unsafe { xdr_hyper(xdr.as_mut_ptr(), &mut h_val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_short(xdr.as_mut_ptr(), &mut s_val) }, 1);
+    assert_eq!(unsafe { xdr_hyper(xdr.as_mut_ptr(), &mut h_val) }, 1);
 
     // Decode all in same order
     xdr_decode(&mut xdr, &mut buf);
@@ -828,26 +728,14 @@ fn xdr_opaque_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_opaque(
-                xdr.as_mut_ptr(),
-                data.as_ptr() as *mut c_char,
-                6,
-            )
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), data.as_ptr() as *mut c_char, 6,) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out = [0u8; 6];
     assert_eq!(
-        unsafe {
-            xdr_opaque(
-                xdr.as_mut_ptr(),
-                out.as_mut_ptr().cast(),
-                6,
-            )
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), out.as_mut_ptr().cast(), 6,) },
         1
     );
     assert_eq!(&out, b"Hello!");
@@ -860,9 +748,7 @@ fn xdr_opaque_empty() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_opaque(xdr.as_mut_ptr(), std::ptr::null_mut(), 0)
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), std::ptr::null_mut(), 0) },
         1
     );
 }
@@ -876,13 +762,7 @@ fn xdr_opaque_padding_is_zero() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_opaque(
-                xdr.as_mut_ptr(),
-                data.as_ptr() as *mut c_char,
-                5,
-            )
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), data.as_ptr() as *mut c_char, 5,) },
         1
     );
 
@@ -908,14 +788,7 @@ fn xdr_bytes_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_bytes(
-                xdr.as_mut_ptr(),
-                &mut src_ptr,
-                &mut len,
-                256,
-            )
-        },
+        unsafe { xdr_bytes(xdr.as_mut_ptr(), &mut src_ptr, &mut len, 256,) },
         1
     );
 
@@ -924,21 +797,13 @@ fn xdr_bytes_roundtrip() {
     let mut out_ptr: *mut c_char = std::ptr::null_mut();
     let mut out_len: c_uint = 0;
     assert_eq!(
-        unsafe {
-            xdr_bytes(
-                xdr.as_mut_ptr(),
-                &mut out_ptr,
-                &mut out_len,
-                256,
-            )
-        },
+        unsafe { xdr_bytes(xdr.as_mut_ptr(), &mut out_ptr, &mut out_len, 256,) },
         1
     );
     assert_eq!(out_len, 9);
     assert!(!out_ptr.is_null());
 
-    let decoded =
-        unsafe { std::slice::from_raw_parts(out_ptr as *const u8, out_len as usize) };
+    let decoded = unsafe { std::slice::from_raw_parts(out_ptr as *const u8, out_len as usize) };
     assert_eq!(decoded, b"Test data");
 
     // Free the allocated buffer
@@ -956,14 +821,7 @@ fn xdr_bytes_exceeds_max_returns_false() {
 
     xdr_encode(&mut xdr, &mut buf);
     // maxsize = 2, but we're encoding 4 bytes
-    let rc = unsafe {
-        xdr_bytes(
-            xdr.as_mut_ptr(),
-            &mut src_ptr,
-            &mut len,
-            2,
-        )
-    };
+    let rc = unsafe { xdr_bytes(xdr.as_mut_ptr(), &mut src_ptr, &mut len, 2) };
     assert_eq!(rc, 0, "Should fail when len > maxsize");
 }
 
@@ -981,18 +839,14 @@ fn xdr_string_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_string(xdr.as_mut_ptr(), &mut src_ptr, 256)
-        },
+        unsafe { xdr_string(xdr.as_mut_ptr(), &mut src_ptr, 256) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out_ptr: *mut c_char = std::ptr::null_mut();
     assert_eq!(
-        unsafe {
-            xdr_string(xdr.as_mut_ptr(), &mut out_ptr, 256)
-        },
+        unsafe { xdr_string(xdr.as_mut_ptr(), &mut out_ptr, 256) },
         1
     );
     assert!(!out_ptr.is_null());
@@ -1014,17 +868,11 @@ fn xdr_wrapstring_roundtrip() {
     let mut src_ptr: *mut c_char = src.as_ptr() as *mut c_char;
 
     xdr_encode(&mut xdr, &mut buf);
-    assert_eq!(
-        unsafe { xdr_wrapstring(xdr.as_mut_ptr(), &mut src_ptr) },
-        1
-    );
+    assert_eq!(unsafe { xdr_wrapstring(xdr.as_mut_ptr(), &mut src_ptr) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out_ptr: *mut c_char = std::ptr::null_mut();
-    assert_eq!(
-        unsafe { xdr_wrapstring(xdr.as_mut_ptr(), &mut out_ptr) },
-        1
-    );
+    assert_eq!(unsafe { xdr_wrapstring(xdr.as_mut_ptr(), &mut out_ptr) }, 1);
     assert!(!out_ptr.is_null());
 
     let decoded = unsafe { std::ffi::CStr::from_ptr(out_ptr) }
@@ -1045,8 +893,7 @@ fn xdr_string_exceeds_max() {
 
     xdr_encode(&mut xdr, &mut buf);
     // maxsize=3, but "toolong" is 7 characters
-    let rc =
-        unsafe { xdr_string(xdr.as_mut_ptr(), &mut src_ptr, 3) };
+    let rc = unsafe { xdr_string(xdr.as_mut_ptr(), &mut src_ptr, 3) };
     assert_eq!(rc, 0, "String exceeding maxsize should fail");
 }
 
@@ -1140,8 +987,7 @@ fn xdr_array_int_roundtrip() {
     assert_eq!(out_count, 3);
     assert!(!out_ptr.is_null());
 
-    let decoded =
-        unsafe { std::slice::from_raw_parts(out_ptr as *const c_int, 3) };
+    let decoded = unsafe { std::slice::from_raw_parts(out_ptr as *const c_int, 3) };
     assert_eq!(decoded, &[100, 200, 300]);
 
     unsafe { libc::free(out_ptr.cast()) };
@@ -1299,12 +1145,7 @@ fn xdr_netobj_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_netobj(
-                xdr.as_mut_ptr(),
-                (&mut src as *mut NetObj).cast(),
-            )
-        },
+        unsafe { xdr_netobj(xdr.as_mut_ptr(), (&mut src as *mut NetObj).cast(),) },
         1
     );
 
@@ -1316,20 +1157,14 @@ fn xdr_netobj_roundtrip() {
         n_bytes: std::ptr::null_mut(),
     };
     assert_eq!(
-        unsafe {
-            xdr_netobj(
-                xdr.as_mut_ptr(),
-                (&mut out as *mut NetObj).cast(),
-            )
-        },
+        unsafe { xdr_netobj(xdr.as_mut_ptr(), (&mut out as *mut NetObj).cast(),) },
         1
     );
 
     assert_eq!(out.n_len, 11);
     assert!(!out.n_bytes.is_null());
 
-    let decoded =
-        unsafe { std::slice::from_raw_parts(out.n_bytes as *const u8, 11) };
+    let decoded = unsafe { std::slice::from_raw_parts(out.n_bytes as *const u8, 11) };
     assert_eq!(decoded, b"netobj_data");
 
     unsafe { libc::free(out.n_bytes.cast()) };
@@ -1383,36 +1218,21 @@ fn xdr_free_on_string() {
 #[test]
 fn xdr_sizeof_int() {
     let mut val: c_int = 42;
-    let size = unsafe {
-        xdr_sizeof(
-            xdr_int as *mut c_void,
-            (&mut val as *mut c_int).cast(),
-        )
-    };
+    let size = unsafe { xdr_sizeof(xdr_int as *mut c_void, (&mut val as *mut c_int).cast()) };
     assert_eq!(size, 4, "xdr_sizeof(xdr_int) should be 4");
 }
 
 #[test]
 fn xdr_sizeof_hyper() {
     let mut val: i64 = 42;
-    let size = unsafe {
-        xdr_sizeof(
-            xdr_hyper as *mut c_void,
-            (&mut val as *mut i64).cast(),
-        )
-    };
+    let size = unsafe { xdr_sizeof(xdr_hyper as *mut c_void, (&mut val as *mut i64).cast()) };
     assert_eq!(size, 8, "xdr_sizeof(xdr_hyper) should be 8");
 }
 
 #[test]
 fn xdr_sizeof_bool() {
     let mut val: c_int = 1;
-    let size = unsafe {
-        xdr_sizeof(
-            xdr_bool as *mut c_void,
-            (&mut val as *mut c_int).cast(),
-        )
-    };
+    let size = unsafe { xdr_sizeof(xdr_bool as *mut c_void, (&mut val as *mut c_int).cast()) };
     assert_eq!(size, 4, "xdr_sizeof(xdr_bool) should be 4");
 }
 
@@ -1451,7 +1271,9 @@ fn xdrstdio_create_initializes_handle() {
     assert_eq!(unsafe { xdr_int(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 99);
 
-    unsafe { libc::fclose(f.cast()); }
+    unsafe {
+        libc::fclose(f.cast());
+    }
 }
 
 // ===========================================================================
@@ -1466,8 +1288,8 @@ fn xdrrec_create_initializes_handle() {
     unsafe {
         xdrrec_create(
             xdr.as_mut_ptr(),
-            0,    // sendsize (0 = default 4096)
-            0,    // recvsize (0 = default 4096)
+            0, // sendsize (0 = default 4096)
+            0, // recvsize (0 = default 4096)
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -1480,8 +1302,7 @@ fn xdrrec_create_initializes_handle() {
 
     // Clean up: the record stream allocates buffers via malloc
     // x_private at offset 16 points to RecStream
-    let private_ptr =
-        xdr.x_private_raw();
+    let private_ptr = xdr.x_private_raw();
     assert_ne!(private_ptr, 0, "x_private should be set (RecStream)");
 
     // We can't easily destroy without the destroy function pointer, but the
@@ -1520,12 +1341,7 @@ fn xdr_opaque_auth_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_opaque_auth(
-                xdr.as_mut_ptr(),
-                (&mut auth as *mut OpaqueAuth).cast(),
-            )
-        },
+        unsafe { xdr_opaque_auth(xdr.as_mut_ptr(), (&mut auth as *mut OpaqueAuth).cast(),) },
         1
     );
 
@@ -1539,12 +1355,7 @@ fn xdr_opaque_auth_roundtrip() {
         _pad2: 0,
     };
     assert_eq!(
-        unsafe {
-            xdr_opaque_auth(
-                xdr.as_mut_ptr(),
-                (&mut out_auth as *mut OpaqueAuth).cast(),
-            )
-        },
+        unsafe { xdr_opaque_auth(xdr.as_mut_ptr(), (&mut out_auth as *mut OpaqueAuth).cast(),) },
         1
     );
 
@@ -1552,8 +1363,7 @@ fn xdr_opaque_auth_roundtrip() {
     assert_eq!(out_auth.oa_length, 4);
     assert!(!out_auth.oa_base.is_null());
 
-    let decoded =
-        unsafe { std::slice::from_raw_parts(out_auth.oa_base as *const u8, 4) };
+    let decoded = unsafe { std::slice::from_raw_parts(out_auth.oa_base as *const u8, 4) };
     assert_eq!(decoded, b"auth");
 
     unsafe { libc::free(out_auth.oa_base.cast()) };
@@ -1579,20 +1389,15 @@ fn xdr_pmap_roundtrip() {
     }
 
     let mut pmap = Pmap {
-        pm_prog: 100000,  // portmapper
+        pm_prog: 100000, // portmapper
         pm_vers: 2,
-        pm_prot: 17,      // UDP
+        pm_prot: 17, // UDP
         pm_port: 111,
     };
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_pmap(
-                xdr.as_mut_ptr(),
-                (&mut pmap as *mut Pmap).cast(),
-            )
-        },
+        unsafe { xdr_pmap(xdr.as_mut_ptr(), (&mut pmap as *mut Pmap).cast(),) },
         1
     );
 
@@ -1604,12 +1409,7 @@ fn xdr_pmap_roundtrip() {
         pm_port: 0,
     };
     assert_eq!(
-        unsafe {
-            xdr_pmap(
-                xdr.as_mut_ptr(),
-                (&mut out as *mut Pmap).cast(),
-            )
-        },
+        unsafe { xdr_pmap(xdr.as_mut_ptr(), (&mut out as *mut Pmap).cast(),) },
         1
     );
     // Note: xdr_u_long truncates to 32 bits, so we compare the lower 32 bits
@@ -1632,18 +1432,14 @@ fn xdr_des_block_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_des_block(xdr.as_mut_ptr(), block.as_mut_ptr().cast())
-        },
+        unsafe { xdr_des_block(xdr.as_mut_ptr(), block.as_mut_ptr().cast()) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out = [0u8; 8];
     assert_eq!(
-        unsafe {
-            xdr_des_block(xdr.as_mut_ptr(), out.as_mut_ptr().cast())
-        },
+        unsafe { xdr_des_block(xdr.as_mut_ptr(), out.as_mut_ptr().cast()) },
         1
     );
     assert_eq!(out, [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
@@ -1663,18 +1459,14 @@ fn xdr_keybuf_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_keybuf(xdr.as_mut_ptr(), keybuf.as_mut_ptr().cast())
-        },
+        unsafe { xdr_keybuf(xdr.as_mut_ptr(), keybuf.as_mut_ptr().cast()) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out = [0u8; 144];
     assert_eq!(
-        unsafe {
-            xdr_keybuf(xdr.as_mut_ptr(), out.as_mut_ptr().cast())
-        },
+        unsafe { xdr_keybuf(xdr.as_mut_ptr(), out.as_mut_ptr().cast()) },
         1
     );
     assert_eq!(out, [0xAB; 144]);
@@ -1693,24 +1485,14 @@ fn xdr_keystatus_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_keystatus(
-                xdr.as_mut_ptr(),
-                (&mut status as *mut c_int).cast(),
-            )
-        },
+        unsafe { xdr_keystatus(xdr.as_mut_ptr(), (&mut status as *mut c_int).cast(),) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: c_int = 0;
     assert_eq!(
-        unsafe {
-            xdr_keystatus(
-                xdr.as_mut_ptr(),
-                (&mut out as *mut c_int).cast(),
-            )
-        },
+        unsafe { xdr_keystatus(xdr.as_mut_ptr(), (&mut out as *mut c_int).cast(),) },
         1
     );
     assert_eq!(out, 3);
@@ -1728,29 +1510,19 @@ fn xdr_authdes_verf_roundtrip() {
     // DES verifier: timestamp(8 bytes) + nickname(4 bytes) = 12 bytes
     let mut verf = [0u8; 12];
     verf[0..4].copy_from_slice(&1000_u32.to_ne_bytes()); // timestamp_sec
-    verf[4..8].copy_from_slice(&500_u32.to_ne_bytes());  // timestamp_usec
-    verf[8..12].copy_from_slice(&42_u32.to_ne_bytes());  // nickname
+    verf[4..8].copy_from_slice(&500_u32.to_ne_bytes()); // timestamp_usec
+    verf[8..12].copy_from_slice(&42_u32.to_ne_bytes()); // nickname
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_authdes_verf(
-                xdr.as_mut_ptr(),
-                verf.as_mut_ptr().cast(),
-            )
-        },
+        unsafe { xdr_authdes_verf(xdr.as_mut_ptr(), verf.as_mut_ptr().cast(),) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out = [0u8; 12];
     assert_eq!(
-        unsafe {
-            xdr_authdes_verf(
-                xdr.as_mut_ptr(),
-                out.as_mut_ptr().cast(),
-            )
-        },
+        unsafe { xdr_authdes_verf(xdr.as_mut_ptr(), out.as_mut_ptr().cast(),) },
         1
     );
     assert_eq!(out, verf);
@@ -1767,12 +1539,7 @@ fn xdr_int_free_mode_is_noop() {
 
     // Create a FREE-mode XDR handle
     unsafe {
-        xdrmem_create(
-            xdr.as_mut_ptr(),
-            buf.as_mut_ptr().cast(),
-            16,
-            XDR_FREE,
-        );
+        xdrmem_create(xdr.as_mut_ptr(), buf.as_mut_ptr().cast(), 16, XDR_FREE);
     }
 
     let mut val: c_int = 42;
@@ -1806,12 +1573,7 @@ fn xdr_string_free_mode_frees_memory() {
 
     // Now free via xdr_string in FREE mode
     unsafe {
-        xdrmem_create(
-            xdr.as_mut_ptr(),
-            buf.as_mut_ptr().cast(),
-            256,
-            XDR_FREE,
-        );
+        xdrmem_create(xdr.as_mut_ptr(), buf.as_mut_ptr().cast(), 256, XDR_FREE);
         xdr_wrapstring(xdr.as_mut_ptr(), &mut alloc_ptr);
     }
     assert!(
@@ -1831,7 +1593,9 @@ fn xdrstdio_multiple_values() {
     assert!(!f.is_null());
 
     // Encode multiple types
-    unsafe { xdrstdio_create(xdr.as_mut_ptr(), f.cast(), XDR_ENCODE); }
+    unsafe {
+        xdrstdio_create(xdr.as_mut_ptr(), f.cast(), XDR_ENCODE);
+    }
 
     let mut i_val: c_int = 12345;
     let mut h_val: i64 = 0xAAAABBBBCCCCDDDD_u64 as i64;
@@ -1859,7 +1623,9 @@ fn xdrstdio_multiple_values() {
     assert_eq!(ho, 0xAAAABBBBCCCCDDDD_u64 as i64);
     assert_eq!(bo, 1);
 
-    unsafe { libc::fclose(f.cast()); }
+    unsafe {
+        libc::fclose(f.cast());
+    }
 }
 
 // ===========================================================================
@@ -1876,12 +1642,7 @@ fn xdr_sizeof_opaque() {
     // Since xdr_opaque takes (xdrs, cp, cnt) which doesn't match XdrProc, we
     // test with xdr_des_block which takes (xdrs, blkp) -> xdr_opaque(xdrs, blkp, 8)
     let mut block = [0u8; 8];
-    let size = unsafe {
-        xdr_sizeof(
-            xdr_des_block as *mut c_void,
-            block.as_mut_ptr().cast(),
-        )
-    };
+    let size = unsafe { xdr_sizeof(xdr_des_block as *mut c_void, block.as_mut_ptr().cast()) };
     assert_eq!(size, 8, "xdr_sizeof(xdr_des_block) should be 8");
 }
 
@@ -1896,17 +1657,11 @@ fn xdr_u_longlong_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u64 = 0x1234567890ABCDEF;
-    assert_eq!(
-        unsafe { xdr_u_longlong_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_longlong_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u64 = 0;
-    assert_eq!(
-        unsafe { xdr_u_longlong_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_longlong_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 0x1234567890ABCDEF);
 }
 
@@ -1917,17 +1672,11 @@ fn xdr_u_quad_t_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: u64 = 0xFEDCBA9876543210;
-    assert_eq!(
-        unsafe { xdr_u_quad_t(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_quad_t(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: u64 = 0;
-    assert_eq!(
-        unsafe { xdr_u_quad_t(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_u_quad_t(xdr.as_mut_ptr(), &mut out) }, 1);
     assert_eq!(out, 0xFEDCBA9876543210);
 }
 
@@ -1962,12 +1711,7 @@ fn xdr_unixcred_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_unixcred(
-                xdr.as_mut_ptr(),
-                (&mut cred as *mut UnixCred).cast(),
-            )
-        },
+        unsafe { xdr_unixcred(xdr.as_mut_ptr(), (&mut cred as *mut UnixCred).cast(),) },
         1
     );
 
@@ -1980,12 +1724,7 @@ fn xdr_unixcred_roundtrip() {
         gids: std::ptr::null_mut(),
     };
     assert_eq!(
-        unsafe {
-            xdr_unixcred(
-                xdr.as_mut_ptr(),
-                (&mut out as *mut UnixCred).cast(),
-            )
-        },
+        unsafe { xdr_unixcred(xdr.as_mut_ptr(), (&mut out as *mut UnixCred).cast(),) },
         1
     );
     assert_eq!(out.uid, 1000);
@@ -2007,24 +1746,14 @@ fn xdr_netnamestr_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_netnamestr(
-                xdr.as_mut_ptr(),
-                (&mut src_ptr as *mut *mut c_char).cast(),
-            )
-        },
+        unsafe { xdr_netnamestr(xdr.as_mut_ptr(), (&mut src_ptr as *mut *mut c_char).cast(),) },
         1
     );
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out_ptr: *mut c_char = std::ptr::null_mut();
     assert_eq!(
-        unsafe {
-            xdr_netnamestr(
-                xdr.as_mut_ptr(),
-                (&mut out_ptr as *mut *mut c_char).cast(),
-            )
-        },
+        unsafe { xdr_netnamestr(xdr.as_mut_ptr(), (&mut out_ptr as *mut *mut c_char).cast(),) },
         1
     );
     assert!(!out_ptr.is_null());
@@ -2060,12 +1789,7 @@ fn xdr_cryptkeyres_roundtrip() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_cryptkeyres(
-                xdr.as_mut_ptr(),
-                (&mut res as *mut CryptKeyRes).cast(),
-            )
-        },
+        unsafe { xdr_cryptkeyres(xdr.as_mut_ptr(), (&mut res as *mut CryptKeyRes).cast(),) },
         1
     );
 
@@ -2075,12 +1799,7 @@ fn xdr_cryptkeyres_roundtrip() {
         deskey: [0; 8],
     };
     assert_eq!(
-        unsafe {
-            xdr_cryptkeyres(
-                xdr.as_mut_ptr(),
-                (&mut out as *mut CryptKeyRes).cast(),
-            )
-        },
+        unsafe { xdr_cryptkeyres(xdr.as_mut_ptr(), (&mut out as *mut CryptKeyRes).cast(),) },
         1
     );
 
@@ -2093,21 +1812,13 @@ fn xdr_cryptkeyres_roundtrip() {
 // ===========================================================================
 
 // Callback for xdrrec_create that writes to a pipe fd
-unsafe extern "C" fn pipe_write(
-    handle: *mut c_void,
-    buf: *mut c_void,
-    len: c_int,
-) -> c_int {
+unsafe extern "C" fn pipe_write(handle: *mut c_void, buf: *mut c_void, len: c_int) -> c_int {
     let fd = handle as usize as c_int;
     unsafe { libc::write(fd, buf, len as usize) as c_int }
 }
 
 // Callback for xdrrec_create that reads from a pipe fd
-unsafe extern "C" fn pipe_read(
-    handle: *mut c_void,
-    buf: *mut c_void,
-    len: c_int,
-) -> c_int {
+unsafe extern "C" fn pipe_read(handle: *mut c_void, buf: *mut c_void, len: c_int) -> c_int {
     let fd = handle as usize as c_int;
     unsafe { libc::read(fd, buf, len as usize) as c_int }
 }
@@ -2136,19 +1847,15 @@ fn xdrrec_encode_decode_via_pipe() {
 
     // Encode an int value
     let mut val: c_int = 12345;
-    assert_eq!(
-        unsafe { xdr_int(enc_xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_int(enc_xdr.as_mut_ptr(), &mut val) }, 1);
 
     // Flush the record
-    assert_eq!(
-        unsafe { xdrrec_endofrecord(enc_xdr.as_mut_ptr(), 1) },
-        1
-    );
+    assert_eq!(unsafe { xdrrec_endofrecord(enc_xdr.as_mut_ptr(), 1) }, 1);
 
     // Close write end so read side can detect EOF
-    unsafe { libc::close(write_fd); }
+    unsafe {
+        libc::close(write_fd);
+    }
 
     // Set up decoder
     let mut dec_xdr = XdrHandle::new();
@@ -2172,7 +1879,9 @@ fn xdrrec_encode_decode_via_pipe() {
     assert_eq!(rc, 1, "Should decode int from record stream");
     assert_eq!(out, 12345);
 
-    unsafe { libc::close(read_fd); }
+    unsafe {
+        libc::close(read_fd);
+    }
 }
 
 // ===========================================================================
@@ -2191,12 +1900,7 @@ fn xdr_bytes_free_mode() {
 
     xdr_encode(&mut xdr, &mut buf);
     unsafe {
-        xdr_bytes(
-            xdr.as_mut_ptr(),
-            &mut data_ptr,
-            &mut len,
-            256,
-        );
+        xdr_bytes(xdr.as_mut_ptr(), &mut data_ptr, &mut len, 256);
     }
 
     // Decode to get allocated memory
@@ -2204,31 +1908,19 @@ fn xdr_bytes_free_mode() {
     let mut alloc_ptr: *mut c_char = std::ptr::null_mut();
     let mut out_len: c_uint = 0;
     unsafe {
-        xdr_bytes(
-            xdr.as_mut_ptr(),
-            &mut alloc_ptr,
-            &mut out_len,
-            256,
-        );
+        xdr_bytes(xdr.as_mut_ptr(), &mut alloc_ptr, &mut out_len, 256);
     }
     assert!(!alloc_ptr.is_null());
 
     // Free via xdr_bytes in FREE mode
     unsafe {
-        xdrmem_create(
-            xdr.as_mut_ptr(),
-            buf.as_mut_ptr().cast(),
-            256,
-            XDR_FREE,
-        );
-        xdr_bytes(
-            xdr.as_mut_ptr(),
-            &mut alloc_ptr,
-            &mut out_len,
-            256,
-        );
+        xdrmem_create(xdr.as_mut_ptr(), buf.as_mut_ptr().cast(), 256, XDR_FREE);
+        xdr_bytes(xdr.as_mut_ptr(), &mut alloc_ptr, &mut out_len, 256);
     }
-    assert!(alloc_ptr.is_null(), "xdr_bytes FREE should null out pointer");
+    assert!(
+        alloc_ptr.is_null(),
+        "xdr_bytes FREE should null out pointer"
+    );
 }
 
 // ===========================================================================
@@ -2250,8 +1942,7 @@ fn xdr_string_empty() {
     );
 
     // Wire format: length(4 bytes) = 0, no data bytes
-    let wire_len =
-        u32::from_be_bytes(buf[0..4].try_into().unwrap());
+    let wire_len = u32::from_be_bytes(buf[0..4].try_into().unwrap());
     assert_eq!(wire_len, 0);
 
     xdr_decode(&mut xdr, &mut buf);
@@ -2296,17 +1987,11 @@ fn xdr_double_negative_zero() {
 
     xdr_encode(&mut xdr, &mut buf);
     let mut val: f64 = -0.0;
-    assert_eq!(
-        unsafe { xdr_double(xdr.as_mut_ptr(), &mut val) },
-        1
-    );
+    assert_eq!(unsafe { xdr_double(xdr.as_mut_ptr(), &mut val) }, 1);
 
     xdr_decode(&mut xdr, &mut buf);
     let mut out: f64 = 1.0;
-    assert_eq!(
-        unsafe { xdr_double(xdr.as_mut_ptr(), &mut out) },
-        1
-    );
+    assert_eq!(unsafe { xdr_double(xdr.as_mut_ptr(), &mut out) }, 1);
     // Check it's negative zero
     assert_eq!(out.to_bits(), (-0.0_f64).to_bits());
 }
@@ -2345,19 +2030,13 @@ fn xdr_multiple_hypers() {
     xdr_encode(&mut xdr, &mut buf);
     for v in &values {
         let mut val = *v;
-        assert_eq!(
-            unsafe { xdr_hyper(xdr.as_mut_ptr(), &mut val) },
-            1
-        );
+        assert_eq!(unsafe { xdr_hyper(xdr.as_mut_ptr(), &mut val) }, 1);
     }
 
     xdr_decode(&mut xdr, &mut buf);
     for &expected in &values {
         let mut out: i64 = 0;
-        assert_eq!(
-            unsafe { xdr_hyper(xdr.as_mut_ptr(), &mut out) },
-            1
-        );
+        assert_eq!(unsafe { xdr_hyper(xdr.as_mut_ptr(), &mut out) }, 1);
         assert_eq!(out, expected);
     }
 }
@@ -2375,13 +2054,7 @@ fn xdr_opaque_1_byte() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_opaque(
-                xdr.as_mut_ptr(),
-                data.as_mut_ptr().cast(),
-                1,
-            )
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), data.as_mut_ptr().cast(), 1,) },
         1
     );
     // 1 byte data + 3 bytes padding = 4 bytes consumed
@@ -2393,13 +2066,7 @@ fn xdr_opaque_1_byte() {
     xdr_decode(&mut xdr, &mut buf);
     let mut out = [0u8; 1];
     assert_eq!(
-        unsafe {
-            xdr_opaque(
-                xdr.as_mut_ptr(),
-                out.as_mut_ptr().cast(),
-                1,
-            )
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), out.as_mut_ptr().cast(), 1,) },
         1
     );
     assert_eq!(out[0], 0x42);
@@ -2414,13 +2081,7 @@ fn xdr_opaque_4_bytes_no_padding() {
 
     xdr_encode(&mut xdr, &mut buf);
     assert_eq!(
-        unsafe {
-            xdr_opaque(
-                xdr.as_mut_ptr(),
-                data.as_mut_ptr().cast(),
-                4,
-            )
-        },
+        unsafe { xdr_opaque(xdr.as_mut_ptr(), data.as_mut_ptr().cast(), 4,) },
         1
     );
 
@@ -2474,17 +2135,11 @@ fn xdr_short_boundaries() {
 
         xdr_encode(&mut xdr, &mut buf);
         let mut v = val;
-        assert_eq!(
-            unsafe { xdr_short(xdr.as_mut_ptr(), &mut v) },
-            1
-        );
+        assert_eq!(unsafe { xdr_short(xdr.as_mut_ptr(), &mut v) }, 1);
 
         xdr_decode(&mut xdr, &mut buf);
         let mut out: i16 = 0;
-        assert_eq!(
-            unsafe { xdr_short(xdr.as_mut_ptr(), &mut out) },
-            1
-        );
+        assert_eq!(unsafe { xdr_short(xdr.as_mut_ptr(), &mut out) }, 1);
         assert_eq!(out, val, "xdr_short round-trip failed for {val}");
     }
 }
