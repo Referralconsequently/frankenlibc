@@ -1004,6 +1004,78 @@ mod tests {
     }
 
     #[test]
+    fn test_size_class_waste_ratio_matches_certificate_prediction_within_5pct() {
+        fn lcg(state: &mut u64) -> u64 {
+            *state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            *state
+        }
+
+        fn detail_u64(details: &str, key: &str) -> Option<u64> {
+            details.split(';').find_map(|kv| {
+                let prefix = format!("{key}=");
+                kv.strip_prefix(&prefix)?.parse::<u64>().ok()
+            })
+        }
+
+        let mut state = MallocState::new();
+        let mut rng = 0xDEAD_BEEF_CAFE_BABEu64;
+
+        let mut predicted_sum_ppm: u128 = 0;
+        let mut predicted_count: u64 = 0;
+
+        for _ in 0..10_000 {
+            let requested = ((lcg(&mut rng) as usize) % MAX_SMALL_SIZE).saturating_add(1);
+            if let Some(ptr) = state.malloc(requested) {
+                state.free(ptr);
+            }
+
+            let bin = size_class::bin_index(requested);
+            if bin < NUM_SIZE_CLASSES {
+                let mapped = size_class::bin_size(bin);
+                let predicted = ((mapped.saturating_sub(requested)) as u128)
+                    .saturating_mul(1_000_000)
+                    .saturating_div(requested as u128);
+                predicted_sum_ppm = predicted_sum_ppm.saturating_add(predicted);
+                predicted_count = predicted_count.saturating_add(1);
+            }
+        }
+
+        let logs = state.drain_lifecycle_logs();
+        let mut observed_sum_ppm: u128 = 0;
+        let mut observed_count: u64 = 0;
+        for entry in logs
+            .iter()
+            .filter(|entry| entry.symbol == "malloc" && entry.event == "size_class_certificate")
+        {
+            if let Some(waste_ratio_ppm) = detail_u64(&entry.details, "waste_ratio_ppm") {
+                observed_sum_ppm = observed_sum_ppm.saturating_add(u128::from(waste_ratio_ppm));
+                observed_count = observed_count.saturating_add(1);
+            }
+        }
+
+        assert!(
+            predicted_count > 0 && observed_count > 0,
+            "expected non-empty size-class workload observations"
+        );
+        assert_eq!(
+            observed_count, predicted_count,
+            "every small allocation should emit one size_class_certificate log record"
+        );
+
+        let predicted_mean_ppm = predicted_sum_ppm as f64 / predicted_count as f64;
+        let observed_mean_ppm = observed_sum_ppm as f64 / observed_count as f64;
+        let diff_ppm = (predicted_mean_ppm - observed_mean_ppm).abs();
+        let tolerance_ppm = predicted_mean_ppm * 0.05;
+
+        assert!(
+            diff_ppm <= tolerance_ppm,
+            "observed waste ratio ({observed_mean_ppm:.3} ppm) must match prediction ({predicted_mean_ppm:.3} ppm) within 5% tolerance; diff={diff_ppm:.3} ppm tolerance={tolerance_ppm:.3} ppm"
+        );
+    }
+
+    #[test]
     fn test_accounting_invariant_under_deterministic_trace() {
         fn lcg(state: &mut u64) -> u64 {
             *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);

@@ -15,6 +15,7 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use frankenlibc_core::malloc::size_class;
 use frankenlibc_membrane::config::safety_level;
 use frankenlibc_membrane::runtime_math::approachability::ApproachabilityController;
 use frankenlibc_membrane::runtime_math::bandit::ConstrainedBanditRouter;
@@ -25,6 +26,7 @@ use frankenlibc_membrane::runtime_math::pareto::ParetoController;
 use frankenlibc_membrane::runtime_math::risk::ConformalRiskEngine;
 use frankenlibc_membrane::runtime_math::sos_barrier::{
     evaluate_fragmentation_barrier, evaluate_provenance_barrier, evaluate_quarantine_barrier,
+    evaluate_size_class_barrier,
 };
 use frankenlibc_membrane::{ApiFamily, RuntimeContext, SafetyLevel, ValidationProfile};
 
@@ -447,6 +449,59 @@ fn bench_runtime_math_kernels(c: &mut Criterion) {
         stats
             .borrow()
             .report(mode_label, "sos_barrier_quarantine_eval");
+    }
+
+    // --- sos_barrier::evaluate_size_class_barrier + size_class lookup ---
+    {
+        let mut requests = Vec::with_capacity(4_096);
+        for size in 1..=size_class::MAX_SMALL_SIZE {
+            requests.push(size);
+            if requests.len() >= 4_096 {
+                break;
+            }
+        }
+
+        for &requested in &requests {
+            let bin = size_class::bin_index(requested);
+            let mapped = size_class::bin_size(bin);
+            let class_membership_valid = mapped >= requested && mapped > 0;
+            black_box(evaluate_size_class_barrier(
+                requested,
+                mapped,
+                class_membership_valid,
+            ));
+        }
+
+        let stats = RefCell::new(BenchStats::default());
+        let mut group = c.benchmark_group("runtime_math_kernels");
+        group.throughput(Throughput::Elements(1));
+        group.bench_function(
+            BenchmarkId::new("sos_barrier_size_class_eval_with_lookup", mode_label),
+            |b| {
+                b.iter_custom(|iters| {
+                    let start = Instant::now();
+                    let len = requests.len() as u64;
+                    for i in 0..iters {
+                        let requested = requests[(i % len) as usize];
+                        let bin = size_class::bin_index(requested);
+                        let mapped = size_class::bin_size(bin);
+                        let class_membership_valid = mapped >= requested && mapped > 0;
+                        black_box(evaluate_size_class_barrier(
+                            requested,
+                            mapped,
+                            class_membership_valid,
+                        ));
+                    }
+                    let dur = start.elapsed().max(Duration::from_nanos(1));
+                    stats.borrow_mut().record(iters, dur);
+                    dur
+                });
+            },
+        );
+        group.finish();
+        stats
+            .borrow()
+            .report(mode_label, "sos_barrier_size_class_eval_with_lookup");
     }
 
     // --- sos_barrier::evaluate_fragmentation_barrier (sawtooth profile) ---

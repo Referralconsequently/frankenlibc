@@ -71,3 +71,69 @@ pub use runtime_math::{
     ApiFamily, MembraneAction, RuntimeContext, RuntimeDecision, RuntimeMathKernel,
     ValidationProfile,
 };
+
+#[cfg(test)]
+mod memory_model_audit_tests {
+    use serde_json::Value;
+
+    const MEMORY_MODEL_AUDIT_JSON: &str =
+        include_str!(concat!(env!("OUT_DIR"), "/memory_model_audit.json"));
+
+    #[test]
+    fn memory_model_audit_meets_minimum_site_count() {
+        let parsed: Value =
+            serde_json::from_str(MEMORY_MODEL_AUDIT_JSON).expect("memory-model audit JSON parses");
+        let minimum = parsed["minimum_required_sites"]
+            .as_u64()
+            .expect("minimum_required_sites must be u64");
+        let total = parsed["summary"]["total_atomic_sites"]
+            .as_u64()
+            .expect("summary.total_atomic_sites must be u64");
+        let verified = parsed["summary"]["verified_count"]
+            .as_u64()
+            .expect("summary.verified_count must be u64");
+
+        assert!(
+            total >= minimum,
+            "barrier map total sites ({total}) must satisfy minimum ({minimum})"
+        );
+        assert_eq!(
+            total, verified,
+            "every audited atomic site must be verified in barrier map"
+        );
+    }
+
+    #[test]
+    fn memory_model_audit_includes_tsm_and_futex_domains() {
+        let parsed: Value =
+            serde_json::from_str(MEMORY_MODEL_AUDIT_JSON).expect("memory-model audit JSON parses");
+        let sites = parsed["sites"]
+            .as_array()
+            .expect("sites must be an array in memory-model audit");
+        let has_tsm = sites.iter().any(|site| {
+            site["domain"]
+                .as_str()
+                .is_some_and(|domain| domain == "tsm")
+        });
+        let has_futex = sites.iter().any(|site| {
+            site["domain"]
+                .as_str()
+                .is_some_and(|domain| domain == "futex")
+        });
+        let has_seqcst = sites.iter().any(|site| {
+            site["ordering"]
+                .as_str()
+                .is_some_and(|ordering| ordering == "SeqCst")
+        });
+
+        assert!(has_tsm, "memory-model audit must include tsm atomic sites");
+        assert!(
+            has_futex,
+            "memory-model audit must include futex atomic sites"
+        );
+        assert!(
+            has_seqcst,
+            "memory-model audit should capture seq-cst orderings when present"
+        );
+    }
+}

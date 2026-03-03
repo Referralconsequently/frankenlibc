@@ -239,6 +239,18 @@ const FRAGMENTATION_PROOF_HASH: [u8; 32] =
 /// Monomial degree for the fragmentation quadratic form.
 const FRAGMENTATION_MONOMIAL_DEGREE: u32 =
     generated_fragmentation_certificate::FRAGMENTATION_MONOMIAL_DEGREE;
+/// Cholesky minimum pivot captured during build-time PSD verification.
+#[cfg(test)]
+const FRAGMENTATION_CHOLESKY_MIN_PIVOT: f64 =
+    generated_fragmentation_certificate::FRAGMENTATION_CHOLESKY_MIN_PIVOT;
+/// Max absolute reconstruction error for build-time Cholesky decomposition.
+#[cfg(test)]
+const FRAGMENTATION_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR: f64 =
+    generated_fragmentation_certificate::FRAGMENTATION_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR;
+/// Build-time floating-point stability bound delta (Frobenius residual norm).
+#[cfg(test)]
+const FRAGMENTATION_STABILITY_BOUND_DELTA: f64 =
+    generated_fragmentation_certificate::FRAGMENTATION_STABILITY_BOUND_DELTA;
 
 /// SHA-256 over the source `.task` artifact consumed by build-time generation.
 pub const FRAGMENTATION_TASK_SOURCE_SHA256_HEX: &str =
@@ -266,6 +278,18 @@ const THREAD_SAFETY_PROOF_HASH: [u8; 32] =
 /// Monomial degree for the thread-safety quadratic form.
 const THREAD_SAFETY_MONOMIAL_DEGREE: u32 =
     generated_thread_safety_certificate::THREAD_SAFETY_MONOMIAL_DEGREE;
+/// Cholesky minimum pivot captured during build-time PSD verification.
+#[cfg(test)]
+const THREAD_SAFETY_CHOLESKY_MIN_PIVOT: f64 =
+    generated_thread_safety_certificate::THREAD_SAFETY_CHOLESKY_MIN_PIVOT;
+/// Max absolute reconstruction error for build-time Cholesky decomposition.
+#[cfg(test)]
+const THREAD_SAFETY_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR: f64 =
+    generated_thread_safety_certificate::THREAD_SAFETY_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR;
+/// Build-time floating-point stability bound delta (Frobenius residual norm).
+#[cfg(test)]
+const THREAD_SAFETY_STABILITY_BOUND_DELTA: f64 =
+    generated_thread_safety_certificate::THREAD_SAFETY_STABILITY_BOUND_DELTA;
 
 /// SHA-256 over the source `.task` artifact consumed by build-time generation.
 pub const THREAD_SAFETY_TASK_SOURCE_SHA256_HEX: &str =
@@ -292,6 +316,18 @@ const SIZE_CLASS_PROOF_HASH: [u8; 32] = generated_size_class_certificate::SIZE_C
 /// Monomial degree for the size-class admissibility quadratic form.
 const SIZE_CLASS_MONOMIAL_DEGREE: u32 =
     generated_size_class_certificate::SIZE_CLASS_MONOMIAL_DEGREE;
+/// Cholesky minimum pivot captured during build-time PSD verification.
+#[cfg(test)]
+const SIZE_CLASS_CHOLESKY_MIN_PIVOT: f64 =
+    generated_size_class_certificate::SIZE_CLASS_CHOLESKY_MIN_PIVOT;
+/// Max absolute reconstruction error for build-time Cholesky decomposition.
+#[cfg(test)]
+const SIZE_CLASS_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR: f64 =
+    generated_size_class_certificate::SIZE_CLASS_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR;
+/// Build-time floating-point stability bound delta (Frobenius residual norm).
+#[cfg(test)]
+const SIZE_CLASS_STABILITY_BOUND_DELTA: f64 =
+    generated_size_class_certificate::SIZE_CLASS_STABILITY_BOUND_DELTA;
 
 /// SHA-256 over the source `.task` artifact consumed by build-time generation.
 pub const SIZE_CLASS_TASK_SOURCE_SHA256_HEX: &str =
@@ -448,6 +484,35 @@ pub fn evaluate_thread_safety_barrier(
     THREAD_SAFETY_CERTIFICATE.evaluate_barrier(&basis, THREAD_SAFETY_SCORE_SCALE)
 }
 
+#[inline]
+fn evaluate_size_class_barrier_from_basis(basis: &[i64; SIZE_CLASS_CERT_DIM]) -> i64 {
+    let q = &SIZE_CLASS_GRAM_MATRIX;
+    let b0 = basis[0];
+    let b1 = basis[1];
+    let b2 = basis[2];
+    let b3 = basis[3];
+
+    // Fixed 4x4 unrolled quadratic form for hot allocator path.
+    let acc = q[0][0] * b0 * b0
+        + q[0][1] * b0 * b1
+        + q[0][2] * b0 * b2
+        + q[0][3] * b0 * b3
+        + q[1][0] * b1 * b0
+        + q[1][1] * b1 * b1
+        + q[1][2] * b1 * b2
+        + q[1][3] * b1 * b3
+        + q[2][0] * b2 * b0
+        + q[2][1] * b2 * b1
+        + q[2][2] * b2 * b2
+        + q[2][3] * b2 * b3
+        + q[3][0] * b3 * b0
+        + q[3][1] * b3 * b1
+        + q[3][2] * b3 * b2
+        + q[3][3] * b3 * b3;
+
+    SIZE_CLASS_BARRIER_BUDGET_MILLI.saturating_sub(acc / SIZE_CLASS_SCORE_SCALE)
+}
+
 /// Evaluate size-class admissibility barrier certificate.
 ///
 /// Inputs:
@@ -466,12 +531,10 @@ pub fn evaluate_size_class_barrier(
     class_membership_valid: bool,
 ) -> i64 {
     let normalized_requested = requested_size.clamp(16, SIZE_CLASS_MAX_CERTIFIED_REQUEST);
-    let mapped = mapped_class_size.max(normalized_requested);
-
-    let waste_ratio_ppm_u128 = (mapped.saturating_sub(normalized_requested) as u128)
-        .saturating_mul(1_000_000)
-        .saturating_div(normalized_requested as u128);
-    let waste_ratio_ppm = u32::try_from(waste_ratio_ppm_u128).unwrap_or(u32::MAX);
+    let mapped_for_ratio =
+        mapped_class_size.clamp(normalized_requested, SIZE_CLASS_MAX_CERTIFIED_REQUEST);
+    let waste_ratio_ppm = (((mapped_for_ratio - normalized_requested) as u64) * 1_000_000
+        / (normalized_requested as u64)) as u32;
     let membership_violation_ppm = if class_membership_valid { 0 } else { 1_000_000 };
     let range_violation_ppm =
         if mapped_class_size == 0 || mapped_class_size > SIZE_CLASS_MAX_CERTIFIED_REQUEST {
@@ -492,7 +555,7 @@ pub fn evaluate_size_class_barrier(
         ppm_excess_to_score(underflow_violation_ppm, SIZE_CLASS_RANGE_BUDGET_PPM),
     ];
 
-    SIZE_CLASS_CERTIFICATE.evaluate_barrier(&basis, SIZE_CLASS_SCORE_SCALE)
+    evaluate_size_class_barrier_from_basis(&basis)
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,6 +1155,8 @@ mod tests {
 
     const PSD_TOLERANCE: f64 = 1e-6;
     const PIVOT_TOLERANCE: f64 = 1e-12;
+    const SOS_SOUNDNESS_REPORT_JSON: &str =
+        include_str!(concat!(env!("OUT_DIR"), "/sos_soundness_verification.json"));
 
     fn sha256_hex(bytes: &[u8]) -> String {
         let digest = Sha256::digest(bytes);
@@ -1463,6 +1528,94 @@ mod tests {
     }
 
     #[test]
+    fn size_class_fast_path_matches_generic_certificate_eval() {
+        for b0 in [0_i64, 250, 500, 750, 1000] {
+            for b1 in [0_i64, 250, 500, 750, 1000] {
+                for b2 in [0_i64, 250, 500, 750, 1000] {
+                    for b3 in [0_i64, 250, 500, 750, 1000] {
+                        let basis = [b0, b1, b2, b3];
+                        let fast = evaluate_size_class_barrier_from_basis(&basis);
+                        let generic =
+                            SIZE_CLASS_CERTIFICATE.evaluate_barrier(&basis, SIZE_CLASS_SCORE_SCALE);
+                        assert_eq!(
+                            fast, generic,
+                            "size-class fast path must match generic eval for basis={basis:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn build_time_soundness_report_covers_all_certificates() {
+        for certificate_id in ["fragmentation", "thread_safety", "size_class"] {
+            assert!(
+                SOS_SOUNDNESS_REPORT_JSON
+                    .contains(&format!("\"certificate_id\": \"{certificate_id}\"")),
+                "soundness report must contain certificate_id={certificate_id}"
+            );
+        }
+        assert_eq!(
+            SOS_SOUNDNESS_REPORT_JSON
+                .matches("\"cholesky_success\": true")
+                .count(),
+            3,
+            "soundness report must mark all certificates as cholesky_success=true"
+        );
+        assert_eq!(
+            SOS_SOUNDNESS_REPORT_JSON
+                .matches("\"polynomial_identity_verified\": true")
+                .count(),
+            3,
+            "soundness report must mark all certificates as polynomial_identity_verified=true"
+        );
+    }
+
+    #[test]
+    fn build_time_stability_bounds_are_small() {
+        for (label, min_pivot, max_abs_reconstruction_error, stability_bound_delta) in [
+            (
+                "fragmentation",
+                FRAGMENTATION_CHOLESKY_MIN_PIVOT,
+                FRAGMENTATION_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR,
+                FRAGMENTATION_STABILITY_BOUND_DELTA,
+            ),
+            (
+                "thread_safety",
+                THREAD_SAFETY_CHOLESKY_MIN_PIVOT,
+                THREAD_SAFETY_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR,
+                THREAD_SAFETY_STABILITY_BOUND_DELTA,
+            ),
+            (
+                "size_class",
+                SIZE_CLASS_CHOLESKY_MIN_PIVOT,
+                SIZE_CLASS_CHOLESKY_MAX_ABS_RECONSTRUCTION_ERROR,
+                SIZE_CLASS_STABILITY_BOUND_DELTA,
+            ),
+        ] {
+            assert!(
+                min_pivot.is_finite()
+                    && max_abs_reconstruction_error.is_finite()
+                    && stability_bound_delta.is_finite(),
+                "build-time stability metrics must be finite for {label}"
+            );
+            assert!(
+                min_pivot >= 0.0,
+                "cholesky pivot floor must be non-negative for {label}, got {min_pivot}"
+            );
+            assert!(
+                max_abs_reconstruction_error <= 1e-6,
+                "cholesky reconstruction max abs error too large for {label}: {max_abs_reconstruction_error}"
+            );
+            assert!(
+                stability_bound_delta <= 1e-5,
+                "stability bound delta too large for {label}: {stability_bound_delta}"
+            );
+        }
+    }
+
+    #[test]
     fn size_class_barrier_accepts_current_table_for_full_domain() {
         for requested_size in 1..=SIZE_CLASS_MAX_CERTIFIED_REQUEST {
             let mapped_class_size = map_request_to_test_class_size(requested_size);
@@ -1575,6 +1728,33 @@ mod tests {
         assert!(
             high > low,
             "pressure composition should recover: high={high}, low={low}"
+        );
+    }
+
+    #[test]
+    fn conjunction_of_fragmentation_and_memory_pressure_guards_is_sound() {
+        let fragmentation_safe = evaluate_fragmentation_barrier(40_000, 39_500, 110_000, 420_000);
+        let pressure_safe = evaluate_provenance_barrier(
+            12_000,
+            1_000_000,
+            8_000,
+            compose_memory_pressure_ppm(256, 4_000, 4_000),
+        );
+        assert!(
+            fragmentation_safe >= 0 && pressure_safe >= 0,
+            "nominal profile should satisfy both guards: frag={fragmentation_safe}, pressure={pressure_safe}"
+        );
+
+        let fragmentation_bad = evaluate_fragmentation_barrier(90_000, 8_000, 920_000, 980_000);
+        let pressure_bad = evaluate_provenance_barrier(
+            300_000,
+            0,
+            300_000,
+            compose_memory_pressure_ppm(65_536, 100_000, 100_000),
+        );
+        assert!(
+            !(fragmentation_bad >= 0 && pressure_bad >= 0),
+            "conjunction must fail when either guard violates: frag={fragmentation_bad}, pressure={pressure_bad}"
         );
     }
 

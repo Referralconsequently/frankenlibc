@@ -1,6 +1,6 @@
 #![cfg(target_os = "linux")]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
@@ -174,6 +174,65 @@ fn futex_mutex_unlock_without_lock_is_eperm() {
     unsafe {
         assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
         assert_eq!(pthread_mutex_unlock(mutex), libc::EPERM);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn futex_mutex_linearizable_counter_smoke() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+    }
+
+    let num_threads = 8usize;
+    let increments_per_thread = 2_000u64;
+    let expected_total = (num_threads as u64) * increments_per_thread;
+    let start_barrier = Arc::new(Barrier::new(num_threads + 1));
+    let counter = Arc::new(AtomicU64::new(0));
+    let mutex_addr = mutex as usize;
+
+    let mut handles = Vec::with_capacity(num_threads);
+    for _ in 0..num_threads {
+        let barrier_worker = Arc::clone(&start_barrier);
+        let counter_worker = Arc::clone(&counter);
+        handles.push(std::thread::spawn(move || {
+            barrier_worker.wait();
+            for _ in 0..increments_per_thread {
+                unsafe {
+                    assert_eq!(
+                        pthread_mutex_lock(mutex_addr as *mut libc::pthread_mutex_t),
+                        0
+                    );
+                }
+                let current = counter_worker.load(Ordering::Relaxed);
+                counter_worker.store(current + 1, Ordering::Relaxed);
+                unsafe {
+                    assert_eq!(
+                        pthread_mutex_unlock(mutex_addr as *mut libc::pthread_mutex_t),
+                        0
+                    );
+                }
+            }
+        }));
+    }
+
+    start_barrier.wait();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    assert_eq!(
+        counter.load(Ordering::Acquire),
+        expected_total,
+        "mutex-protected counter must be linearizable under contention"
+    );
+
+    unsafe {
         assert_eq!(pthread_mutex_destroy(mutex), 0);
         free_mutex_ptr(mutex);
     }
