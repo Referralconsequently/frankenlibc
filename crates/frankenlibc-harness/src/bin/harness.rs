@@ -35,6 +35,9 @@ struct Cli {
 enum Command {
     /// Capture host glibc behavior as fixture files.
     Capture {
+        /// Input template directory for fixture JSON files.
+        #[arg(long, default_value = "tests/conformance/fixtures")]
+        input: PathBuf,
         /// Output directory for fixture JSON files.
         #[arg(long)]
         output: PathBuf,
@@ -345,10 +348,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Capture { output, family } => {
-            eprintln!("Capturing {family} fixtures to {}", output.display());
+        Command::Capture {
+            input,
+            output,
+            family,
+        } => {
+            eprintln!(
+                "Capturing family='{family}' from {} into {}",
+                input.display(),
+                output.display()
+            );
             std::fs::create_dir_all(&output)?;
-            eprintln!("TODO: implement capture for {family}");
+            let captured = frankenlibc_harness::capture::capture_family_fixtures(&input, &family)
+                .map_err(|err| format!("capture failed: {err}"))?;
+
+            let mut refreshed_total = 0usize;
+            let mut skipped_total = 0usize;
+            let mut warning_total = 0usize;
+
+            for artifact in captured {
+                let path = output.join(&artifact.file_name);
+                let body = artifact
+                    .fixture_set
+                    .to_json()
+                    .map_err(|err| format!("failed serializing {}: {err}", artifact.file_name))?;
+                std::fs::write(&path, body)?;
+
+                refreshed_total += artifact.stats.refreshed_cases;
+                skipped_total += artifact.stats.skipped_cases;
+                warning_total += artifact.stats.warnings.len();
+
+                eprintln!(
+                    "wrote {} (cases={}, refreshed={}, skipped={})",
+                    path.display(),
+                    artifact.stats.total_cases,
+                    artifact.stats.refreshed_cases,
+                    artifact.stats.skipped_cases
+                );
+                for warning in artifact.stats.warnings {
+                    eprintln!("capture warning: {warning}");
+                }
+            }
+
+            eprintln!(
+                "Capture complete: refreshed_cases={}, skipped_cases={}, warnings={}",
+                refreshed_total, skipped_total, warning_total
+            );
         }
         Command::Verify {
             fixture,
