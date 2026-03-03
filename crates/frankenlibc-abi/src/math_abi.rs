@@ -2119,6 +2119,355 @@ pub unsafe extern "C" fn catanhl(z: CLongDoubleComplex) -> CLongDoubleComplex {
     CLongDoubleComplex { re: r.re, im: r.im }
 }
 
+// =========================================================================
+// C23 IEEE 754-2019 fmaximum / fminimum family
+// =========================================================================
+//
+// IEEE 754-2019 min/max operations with strict NaN and signed-zero semantics.
+// Width aliases: f32/f=f32, f64/(none)/f32x=f64, l/f64x/f128=f64 (Rust lacks f80/f128).
+
+// --- Core implementations (f64) ---
+
+/// IEEE 754-2019: NaN if either NaN; -0 < +0.
+#[inline]
+fn fmaximum_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() || y.is_nan() {
+        return f64::NAN;
+    }
+    // -0 < +0
+    if x == 0.0 && y == 0.0 {
+        if x.is_sign_negative() && !y.is_sign_negative() {
+            return y;
+        }
+        return x;
+    }
+    if x > y { x } else { y }
+}
+
+/// IEEE 754-2019: non-NaN wins; -0 < +0.
+#[inline]
+fn fmaximum_num_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() && y.is_nan() {
+        return f64::NAN;
+    }
+    if x.is_nan() {
+        return y;
+    }
+    if y.is_nan() {
+        return x;
+    }
+    if x == 0.0 && y == 0.0 {
+        if x.is_sign_negative() && !y.is_sign_negative() {
+            return y;
+        }
+        return x;
+    }
+    if x > y { x } else { y }
+}
+
+/// IEEE 754-2019: compare |x| vs |y|; NaN if either NaN.
+#[inline]
+fn fmaximum_mag_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() || y.is_nan() {
+        return f64::NAN;
+    }
+    let ax = x.abs();
+    let ay = y.abs();
+    if ax > ay {
+        x
+    } else if ay > ax {
+        y
+    } else {
+        fmaximum_impl(x, y)
+    }
+}
+
+/// IEEE 754-2019: compare |x| vs |y|; non-NaN wins.
+#[inline]
+fn fmaximum_mag_num_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() && y.is_nan() {
+        return f64::NAN;
+    }
+    if x.is_nan() {
+        return y;
+    }
+    if y.is_nan() {
+        return x;
+    }
+    let ax = x.abs();
+    let ay = y.abs();
+    if ax > ay {
+        x
+    } else if ay > ax {
+        y
+    } else {
+        fmaximum_num_impl(x, y)
+    }
+}
+
+/// IEEE 754-2019: NaN if either NaN; -0 < +0.
+#[inline]
+fn fminimum_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() || y.is_nan() {
+        return f64::NAN;
+    }
+    if x == 0.0 && y == 0.0 {
+        if !x.is_sign_negative() && y.is_sign_negative() {
+            return y;
+        }
+        return x;
+    }
+    if x < y { x } else { y }
+}
+
+/// IEEE 754-2019: non-NaN wins; -0 < +0.
+#[inline]
+fn fminimum_num_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() && y.is_nan() {
+        return f64::NAN;
+    }
+    if x.is_nan() {
+        return y;
+    }
+    if y.is_nan() {
+        return x;
+    }
+    if x == 0.0 && y == 0.0 {
+        if !x.is_sign_negative() && y.is_sign_negative() {
+            return y;
+        }
+        return x;
+    }
+    if x < y { x } else { y }
+}
+
+/// IEEE 754-2019: compare |x| vs |y|; NaN if either NaN.
+#[inline]
+fn fminimum_mag_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() || y.is_nan() {
+        return f64::NAN;
+    }
+    let ax = x.abs();
+    let ay = y.abs();
+    if ax < ay {
+        x
+    } else if ay < ax {
+        y
+    } else {
+        fminimum_impl(x, y)
+    }
+}
+
+/// IEEE 754-2019: compare |x| vs |y|; non-NaN wins.
+#[inline]
+fn fminimum_mag_num_impl(x: f64, y: f64) -> f64 {
+    if x.is_nan() && y.is_nan() {
+        return f64::NAN;
+    }
+    if x.is_nan() {
+        return y;
+    }
+    if y.is_nan() {
+        return x;
+    }
+    let ax = x.abs();
+    let ay = y.abs();
+    if ax < ay {
+        x
+    } else if ay < ax {
+        y
+    } else {
+        fminimum_num_impl(x, y)
+    }
+}
+
+// --- f32 core implementations ---
+
+#[inline]
+fn fmaximum_implf(x: f32, y: f32) -> f32 {
+    fmaximum_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fmaximum_num_implf(x: f32, y: f32) -> f32 {
+    fmaximum_num_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fmaximum_mag_implf(x: f32, y: f32) -> f32 {
+    fmaximum_mag_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fmaximum_mag_num_implf(x: f32, y: f32) -> f32 {
+    fmaximum_mag_num_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fminimum_implf(x: f32, y: f32) -> f32 {
+    fminimum_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fminimum_num_implf(x: f32, y: f32) -> f32 {
+    fminimum_num_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fminimum_mag_implf(x: f32, y: f32) -> f32 {
+    fminimum_mag_impl(x as f64, y as f64) as f32
+}
+#[inline]
+fn fminimum_mag_num_implf(x: f32, y: f32) -> f32 {
+    fminimum_mag_num_impl(x as f64, y as f64) as f32
+}
+
+// --- fmaximum exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum(x: f64, y: f64) -> f64 { fmaximum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximumf(x: f32, y: f32) -> f32 { fmaximum_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximuml(x: f64, y: f64) -> f64 { fmaximum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximumf32(x: f32, y: f32) -> f32 { fmaximum_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximumf32x(x: f64, y: f64) -> f64 { fmaximum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximumf64(x: f64, y: f64) -> f64 { fmaximum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximumf64x(x: f64, y: f64) -> f64 { fmaximum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximumf128(x: f64, y: f64) -> f64 { fmaximum_impl(x, y) }
+
+// --- fmaximum_num exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_num(x: f64, y: f64) -> f64 { fmaximum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numf(x: f32, y: f32) -> f32 { fmaximum_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numl(x: f64, y: f64) -> f64 { fmaximum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numf32(x: f32, y: f32) -> f32 { fmaximum_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numf32x(x: f64, y: f64) -> f64 { fmaximum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numf64(x: f64, y: f64) -> f64 { fmaximum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numf64x(x: f64, y: f64) -> f64 { fmaximum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_numf128(x: f64, y: f64) -> f64 { fmaximum_num_impl(x, y) }
+
+// --- fmaximum_mag exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag(x: f64, y: f64) -> f64 { fmaximum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magf(x: f32, y: f32) -> f32 { fmaximum_mag_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magl(x: f64, y: f64) -> f64 { fmaximum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magf32(x: f32, y: f32) -> f32 { fmaximum_mag_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magf32x(x: f64, y: f64) -> f64 { fmaximum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magf64(x: f64, y: f64) -> f64 { fmaximum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magf64x(x: f64, y: f64) -> f64 { fmaximum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_magf128(x: f64, y: f64) -> f64 { fmaximum_mag_impl(x, y) }
+
+// --- fmaximum_mag_num exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_num(x: f64, y: f64) -> f64 { fmaximum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numf(x: f32, y: f32) -> f32 { fmaximum_mag_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numl(x: f64, y: f64) -> f64 { fmaximum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numf32(x: f32, y: f32) -> f32 { fmaximum_mag_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numf32x(x: f64, y: f64) -> f64 { fmaximum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numf64(x: f64, y: f64) -> f64 { fmaximum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numf64x(x: f64, y: f64) -> f64 { fmaximum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fmaximum_mag_numf128(x: f64, y: f64) -> f64 { fmaximum_mag_num_impl(x, y) }
+
+// --- fminimum exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum(x: f64, y: f64) -> f64 { fminimum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimumf(x: f32, y: f32) -> f32 { fminimum_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimuml(x: f64, y: f64) -> f64 { fminimum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimumf32(x: f32, y: f32) -> f32 { fminimum_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimumf32x(x: f64, y: f64) -> f64 { fminimum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimumf64(x: f64, y: f64) -> f64 { fminimum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimumf64x(x: f64, y: f64) -> f64 { fminimum_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimumf128(x: f64, y: f64) -> f64 { fminimum_impl(x, y) }
+
+// --- fminimum_num exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_num(x: f64, y: f64) -> f64 { fminimum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numf(x: f32, y: f32) -> f32 { fminimum_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numl(x: f64, y: f64) -> f64 { fminimum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numf32(x: f32, y: f32) -> f32 { fminimum_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numf32x(x: f64, y: f64) -> f64 { fminimum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numf64(x: f64, y: f64) -> f64 { fminimum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numf64x(x: f64, y: f64) -> f64 { fminimum_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_numf128(x: f64, y: f64) -> f64 { fminimum_num_impl(x, y) }
+
+// --- fminimum_mag exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag(x: f64, y: f64) -> f64 { fminimum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magf(x: f32, y: f32) -> f32 { fminimum_mag_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magl(x: f64, y: f64) -> f64 { fminimum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magf32(x: f32, y: f32) -> f32 { fminimum_mag_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magf32x(x: f64, y: f64) -> f64 { fminimum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magf64(x: f64, y: f64) -> f64 { fminimum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magf64x(x: f64, y: f64) -> f64 { fminimum_mag_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_magf128(x: f64, y: f64) -> f64 { fminimum_mag_impl(x, y) }
+
+// --- fminimum_mag_num exports ---
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_num(x: f64, y: f64) -> f64 { fminimum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numf(x: f32, y: f32) -> f32 { fminimum_mag_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numl(x: f64, y: f64) -> f64 { fminimum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numf32(x: f32, y: f32) -> f32 { fminimum_mag_num_implf(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numf32x(x: f64, y: f64) -> f64 { fminimum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numf64(x: f64, y: f64) -> f64 { fminimum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numf64x(x: f64, y: f64) -> f64 { fminimum_mag_num_impl(x, y) }
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn fminimum_mag_numf128(x: f64, y: f64) -> f64 { fminimum_mag_num_impl(x, y) }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3178,6 +3527,98 @@ mod tests {
             let ash = casinh(sh);
             assert!(approx(ash.re, z.re, 1e-10));
             assert!(approx(ash.im, z.im, 1e-10));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // C23 fmaximum / fminimum tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn fmaximum_basic_ordering() {
+        unsafe {
+            assert_eq!(fmaximum(3.0, 5.0), 5.0);
+            assert_eq!(fmaximum(-1.0, -2.0), -1.0);
+            assert!(fmaximum(f64::NAN, 1.0).is_nan()); // NaN propagates
+            assert!(fmaximum(1.0, f64::NAN).is_nan());
+        }
+    }
+
+    #[test]
+    fn fmaximum_signed_zero() {
+        unsafe {
+            // -0 < +0 per IEEE 754-2019
+            let r = fmaximum(0.0, -0.0);
+            assert_eq!(r, 0.0);
+            assert!(!r.is_sign_negative());
+            let r2 = fmaximum(-0.0, 0.0);
+            assert_eq!(r2, 0.0);
+            assert!(!r2.is_sign_negative());
+        }
+    }
+
+    #[test]
+    fn fmaximum_num_nan_handling() {
+        unsafe {
+            assert_eq!(fmaximum_num(f64::NAN, 1.0), 1.0);
+            assert_eq!(fmaximum_num(1.0, f64::NAN), 1.0);
+            assert!(fmaximum_num(f64::NAN, f64::NAN).is_nan());
+        }
+    }
+
+    #[test]
+    fn fmaximum_mag_by_absolute_value() {
+        unsafe {
+            assert_eq!(fmaximum_mag(3.0, -5.0), -5.0); // |-5| > |3|
+            assert_eq!(fmaximum_mag(-1.0, 0.5), -1.0); // |-1| > |0.5|
+        }
+    }
+
+    #[test]
+    fn fminimum_basic_ordering() {
+        unsafe {
+            assert_eq!(fminimum(3.0, 5.0), 3.0);
+            assert_eq!(fminimum(-1.0, -2.0), -2.0);
+            assert!(fminimum(f64::NAN, 1.0).is_nan());
+        }
+    }
+
+    #[test]
+    fn fminimum_signed_zero() {
+        unsafe {
+            // -0 < +0 per IEEE 754-2019
+            let r = fminimum(0.0, -0.0);
+            assert_eq!(r, 0.0);
+            assert!(r.is_sign_negative());
+            let r2 = fminimum(-0.0, 0.0);
+            assert_eq!(r2, 0.0);
+            assert!(r2.is_sign_negative());
+        }
+    }
+
+    #[test]
+    fn fminimum_num_nan_handling() {
+        unsafe {
+            assert_eq!(fminimum_num(f64::NAN, 1.0), 1.0);
+            assert_eq!(fminimum_num(1.0, f64::NAN), 1.0);
+            assert!(fminimum_num(f64::NAN, f64::NAN).is_nan());
+        }
+    }
+
+    #[test]
+    fn fminimum_mag_by_absolute_value() {
+        unsafe {
+            assert_eq!(fminimum_mag(3.0, -5.0), 3.0); // |3| < |-5|
+            assert_eq!(fminimum_mag(-1.0, 0.5), 0.5); // |0.5| < |-1|
+        }
+    }
+
+    #[test]
+    fn fmaximum_f32_variants_consistent() {
+        unsafe {
+            assert_eq!(fmaximumf(3.0f32, 5.0f32), 5.0f32);
+            assert_eq!(fmaximumf32(3.0f32, 5.0f32), 5.0f32);
+            assert!(fmaximumf(f32::NAN, 1.0f32).is_nan());
         }
     }
 }

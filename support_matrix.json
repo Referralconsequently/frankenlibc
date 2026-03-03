@@ -2,7 +2,7 @@
   "version": 2,
   "generated_at_utc": "2026-02-18T04:49:26Z",
   "library": "/data/tmp/cargo-target/release/libfrankenlibc_abi.so",
-  "total_exported": 2910,
+  "total_exported": 2974,
   "taxonomy": {
     "Implemented": "Native Rust code owns the entire operation. No host libc dependency. Full test coverage required.",
     "RawSyscall": "ABI entrypoint marshals arguments directly to Linux syscall instruction. No glibc call-through.",
@@ -21816,20 +21816,596 @@
       "strict_semantics": true,
       "hardened_semantics": true,
       "default_stub": false
+    },
+    {
+      "symbol": "fmaximum",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximumf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximuml",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximumf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximumf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximumf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximumf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximumf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_num",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numl",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_numf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magl",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_magf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_num",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numl",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fmaximum_mag_numf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimumf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimuml",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimumf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimumf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimumf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimumf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimumf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_num",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numl",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_numf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magl",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_magf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_num",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numf",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numl",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numf32",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numf32x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numf64",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numf64x",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "fminimum_mag_numf128",
+      "status": "Implemented",
+      "module": "math_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
     }
   ],
   "summary": {
     "RawSyscall": 404,
-    "Implemented": 2313,
+    "Implemented": 2377,
     "GlibcCallThrough": 193
   },
-  "implemented": 2313,
+  "implemented": 2377,
   "raw_syscall": 404,
   "glibc_call_through": 193,
   "stub": 0,
   "counts": {
     "RawSyscall": 404,
-    "Implemented": 2313,
+    "Implemented": 2377,
     "GlibcCallThrough": 193
   }
 }
