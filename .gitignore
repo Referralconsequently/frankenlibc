@@ -103,6 +103,11 @@ storage.recovered.sqlite3
 # Ephemeral scratch files
 baseline_decisions
 
+# System trace/debug logs
+strace.log
+strace*.log
+ltrace*.log
+
 # Remote compilation helper artifacts
 .rch-target/
 .rch-deploy-root/
