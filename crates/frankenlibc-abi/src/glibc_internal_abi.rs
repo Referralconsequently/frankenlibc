@@ -6198,9 +6198,7 @@ pub unsafe extern "C" fn __mmap(
     fd: c_int,
     offset: i64,
 ) -> *mut c_void {
-    unsafe {
-        libc::syscall(libc::SYS_mmap, addr, length, prot, flags, fd, offset) as *mut c_void
-    }
+    unsafe { libc::syscall(libc::SYS_mmap, addr, length, prot, flags, fd, offset) as *mut c_void }
 }
 
 /// `__mprotect` — internal mprotect alias.
@@ -6265,11 +6263,7 @@ pub unsafe extern "C" fn __fstat64(fd: c_int, buf: *mut c_void) -> c_int {
 
 /// `__fseeko64` — internal fseeko64 (delegates to host).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __fseeko64(
-    stream: *mut c_void,
-    offset: i64,
-    whence: c_int,
-) -> c_int {
+pub unsafe extern "C" fn __fseeko64(stream: *mut c_void, offset: i64, whence: c_int) -> c_int {
     type F = unsafe extern "C" fn(*mut c_void, i64, c_int) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"fseeko64".as_ptr()) };
     if sym.is_null() {
@@ -6294,7 +6288,15 @@ pub unsafe extern "C" fn __ftello64(stream: *mut c_void) -> i64 {
 /// `__getrlimit` — internal getrlimit alias.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __getrlimit(resource: c_int, rlim: *mut c_void) -> c_int {
-    unsafe { libc::syscall(libc::SYS_prlimit64, 0, resource, std::ptr::null::<c_void>(), rlim) as c_int }
+    unsafe {
+        libc::syscall(
+            libc::SYS_prlimit64,
+            0,
+            resource,
+            std::ptr::null::<c_void>(),
+            rlim,
+        ) as c_int
+    }
 }
 
 /// `__clock_gettime` — internal clock_gettime alias.
@@ -6323,8 +6325,8 @@ pub unsafe extern "C" fn __mktemp(template: *mut c_char) -> *mut c_char {
     }
     // Verify last 6 chars are 'X'
     let suffix_start = len - 6;
-    for i in 0..6 {
-        if unsafe { *template.add(suffix_start + i) } as u8 != b'X' {
+    for offset in 0..6 {
+        if unsafe { *template.add(suffix_start + offset) } as u8 != b'X' {
             unsafe {
                 *template = 0;
                 *libc::__errno_location() = libc::EINVAL;
@@ -6335,12 +6337,13 @@ pub unsafe extern "C" fn __mktemp(template: *mut c_char) -> *mut c_char {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     // Use getrandom for random bytes
     let mut rand_bytes = [0u8; 6];
-    let ret = unsafe {
-        libc::syscall(libc::SYS_getrandom, rand_bytes.as_mut_ptr(), 6usize, 0u32)
-    };
+    let ret = unsafe { libc::syscall(libc::SYS_getrandom, rand_bytes.as_mut_ptr(), 6usize, 0u32) };
     if ret != 6 {
         // Fallback: use clock_gettime for entropy
-        let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
         let mut seed = ts.tv_nsec as u64 ^ ts.tv_sec as u64;
         for b in &mut rand_bytes {
@@ -6348,8 +6351,8 @@ pub unsafe extern "C" fn __mktemp(template: *mut c_char) -> *mut c_char {
             *b = (seed >> 33) as u8;
         }
     }
-    for i in 0..6 {
-        let idx = (rand_bytes[i] as usize) % CHARS.len();
+    for (i, &rb) in rand_bytes.iter().enumerate() {
+        let idx = (rb as usize) % CHARS.len();
         unsafe { *template.add(suffix_start + i) = CHARS[idx] as c_char };
     }
     // Check that the file doesn't exist (per mktemp spec)
@@ -6591,7 +6594,16 @@ pub unsafe extern "C" fn __lll_lock_wait_private(futex: *mut c_int, private: c_i
         }
         // Try to acquire: if we can swap 0->2, we got the lock
         let ptr = futex as *mut std::sync::atomic::AtomicI32;
-        if unsafe { (*ptr).compare_exchange(0, 2, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed).is_ok() } {
+        if unsafe {
+            (*ptr)
+                .compare_exchange(
+                    0,
+                    2,
+                    std::sync::atomic::Ordering::Acquire,
+                    std::sync::atomic::Ordering::Relaxed,
+                )
+                .is_ok()
+        } {
             return;
         }
     }
@@ -6637,7 +6649,9 @@ pub unsafe extern "C" fn __gconv_open(
 pub unsafe extern "C" fn __gconv_create_spec(spec: *mut c_void) -> c_int {
     type F = unsafe extern "C" fn(*mut c_void) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_create_spec".as_ptr()) };
-    if sym.is_null() { return -1; }
+    if sym.is_null() {
+        return -1;
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(spec) }
 }
@@ -6658,7 +6672,9 @@ pub unsafe extern "C" fn __gconv_destroy_spec(spec: *mut c_void) {
 pub unsafe extern "C" fn __gconv_get_alias_db() -> *mut c_void {
     type F = unsafe extern "C" fn() -> *mut c_void;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_get_alias_db".as_ptr()) };
-    if sym.is_null() { return std::ptr::null_mut(); }
+    if sym.is_null() {
+        return std::ptr::null_mut();
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f() }
 }
@@ -6668,7 +6684,9 @@ pub unsafe extern "C" fn __gconv_get_alias_db() -> *mut c_void {
 pub unsafe extern "C" fn __gconv_get_cache() -> *mut c_void {
     type F = unsafe extern "C" fn() -> *mut c_void;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_get_cache".as_ptr()) };
-    if sym.is_null() { return std::ptr::null_mut(); }
+    if sym.is_null() {
+        return std::ptr::null_mut();
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f() }
 }
@@ -6678,7 +6696,9 @@ pub unsafe extern "C" fn __gconv_get_cache() -> *mut c_void {
 pub unsafe extern "C" fn __gconv_get_modules_db() -> *mut c_void {
     type F = unsafe extern "C" fn() -> *mut c_void;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_get_modules_db".as_ptr()) };
-    if sym.is_null() { return std::ptr::null_mut(); }
+    if sym.is_null() {
+        return std::ptr::null_mut();
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f() }
 }
@@ -6693,9 +6713,18 @@ pub unsafe extern "C" fn __gconv_transliterate(
     output: *mut *mut c_void,
     outend: *const c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, *mut c_void, *const c_void, *const c_void, *mut *mut c_void, *const c_void) -> c_int;
+    type F = unsafe extern "C" fn(
+        *mut c_void,
+        *mut c_void,
+        *const c_void,
+        *const c_void,
+        *mut *mut c_void,
+        *const c_void,
+    ) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_transliterate".as_ptr()) };
-    if sym.is_null() { return -1; }
+    if sym.is_null() {
+        return -1;
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(step, step_data, input, inend, output, outend) }
 }
@@ -6709,7 +6738,9 @@ pub unsafe extern "C" fn __gconv_transliterate(
 pub unsafe extern "C" fn __resolv_context_get() -> *mut c_void {
     type F = unsafe extern "C" fn() -> *mut c_void;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_get".as_ptr()) };
-    if sym.is_null() { return std::ptr::null_mut(); }
+    if sym.is_null() {
+        return std::ptr::null_mut();
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f() }
 }
@@ -6719,7 +6750,9 @@ pub unsafe extern "C" fn __resolv_context_get() -> *mut c_void {
 pub unsafe extern "C" fn __resolv_context_get_override(statp: *mut c_void) -> *mut c_void {
     type F = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_get_override".as_ptr()) };
-    if sym.is_null() { return std::ptr::null_mut(); }
+    if sym.is_null() {
+        return std::ptr::null_mut();
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(statp) }
 }
@@ -6729,7 +6762,9 @@ pub unsafe extern "C" fn __resolv_context_get_override(statp: *mut c_void) -> *m
 pub unsafe extern "C" fn __resolv_context_get_preinit() -> *mut c_void {
     type F = unsafe extern "C" fn() -> *mut c_void;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_get_preinit".as_ptr()) };
-    if sym.is_null() { return std::ptr::null_mut(); }
+    if sym.is_null() {
+        return std::ptr::null_mut();
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f() }
 }
@@ -6761,7 +6796,9 @@ pub unsafe extern "C" fn __idna_to_dns_encoding(
 ) -> c_int {
     type F = unsafe extern "C" fn(*const c_char, *mut *mut c_char) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__idna_to_dns_encoding".as_ptr()) };
-    if sym.is_null() { return libc::EAI_FAIL; }
+    if sym.is_null() {
+        return libc::EAI_FAIL;
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(name, result) }
 }
@@ -6774,7 +6811,9 @@ pub unsafe extern "C" fn __idna_from_dns_encoding(
 ) -> c_int {
     type F = unsafe extern "C" fn(*const c_char, *mut *mut c_char) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__idna_from_dns_encoding".as_ptr()) };
-    if sym.is_null() { return libc::EAI_FAIL; }
+    if sym.is_null() {
+        return libc::EAI_FAIL;
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(name, result) }
 }
@@ -6795,11 +6834,7 @@ const NS_CMPRSFLGS: u8 = 0xC0;
 /// Wire format: sequence of (length, label-bytes) ending with a zero-length label.
 /// Returns the number of bytes written (including NUL), or -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __ns_name_ntop(
-    src: *const u8,
-    dst: *mut c_char,
-    dstsiz: SizeT,
-) -> c_int {
+pub unsafe extern "C" fn __ns_name_ntop(src: *const u8, dst: *mut c_char, dstsiz: SizeT) -> c_int {
     if src.is_null() || dst.is_null() || dstsiz == 0 {
         unsafe { *libc::__errno_location() = libc::EINVAL };
         return -1;
@@ -6842,7 +6877,7 @@ pub unsafe extern "C" fn __ns_name_ntop(
                 dp += 1;
                 unsafe { *dst.add(dp) = c as c_char };
                 dp += 1;
-            } else if c < 0x21 || c > 0x7E {
+            } else if !(0x21..=0x7E).contains(&c) {
                 // Escape non-printable as \DDD
                 if dp + 4 > dstsiz {
                     unsafe { *libc::__errno_location() = libc::EMSGSIZE };
@@ -6889,11 +6924,7 @@ pub unsafe extern "C" fn __ns_name_ntop(
 /// Returns the number of bytes written, or -1 on error. Returns 1 if
 /// the input was a fully-qualified name (trailing dot), 0 otherwise.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __ns_name_pton(
-    src: *const c_char,
-    dst: *mut u8,
-    dstsiz: SizeT,
-) -> c_int {
+pub unsafe extern "C" fn __ns_name_pton(src: *const c_char, dst: *mut u8, dstsiz: SizeT) -> c_int {
     if src.is_null() || dst.is_null() || dstsiz == 0 {
         unsafe { *libc::__errno_location() = libc::EINVAL };
         return -1;
@@ -6922,11 +6953,6 @@ pub unsafe extern "C" fn __ns_name_pton(
 
         if c == b'.' {
             // End of label
-            if label_len == 0 && unsafe { *sp } as u8 == 0 {
-                // Trailing dot = fully qualified
-                fully_qualified = true;
-                break;
-            }
             if label_len == 0 || label_len > NS_MAXLABEL {
                 unsafe { *libc::__errno_location() = libc::EMSGSIZE };
                 return -1;
@@ -6934,6 +6960,13 @@ pub unsafe extern "C" fn __ns_name_pton(
             // Write label length
             unsafe { *dst.add(label_start) = label_len as u8 };
             label_len = 0;
+
+            // Check for trailing dot (next char is NUL = fully qualified)
+            if unsafe { *sp } as u8 == 0 {
+                fully_qualified = true;
+                break;
+            }
+
             // Start next label
             if dp >= dstsiz {
                 unsafe { *libc::__errno_location() = libc::EMSGSIZE };
@@ -6944,7 +6977,7 @@ pub unsafe extern "C" fn __ns_name_pton(
         } else if c == b'\\' {
             // Escape sequence
             let next = unsafe { *sp } as u8;
-            if next >= b'0' && next <= b'9' {
+            if next.is_ascii_digit() {
                 // \DDD decimal escape
                 let d1 = (next - b'0') as u16;
                 sp = unsafe { sp.add(1) };
@@ -6986,12 +7019,14 @@ pub unsafe extern "C" fn __ns_name_pton(
         }
     }
 
-    // Write final label length (may be 0 if trailing dot or empty)
-    if label_len > NS_MAXLABEL {
-        unsafe { *libc::__errno_location() = libc::EMSGSIZE };
-        return -1;
+    if !fully_qualified {
+        // Write final label length for relative names
+        if label_len > NS_MAXLABEL {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        unsafe { *dst.add(label_start) = label_len as u8 };
     }
-    unsafe { *dst.add(label_start) = label_len as u8 };
 
     // Append terminating zero-length label
     if dp >= dstsiz {
@@ -7025,7 +7060,11 @@ pub unsafe extern "C" fn __ns_name_unpack(
     let mut dp = 0usize;
     let mut checked = 0usize;
     let mut save_sp: *const u8 = std::ptr::null();
-    let maxdst = if dstsiz > NS_MAXCDNAME { NS_MAXCDNAME } else { dstsiz };
+    let maxdst = if dstsiz > NS_MAXCDNAME {
+        NS_MAXCDNAME
+    } else {
+        dstsiz
+    };
 
     loop {
         if sp >= eom {
@@ -7192,10 +7231,7 @@ pub unsafe extern "C" fn __ns_name_compress(
 ///
 /// Advances `*ptrptr` past the name. Returns 0 on success, -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __ns_name_skip(
-    ptrptr: *mut *const u8,
-    eom: *const u8,
-) -> c_int {
+pub unsafe extern "C" fn __ns_name_skip(ptrptr: *mut *const u8, eom: *const u8) -> c_int {
     if ptrptr.is_null() || eom.is_null() {
         unsafe { *libc::__errno_location() = libc::EINVAL };
         return -1;
@@ -7270,10 +7306,7 @@ pub unsafe extern "C" fn __ns_name_uncompressed_p(
 ///
 /// Returns 1 if same, 0 if different, -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __ns_samename(
-    a: *const c_char,
-    b: *const c_char,
-) -> c_int {
+pub unsafe extern "C" fn __ns_samename(a: *const c_char, b: *const c_char) -> c_int {
     if a.is_null() || b.is_null() {
         unsafe { *libc::__errno_location() = libc::EINVAL };
         return -1;
@@ -7299,8 +7332,8 @@ pub unsafe extern "C" fn __ns_samename(
             return 1;
         }
         // Compare case-insensitively
-        let ac_lower = if ac >= b'A' && ac <= b'Z' { ac + 32 } else { ac };
-        let bc_lower = if bc >= b'A' && bc <= b'Z' { bc + 32 } else { bc };
+        let ac_lower = if ac.is_ascii_uppercase() { ac + 32 } else { ac };
+        let bc_lower = if bc.is_ascii_uppercase() { bc + 32 } else { bc };
         if ac_lower != bc_lower {
             return 0;
         }
@@ -7391,7 +7424,9 @@ pub unsafe extern "C" fn __file_change_detection_for_stat(
     if result.is_null() || st.is_null() {
         return 0;
     }
-    unsafe { file_change_detection_from_stat(result as *mut FileChangeDetection, st as *const libc::stat) };
+    unsafe {
+        file_change_detection_from_stat(result as *mut FileChangeDetection, st as *const libc::stat)
+    };
     1
 }
 
@@ -7399,10 +7434,7 @@ pub unsafe extern "C" fn __file_change_detection_for_stat(
 ///
 /// Returns 1 if the file is unchanged (all fields match), 0 if changed.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __file_is_unchanged(
-    prev: *const c_void,
-    curr: *const c_void,
-) -> c_int {
+pub unsafe extern "C" fn __file_is_unchanged(prev: *const c_void, curr: *const c_void) -> c_int {
     if prev.is_null() || curr.is_null() {
         return 1; // assume unchanged if null
     }
@@ -7457,9 +7489,17 @@ pub unsafe extern "C" fn __copy_grp(
     buflen: SizeT,
     result: *mut *mut c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, *const c_void, *mut c_char, SizeT, *mut *mut c_void) -> c_int;
+    type F = unsafe extern "C" fn(
+        *mut c_void,
+        *const c_void,
+        *mut c_char,
+        SizeT,
+        *mut *mut c_void,
+    ) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__copy_grp".as_ptr()) };
-    if sym.is_null() { return libc::ENOSYS; }
+    if sym.is_null() {
+        return libc::ENOSYS;
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(dest, src, buf, buflen, result) }
 }
@@ -7473,9 +7513,17 @@ pub unsafe extern "C" fn __merge_grp(
     buflen: SizeT,
     result: *mut *mut c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, *const c_void, *mut c_char, SizeT, *mut *mut c_void) -> c_int;
+    type F = unsafe extern "C" fn(
+        *mut c_void,
+        *const c_void,
+        *mut c_char,
+        SizeT,
+        *mut *mut c_void,
+    ) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__merge_grp".as_ptr()) };
-    if sym.is_null() { return libc::ENOSYS; }
+    if sym.is_null() {
+        return libc::ENOSYS;
+    }
     let f: F = unsafe { std::mem::transmute(sym) };
     unsafe { f(dest, src, buf, buflen, result) }
 }
@@ -7624,7 +7672,11 @@ pub unsafe extern "C" fn __libc_pvalloc(size: usize) -> *mut c_void {
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_reallocarray(ptr: *mut c_void, nmemb: usize, size: usize) -> *mut c_void {
+pub unsafe extern "C" fn __libc_reallocarray(
+    ptr: *mut c_void,
+    nmemb: usize,
+    size: usize,
+) -> *mut c_void {
     unsafe { crate::stdlib_abi::reallocarray(ptr, nmemb, size) }
 }
 
@@ -7644,17 +7696,31 @@ pub unsafe extern "C" fn __libc_system(command: *const c_char) -> c_int {
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_pread(fd: c_int, buf: *mut c_void, count: usize, offset: i64) -> isize {
+pub unsafe extern "C" fn __libc_pread(
+    fd: c_int,
+    buf: *mut c_void,
+    count: usize,
+    offset: i64,
+) -> isize {
     unsafe { crate::unistd_abi::pread64(fd, buf, count, offset) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_pwrite(fd: c_int, buf: *const c_void, count: usize, offset: i64) -> isize {
+pub unsafe extern "C" fn __libc_pwrite(
+    fd: c_int,
+    buf: *const c_void,
+    count: usize,
+    offset: i64,
+) -> isize {
     unsafe { crate::unistd_abi::pwrite64(fd, buf, count, offset) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __libc_sigaction(signum: c_int, act: *const c_void, oldact: *mut c_void) -> c_int {
+pub unsafe extern "C" fn __libc_sigaction(
+    signum: c_int,
+    act: *const c_void,
+    oldact: *mut c_void,
+) -> c_int {
     unsafe { crate::signal_abi::sigaction(signum, act.cast(), oldact.cast()) }
 }
 
@@ -7665,22 +7731,50 @@ pub unsafe extern "C" fn __libc_secure_getenv(name: *const c_char) -> *mut c_cha
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __libc_msgrcv(
-    msqid: c_int, msgp: *mut c_void, msgsz: usize, msgtyp: c_long, msgflg: c_int,
+    msqid: c_int,
+    msgp: *mut c_void,
+    msgsz: usize,
+    msgtyp: c_long,
+    msgflg: c_int,
 ) -> isize {
-    unsafe { libc::syscall(libc::SYS_msgrcv, msqid as c_long, msgp as c_long, msgsz as c_long, msgtyp, msgflg as c_long) as isize }
+    unsafe {
+        libc::syscall(
+            libc::SYS_msgrcv,
+            msqid as c_long,
+            msgp as c_long,
+            msgsz as c_long,
+            msgtyp,
+            msgflg as c_long,
+        ) as isize
+    }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __libc_msgsnd(
-    msqid: c_int, msgp: *const c_void, msgsz: usize, msgflg: c_int,
+    msqid: c_int,
+    msgp: *const c_void,
+    msgsz: usize,
+    msgflg: c_int,
 ) -> c_int {
-    unsafe { libc::syscall(libc::SYS_msgsnd, msqid as c_long, msgp as c_long, msgsz as c_long, msgflg as c_long) as c_int }
+    unsafe {
+        libc::syscall(
+            libc::SYS_msgsnd,
+            msqid as c_long,
+            msgp as c_long,
+            msgsz as c_long,
+            msgflg as c_long,
+        ) as c_int
+    }
 }
 
 // Resolver __libc_* aliases - forward to same-module functions
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __libc_dn_expand(
-    msg: *const u8, eom: *const u8, comp_dn: *const u8, exp_dn: *mut c_char, length: c_int,
+    msg: *const u8,
+    eom: *const u8,
+    comp_dn: *const u8,
+    exp_dn: *mut c_char,
+    length: c_int,
 ) -> c_int {
     unsafe { crate::unistd_abi::dn_expand(msg, eom, comp_dn, exp_dn, length) }
 }

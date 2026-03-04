@@ -20703,7 +20703,7 @@
     },
     {
       "symbol": "__mktemp",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -20784,7 +20784,7 @@
     },
     {
       "symbol": "__twalk_r",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21045,7 +21045,7 @@
     },
     {
       "symbol": "__ns_name_ntop",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21054,7 +21054,7 @@
     },
     {
       "symbol": "__ns_name_pton",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21063,7 +21063,7 @@
     },
     {
       "symbol": "__ns_name_uncompressed_p",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21072,7 +21072,7 @@
     },
     {
       "symbol": "__ns_name_pack",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21081,7 +21081,25 @@
     },
     {
       "symbol": "__ns_name_compress",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
+      "module": "glibc_internal_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "__ns_name_uncompress",
+      "status": "Implemented",
+      "module": "glibc_internal_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
+      "symbol": "__ns_name_unpack",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21090,7 +21108,7 @@
     },
     {
       "symbol": "__ns_name_skip",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21099,7 +21117,7 @@
     },
     {
       "symbol": "__ns_samename",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21108,7 +21126,7 @@
     },
     {
       "symbol": "__file_change_detection_for_path",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21117,7 +21135,7 @@
     },
     {
       "symbol": "__file_change_detection_for_stat",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21126,7 +21144,7 @@
     },
     {
       "symbol": "__file_change_detection_for_fp",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21135,7 +21153,7 @@
     },
     {
       "symbol": "__file_is_unchanged",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21189,7 +21207,7 @@
     },
     {
       "symbol": "__shm_get_name",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -31432,16 +31450,16 @@
   ],
   "summary": {
     "RawSyscall": 406,
-    "Implemented": 3379,
-    "GlibcCallThrough": 193
+    "Implemented": 3393,
+    "GlibcCallThrough": 179
   },
-  "implemented": 3379,
+  "implemented": 3393,
   "raw_syscall": 406,
-  "glibc_call_through": 193,
+  "glibc_call_through": 179,
   "stub": 0,
   "counts": {
     "RawSyscall": 406,
-    "Implemented": 2504,
-    "GlibcCallThrough": 193
+    "Implemented": 3393,
+    "GlibcCallThrough": 179
   }
 }

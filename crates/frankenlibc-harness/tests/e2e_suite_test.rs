@@ -211,7 +211,10 @@ fn ld_preload_smoke_report_schema_valid_when_present() {
             ] {
                 assert!(obj[field].is_string(), "trace line missing {}", field);
             }
-            assert!(obj["timing"].is_object(), "trace line missing timing object");
+            assert!(
+                obj["timing"].is_object(),
+                "trace line missing timing object"
+            );
             if !obj["api_family"].is_null() {
                 for field in ["api_family", "symbol", "decision_path", "healing_action"] {
                     assert!(obj[field].is_string(), "trace line missing {}", field);
@@ -225,7 +228,10 @@ fn ld_preload_smoke_report_schema_valid_when_present() {
                     obj["artifact_refs"].is_array(),
                     "trace line missing artifact_refs"
                 );
-                if obj["event"].as_str().unwrap_or_default().starts_with("case_")
+                if obj["event"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("case_")
                     && !obj["signature_guard_triggered"].is_null()
                 {
                     assert!(
