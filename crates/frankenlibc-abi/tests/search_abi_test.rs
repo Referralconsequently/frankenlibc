@@ -14,15 +14,17 @@ use frankenlibc_abi::search_abi::*;
 // Hash table: hcreate / hsearch / hdestroy
 // ===========================================================================
 
+/// All non-reentrant global hash table tests run sequentially in a single
+/// test function because they share the process-wide `GLOBAL_HTAB` static
+/// and would race if executed in parallel.
 #[test]
-fn hash_create_and_destroy() {
+fn hash_global_api() {
+    // --- create and destroy ---
     let rc = unsafe { hcreate(16) };
     assert_eq!(rc, 1, "hcreate should succeed");
     unsafe { hdestroy() };
-}
 
-#[test]
-fn hash_insert_and_find() {
+    // --- insert and find ---
     unsafe { hcreate(16) };
 
     let key = CString::new("testkey").unwrap();
@@ -39,10 +41,8 @@ fn hash_insert_and_find() {
     assert_eq!(unsafe { (*found).data } as usize, 42);
 
     unsafe { hdestroy() };
-}
 
-#[test]
-fn hash_find_nonexistent_returns_null() {
+    // --- find nonexistent returns null ---
     unsafe { hcreate(16) };
 
     let key = CString::new("missing").unwrap();
@@ -55,10 +55,8 @@ fn hash_find_nonexistent_returns_null() {
     assert!(found.is_null(), "FIND on missing key should return null");
 
     unsafe { hdestroy() };
-}
 
-#[test]
-fn hash_multiple_entries() {
+    // --- multiple entries ---
     unsafe { hcreate(64) };
 
     let keys: Vec<CString> = (0..10)

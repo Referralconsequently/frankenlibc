@@ -6901,7 +6901,7 @@ pub unsafe extern "C" fn __ns_name_pton(
 
     let mut sp = src;
     let mut dp = 0usize;
-    let mut label_start = dp;
+    let mut label_start;
     let mut label_len: usize = 0;
     let mut fully_qualified = false;
 
@@ -7063,9 +7063,9 @@ pub unsafe extern "C" fn __ns_name_unpack(
             }
             unsafe { *dst.add(dp) = 0 };
             let consumed = if save_sp.is_null() {
-                unsafe { sp.add(1).offset_from(src) } as c_int
+                (unsafe { sp.add(1).offset_from(src) }) as c_int
             } else {
-                unsafe { save_sp.offset_from(src) } as c_int
+                (unsafe { save_sp.offset_from(src) }) as c_int
             };
             return consumed;
         } else {
@@ -7310,59 +7310,116 @@ pub unsafe extern "C" fn __ns_samename(
 }
 
 // ---------------------------------------------------------------------------
-// File change detection — GLIBC_PRIVATE
+// File change detection — native implementation
 // ---------------------------------------------------------------------------
 
-/// `__file_change_detection_for_path` — detect file changes by path.
+/// Internal struct matching glibc's `struct file_change_detection`.
+/// Fields: size, ino, dev, mtime (timespec).
+#[repr(C)]
+struct FileChangeDetection {
+    size: i64,       // off_t
+    ino: u64,        // ino_t
+    dev: u64,        // dev_t
+    mtime_sec: i64,  // struct timespec tv_sec
+    mtime_nsec: i64, // struct timespec tv_nsec
+}
+
+/// Fill `FileChangeDetection` from a stat buffer.
+unsafe fn file_change_detection_from_stat(result: *mut FileChangeDetection, st: *const libc::stat) {
+    unsafe {
+        (*result).size = (*st).st_size;
+        (*result).ino = (*st).st_ino;
+        (*result).dev = (*st).st_dev;
+        (*result).mtime_sec = (*st).st_mtime;
+        (*result).mtime_nsec = (*st).st_mtime_nsec;
+    }
+}
+
+/// `__file_change_detection_for_path` — detect file changes by path (native).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __file_change_detection_for_path(
     result: *mut c_void,
     path: *const c_char,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__file_change_detection_for_path".as_ptr()) };
-    if sym.is_null() { return 0; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(result, path) }
+    if result.is_null() || path.is_null() {
+        return 0;
+    }
+    let fcd = result as *mut FileChangeDetection;
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::stat(path, &mut st) } != 0 {
+        // stat failed — zero out the detection struct
+        unsafe { std::ptr::write_bytes(fcd, 0, 1) };
+        return 0;
+    }
+    unsafe { file_change_detection_from_stat(fcd, &st) };
+    1
 }
 
-/// `__file_change_detection_for_fp` — detect file changes for FILE*.
+/// `__file_change_detection_for_fp` — detect file changes for FILE* (native).
+///
+/// Uses fstat on the file descriptor backing the FILE*.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __file_change_detection_for_fp(
     result: *mut c_void,
     fp: *mut c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__file_change_detection_for_fp".as_ptr()) };
-    if sym.is_null() { return 0; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(result, fp) }
+    if result.is_null() || fp.is_null() {
+        return 0;
+    }
+    let fcd = result as *mut FileChangeDetection;
+    // Get fd from FILE* via fileno
+    let fd = unsafe { libc::fileno(fp as *mut libc::FILE) };
+    if fd < 0 {
+        unsafe { std::ptr::write_bytes(fcd, 0, 1) };
+        return 0;
+    }
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd, &mut st) } != 0 {
+        unsafe { std::ptr::write_bytes(fcd, 0, 1) };
+        return 0;
+    }
+    unsafe { file_change_detection_from_stat(fcd, &st) };
+    1
 }
 
-/// `__file_change_detection_for_stat` — detect file changes from stat.
+/// `__file_change_detection_for_stat` — detect file changes from stat (native).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __file_change_detection_for_stat(
     result: *mut c_void,
     st: *const c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, *const c_void) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__file_change_detection_for_stat".as_ptr()) };
-    if sym.is_null() { return 0; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(result, st) }
+    if result.is_null() || st.is_null() {
+        return 0;
+    }
+    unsafe { file_change_detection_from_stat(result as *mut FileChangeDetection, st as *const libc::stat) };
+    1
 }
 
-/// `__file_is_unchanged` — check if file changed since last detection.
+/// `__file_is_unchanged` — check if file changed since last detection (native).
+///
+/// Returns 1 if the file is unchanged (all fields match), 0 if changed.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __file_is_unchanged(
     prev: *const c_void,
     curr: *const c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__file_is_unchanged".as_ptr()) };
-    if sym.is_null() { return 1; /* assume unchanged */ }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(prev, curr) }
+    if prev.is_null() || curr.is_null() {
+        return 1; // assume unchanged if null
+    }
+    let p = prev as *const FileChangeDetection;
+    let c = curr as *const FileChangeDetection;
+    unsafe {
+        if (*p).size == (*c).size
+            && (*p).ino == (*c).ino
+            && (*p).dev == (*c).dev
+            && (*p).mtime_sec == (*c).mtime_sec
+            && (*p).mtime_nsec == (*c).mtime_nsec
+        {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -62,6 +62,14 @@ if ! python3 "${ROOT}/scripts/validate_e2e_manifest.py" validate --manifest "${R
     echo "  manifest validation failed"
     tool_fail=1
 fi
+if ! grep -Fq "rch exec -- cargo build -p frankenlibc-abi --release" "${ROOT}/scripts/e2e_suite.sh"; then
+    echo "  missing rch offload build command in scripts/e2e_suite.sh"
+    tool_fail=1
+fi
+if ! grep -Fq "rch is required for cargo build offload" "${ROOT}/scripts/e2e_suite.sh"; then
+    echo "  missing rch-required guard in scripts/e2e_suite.sh"
+    tool_fail=1
+fi
 if [[ "${tool_fail}" -ne 0 ]]; then
     echo "FAIL: tooling validation failed"
     failures=$((failures + 1))
