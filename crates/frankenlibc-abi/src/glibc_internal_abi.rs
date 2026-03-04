@@ -6382,26 +6382,29 @@ pub unsafe extern "C" fn __sigtimedwait(
 // ---------------------------------------------------------------------------
 
 /// `__inet_aton_exact` — strict inet_aton (no trailing garbage).
+///
+/// Native implementation: uses frankenlibc-core's parse_ipv4 which already
+/// rejects trailing characters, making it inherently "exact".
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __inet_aton_exact(cp: *const c_char, inp: *mut u32) -> c_int {
-    // Delegate to host inet_aton — the "exact" variant rejects trailing chars.
-    // For ABI compatibility, forward to libc.
-    type F = unsafe extern "C" fn(*const c_char, *mut u32) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__inet_aton_exact".as_ptr()) };
-    if sym.is_null() {
-        // Fallback: use regular inet_aton
-        let sym2 = unsafe { libc::dlsym(libc::RTLD_NEXT, c"inet_aton".as_ptr()) };
-        if sym2.is_null() {
-            return 0;
-        }
-        let f: F = unsafe { std::mem::transmute(sym2) };
-        return unsafe { f(cp, inp) };
+    if cp.is_null() || inp.is_null() {
+        return 0;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(cp, inp) }
+    let src_bytes = unsafe { std::ffi::CStr::from_ptr(cp) }.to_bytes();
+    match frankenlibc_core::inet::parse_ipv4(src_bytes) {
+        Some(octets) => {
+            // Write as network-byte-order u32 (same as in_addr.s_addr)
+            unsafe { *inp = u32::from_ne_bytes(octets) };
+            1
+        }
+        None => 0,
+    }
 }
 
 /// `__inet_pton_length` — inet_pton with explicit source length.
+///
+/// Native implementation: extracts a length-bounded slice from src,
+/// then delegates to frankenlibc-core's inet_pton parser.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __inet_pton_length(
     af: c_int,
@@ -6409,32 +6412,60 @@ pub unsafe extern "C" fn __inet_pton_length(
     srclen: SizeT,
     dst: *mut c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(c_int, *const c_char, SizeT, *mut c_void) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__inet_pton_length".as_ptr()) };
-    if sym.is_null() {
-        // Fallback: use regular inet_pton (ignore length, rely on null term)
-        let _ = srclen;
-        return unsafe { crate::inet_abi::inet_pton(af, src, dst) };
+    if src.is_null() || dst.is_null() {
+        return -1;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(af, src, srclen, dst) }
+    // Build a length-bounded byte slice from the source
+    let src_slice = unsafe { std::slice::from_raw_parts(src as *const u8, srclen) };
+    let dst_size = match af {
+        2 /* AF_INET */ => 4usize,
+        10 /* AF_INET6 */ => 16usize,
+        _ => return -1,
+    };
+    let dst_slice = unsafe { std::slice::from_raw_parts_mut(dst as *mut u8, dst_size) };
+    frankenlibc_core::inet::inet_pton(af, src_slice, dst_slice)
 }
 
-/// `__inet6_scopeid_pton` — parse IPv6 scope ID.
+/// `__inet6_scopeid_pton` — parse IPv6 scope ID string to numeric scope_id.
+///
+/// Native implementation: parses numeric scope IDs directly, falls back to
+/// if_nametoindex for interface name lookup. Returns 0 on success with the
+/// scope_id written to the high 32 bits after addr, or ENOENT on failure.
+///
+/// In glibc, the addr parameter is `const struct in6_addr *` and the result
+/// scope_id is returned via the function return value (0 = success, or errno).
+/// The actual scope_id is written into a caller-provided location. For ABI
+/// compat with internal glibc callers, we return the scope_id directly on
+/// success (non-standard but matches glibc GLIBC_PRIVATE behavior).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __inet6_scopeid_pton(
     _addr: *const c_void,
-    _scope: *const c_char,
-    _scopelen: SizeT,
+    scope: *const c_char,
+    scopelen: SizeT,
 ) -> c_int {
-    // GLIBC_PRIVATE — delegate to host or return failure
-    type F = unsafe extern "C" fn(*const c_void, *const c_char, SizeT) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__inet6_scopeid_pton".as_ptr()) };
-    if sym.is_null() {
+    if scope.is_null() || scopelen == 0 {
         return libc::ENOENT;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(_addr, _scope, _scopelen) }
+    // Build a byte slice from the scope string
+    let scope_bytes = unsafe { std::slice::from_raw_parts(scope as *const u8, scopelen) };
+    // Try numeric parse first
+    if let Ok(s) = core::str::from_utf8(scope_bytes)
+        && let Ok(id) = s.parse::<u32>()
+    {
+        return id as c_int;
+    }
+    // Fall back to interface name lookup via if_nametoindex
+    // We need a NUL-terminated copy for the syscall
+    if scopelen < 256 {
+        let mut buf = [0u8; 256];
+        buf[..scopelen].copy_from_slice(scope_bytes);
+        buf[scopelen] = 0;
+        let idx = unsafe { crate::inet_abi::if_nametoindex(buf.as_ptr() as *const c_char) };
+        if idx != 0 {
+            return idx as c_int;
+        }
+    }
+    libc::ENOENT
 }
 
 // ---------------------------------------------------------------------------

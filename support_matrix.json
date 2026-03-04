@@ -8515,7 +8515,7 @@
     {
       "symbol": "obstack_vprintf",
       "header": "<obstack.h>",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "notes": "GNU obstack, dlsym delegate",
       "module": "unistd_abi"
     },
@@ -16746,7 +16746,8 @@
     },
     {
       "symbol": "__after_morecore_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__arch_prctl",
@@ -16800,7 +16801,8 @@
     },
     {
       "symbol": "__check_rhosts_file",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__clone",
@@ -16859,7 +16861,8 @@
     },
     {
       "symbol": "__curbrk",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__cyg_profile_func_enter",
@@ -16873,7 +16876,8 @@
     },
     {
       "symbol": "__daylight",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__dcgettext",
@@ -16882,7 +16886,8 @@
     },
     {
       "symbol": "__default_morecore",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__dgettext",
@@ -16921,7 +16926,8 @@
     },
     {
       "symbol": "__environ",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "stdlib_abi"
     },
     {
       "symbol": "__fbufsize",
@@ -16970,7 +16976,8 @@
     },
     {
       "symbol": "__fpu_control",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__fpurge",
@@ -16989,7 +16996,8 @@
     },
     {
       "symbol": "__free_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__freelocale",
@@ -17318,7 +17326,8 @@
     },
     {
       "symbol": "__libc_single_threaded",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__lseek",
@@ -17327,11 +17336,13 @@
     },
     {
       "symbol": "__malloc_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__malloc_initialize_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__mbrlen",
@@ -17345,7 +17356,8 @@
     },
     {
       "symbol": "__memalign_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__memcmpeq",
@@ -17376,7 +17388,8 @@
     },
     {
       "symbol": "__morecore",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__mq_open_2",
@@ -17490,7 +17503,8 @@
     },
     {
       "symbol": "__progname_full",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__pthread_cleanup_routine",
@@ -17665,7 +17679,8 @@
     },
     {
       "symbol": "__realloc_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__register_atfork",
@@ -18182,7 +18197,8 @@
     },
     {
       "symbol": "__timezone",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__toascii_l",
@@ -18227,7 +18243,8 @@
     },
     {
       "symbol": "__tzname",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "__uflow",
@@ -18476,7 +18493,8 @@
     },
     {
       "symbol": "_environ",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "runtime_policy"
     },
     {
       "symbol": "_flushlbf",
@@ -18485,7 +18503,8 @@
     },
     {
       "symbol": "_libc_intl_domainname",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_mcleanup",
@@ -18499,19 +18518,23 @@
     },
     {
       "symbol": "_nl_default_dirname",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_nl_domain_bindings",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_nl_msg_cat_cntr",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_obstack_allocated_p",
@@ -18565,11 +18588,13 @@
     },
     {
       "symbol": "_res",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "setjmp_abi"
     },
     {
       "symbol": "_res_hconf",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_rpc_dtablesize",
@@ -18583,15 +18608,18 @@
     },
     {
       "symbol": "_sys_errlist",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_sys_nerr",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_sys_siglist",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "_tolower",
@@ -18620,19 +18648,23 @@
     },
     {
       "symbol": "argp_err_exit_status",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "argp_program_bug_address",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "argp_program_version",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "argp_program_version_hook",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "authdes_create",
@@ -18791,7 +18823,8 @@
     },
     {
       "symbol": "daylight",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "delete_module",
@@ -18835,19 +18868,23 @@
     },
     {
       "symbol": "environ",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "time_abi"
     },
     {
       "symbol": "error_message_count",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "stdlib_abi"
     },
     {
       "symbol": "error_one_per_line",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "error_print_progname",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "fattach",
@@ -18906,7 +18943,8 @@
     },
     {
       "symbol": "getdate_err",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "getdirentries",
@@ -18985,7 +19023,8 @@
     },
     {
       "symbol": "h_nerr",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "host2netname",
@@ -18994,11 +19033,13 @@
     },
     {
       "symbol": "in6addr_any",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "in6addr_loopback",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "inet6_opt_append",
@@ -19329,15 +19370,18 @@
     },
     {
       "symbol": "loc1",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "loc2",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "locs",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "lutimes",
@@ -19346,7 +19390,8 @@
     },
     {
       "symbol": "mallwatch",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "mcount",
@@ -19440,27 +19485,33 @@
     },
     {
       "symbol": "obstack_alloc_failed_handler",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "obstack_exit_failure",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "optarg",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "opterr",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "optind",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "optopt",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "parse_printf_format",
@@ -19639,11 +19690,13 @@
     },
     {
       "symbol": "re_max_failures",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "re_syntax_options",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "register_printf_function",
@@ -19747,7 +19800,8 @@
     },
     {
       "symbol": "rexecoptions",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "rpmatch",
@@ -20093,11 +20147,13 @@
     },
     {
       "symbol": "sys_errlist",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "sys_nerr",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "sys_sigabbrev",
@@ -20106,7 +20162,8 @@
     },
     {
       "symbol": "sys_siglist",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "sysctl",
@@ -20120,7 +20177,8 @@
     },
     {
       "symbol": "timezone",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "time_abi"
     },
     {
       "symbol": "towctrans_l",
@@ -20140,7 +20198,8 @@
     },
     {
       "symbol": "tzname",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "uabs",
@@ -20664,11 +20723,13 @@
     },
     {
       "symbol": "_null_auth",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "h_errlist",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "glibc_internal_abi"
     },
     {
       "symbol": "nfsservctl",
@@ -20687,23 +20748,28 @@
     },
     {
       "symbol": "rpc_createerr",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "svc_fdset",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "svc_max_pollfd",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "svc_pollfd",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "svcauthdes_stats",
-      "status": "Implemented"
+      "status": "Implemented",
+      "module": "rpc_abi"
     },
     {
       "symbol": "xprt_register",
@@ -20924,7 +20990,7 @@
     },
     {
       "symbol": "__inet_aton_exact",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -20933,7 +20999,7 @@
     },
     {
       "symbol": "__inet_pton_length",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -20942,7 +21008,7 @@
     },
     {
       "symbol": "__inet6_scopeid_pton",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,

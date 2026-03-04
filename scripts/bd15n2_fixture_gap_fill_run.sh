@@ -26,6 +26,10 @@ if ! command -v cargo >/dev/null 2>&1; then
   echo "FAIL: cargo is required" >&2
   exit 2
 fi
+if ! command -v rch >/dev/null 2>&1; then
+  echo "FAIL: rch is required for cargo offload" >&2
+  exit 2
+fi
 if ! command -v cc >/dev/null 2>&1; then
   echo "FAIL: cc is required" >&2
   exit 2
@@ -36,6 +40,10 @@ if ! command -v timeout >/dev/null 2>&1; then
 fi
 if [[ ! -f "${SPEC_FILE}" ]]; then
   echo "FAIL: missing fixture spec ${SPEC_FILE}" >&2
+  exit 2
+fi
+if ! [[ "${TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
+  echo "FAIL: TIMEOUT_SECONDS must be an integer (got '${TIMEOUT_SECONDS}')" >&2
   exit 2
 fi
 
@@ -54,7 +62,7 @@ for candidate in "${LIB_CANDIDATES[@]}"; do
 done
 
 if [[ -z "${LIB_PATH}" ]]; then
-  cargo build -p frankenlibc-abi --release >/dev/null
+  rch exec -- cargo build -p frankenlibc-abi --release >/dev/null
   for candidate in "${LIB_CANDIDATES[@]}"; do
     if [[ -f "${candidate}" ]]; then
       LIB_PATH="${candidate}"

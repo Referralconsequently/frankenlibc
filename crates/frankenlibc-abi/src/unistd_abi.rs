@@ -13381,7 +13381,7 @@ pub unsafe extern "C" fn obstack_printf(
 }
 
 /// `obstack_vprintf` — va_list formatted print to obstack.
-/// Native implementation: format via vasprintf into heap buffer, then grow obstack.
+/// Native implementation: format via our native vasprintf, then grow obstack.
 /// The obstack struct layout must match glibc's struct obstack (see glibc_internal_abi.rs).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn obstack_vprintf(
@@ -13392,23 +13392,9 @@ pub unsafe extern "C" fn obstack_vprintf(
     if obstack.is_null() || fmt.is_null() {
         return -1;
     }
-    // Use vasprintf to format the string with the va_list.
-    // This allocates a buffer of exactly the right size.
-    type VasprintfFn = unsafe extern "C" fn(*mut *mut c_char, *const c_char, *mut c_void) -> c_int;
-    static VASPRINTF: std::sync::LazyLock<Option<VasprintfFn>> = std::sync::LazyLock::new(|| {
-        let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"vasprintf".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, VasprintfFn>(sym) })
-        }
-    });
-    let vasprintf_fn = match *VASPRINTF {
-        Some(f) => f,
-        None => return -1,
-    };
+    // Use our native vasprintf (in stdio_abi) to format the string.
     let mut result_ptr: *mut c_char = std::ptr::null_mut();
-    let len = unsafe { vasprintf_fn(&mut result_ptr, fmt, ap) };
+    let len = unsafe { super::stdio_abi::vasprintf(&mut result_ptr, fmt, ap) };
     if len < 0 || result_ptr.is_null() {
         return -1;
     }

@@ -5,6 +5,9 @@
 use frankenlibc_abi::glibc_internal_abi::{
     __asprintf,
     __copy_grp,
+    __inet6_scopeid_pton,
+    __inet_aton_exact,
+    __inet_pton_length,
     __file_change_detection_for_path,
     __file_change_detection_for_stat,
     __file_is_unchanged,
@@ -103,7 +106,6 @@ use frankenlibc_abi::glibc_internal_abi::{
     xprt_unregister,
 };
 use std::ffi::{c_char, CStr, CString};
-use std::os::raw::c_void;
 use std::ptr;
 
 // ===========================================================================
@@ -2097,4 +2099,247 @@ fn merge_grp_adds_new_members() {
     assert!(merged.contains(&"alice".to_string()));
     assert!(merged.contains(&"bob".to_string()));
     assert!(merged.contains(&"charlie".to_string()));
+}
+
+// ===========================================================================
+// __inet_aton_exact — strict inet_aton (no trailing garbage)
+// ===========================================================================
+
+#[test]
+fn test_inet_aton_exact_basic() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"192.168.1.1".as_ptr(), &mut addr) };
+    assert_eq!(rc, 1);
+    assert_eq!(addr.to_ne_bytes(), [192, 168, 1, 1]);
+}
+
+#[test]
+fn test_inet_aton_exact_loopback() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"127.0.0.1".as_ptr(), &mut addr) };
+    assert_eq!(rc, 1);
+    assert_eq!(addr.to_ne_bytes(), [127, 0, 0, 1]);
+}
+
+#[test]
+fn test_inet_aton_exact_zero() {
+    let mut addr: u32 = 0xFFFF_FFFF;
+    let rc = unsafe { __inet_aton_exact(c"0.0.0.0".as_ptr(), &mut addr) };
+    assert_eq!(rc, 1);
+    assert_eq!(addr, 0);
+}
+
+#[test]
+fn test_inet_aton_exact_broadcast() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"255.255.255.255".as_ptr(), &mut addr) };
+    assert_eq!(rc, 1);
+    assert_eq!(addr.to_ne_bytes(), [255, 255, 255, 255]);
+}
+
+#[test]
+fn test_inet_aton_exact_invalid_empty() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"".as_ptr(), &mut addr) };
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn test_inet_aton_exact_invalid_text() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"not_an_ip".as_ptr(), &mut addr) };
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn test_inet_aton_exact_invalid_too_few_octets() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"1.2.3".as_ptr(), &mut addr) };
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn test_inet_aton_exact_invalid_overflow() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(c"256.0.0.1".as_ptr(), &mut addr) };
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn test_inet_aton_exact_null_input() {
+    let mut addr: u32 = 0;
+    let rc = unsafe { __inet_aton_exact(std::ptr::null(), &mut addr) };
+    assert_eq!(rc, 0);
+}
+
+// ===========================================================================
+// __inet_pton_length — inet_pton with explicit source length
+// ===========================================================================
+
+#[test]
+fn test_inet_pton_length_ipv4() {
+    let src = b"10.0.0.1";
+    let mut dst = [0u8; 4];
+    let rc = unsafe {
+        __inet_pton_length(
+            2, // AF_INET
+            src.as_ptr() as *const std::ffi::c_char,
+            src.len(),
+            dst.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(rc, 1);
+    assert_eq!(dst, [10, 0, 0, 1]);
+}
+
+#[test]
+fn test_inet_pton_length_ipv6_loopback() {
+    let src = b"::1";
+    let mut dst = [0u8; 16];
+    let rc = unsafe {
+        __inet_pton_length(
+            10, // AF_INET6
+            src.as_ptr() as *const std::ffi::c_char,
+            src.len(),
+            dst.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(rc, 1);
+    assert_eq!(dst[15], 1);
+    assert_eq!(dst[..15], [0u8; 15]);
+}
+
+#[test]
+fn test_inet_pton_length_ipv4_with_extra_ignored() {
+    // Pass only the first 7 bytes: "10.0.0." — should fail because incomplete
+    let src = b"10.0.0.1GARBAGE";
+    let mut dst = [0u8; 4];
+    let rc = unsafe {
+        __inet_pton_length(
+            2,
+            src.as_ptr() as *const std::ffi::c_char,
+            8, // Only "10.0.0.1"
+            dst.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(rc, 1);
+    assert_eq!(dst, [10, 0, 0, 1]);
+}
+
+#[test]
+fn test_inet_pton_length_truncated_fails() {
+    let src = b"10.0.0.1";
+    let mut dst = [0u8; 4];
+    let rc = unsafe {
+        __inet_pton_length(
+            2,
+            src.as_ptr() as *const std::ffi::c_char,
+            5, // Only "10.0." — incomplete
+            dst.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(rc, 0); // Invalid address
+}
+
+#[test]
+fn test_inet_pton_length_unsupported_family() {
+    let src = b"10.0.0.1";
+    let mut dst = [0u8; 16];
+    let rc = unsafe {
+        __inet_pton_length(
+            99, // Unsupported
+            src.as_ptr() as *const std::ffi::c_char,
+            src.len(),
+            dst.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(rc, -1);
+}
+
+#[test]
+fn test_inet_pton_length_null_src() {
+    let mut dst = [0u8; 4];
+    let rc = unsafe {
+        __inet_pton_length(
+            2,
+            std::ptr::null(),
+            0,
+            dst.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
+    assert_eq!(rc, -1);
+}
+
+// ===========================================================================
+// __inet6_scopeid_pton — parse IPv6 scope ID
+// ===========================================================================
+
+#[test]
+fn test_inet6_scopeid_pton_numeric() {
+    let scope = b"42";
+    let addr = [0u8; 16]; // dummy addr
+    let rc = unsafe {
+        __inet6_scopeid_pton(
+            addr.as_ptr() as *const std::ffi::c_void,
+            scope.as_ptr() as *const std::ffi::c_char,
+            scope.len(),
+        )
+    };
+    assert_eq!(rc, 42);
+}
+
+#[test]
+fn test_inet6_scopeid_pton_zero() {
+    let scope = b"0";
+    let addr = [0u8; 16];
+    let rc = unsafe {
+        __inet6_scopeid_pton(
+            addr.as_ptr() as *const std::ffi::c_void,
+            scope.as_ptr() as *const std::ffi::c_char,
+            scope.len(),
+        )
+    };
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn test_inet6_scopeid_pton_large_numeric() {
+    let scope = b"1000";
+    let addr = [0u8; 16];
+    let rc = unsafe {
+        __inet6_scopeid_pton(
+            addr.as_ptr() as *const std::ffi::c_void,
+            scope.as_ptr() as *const std::ffi::c_char,
+            scope.len(),
+        )
+    };
+    assert_eq!(rc, 1000);
+}
+
+#[test]
+fn test_inet6_scopeid_pton_empty_returns_enoent() {
+    let addr = [0u8; 16];
+    let rc = unsafe {
+        __inet6_scopeid_pton(
+            addr.as_ptr() as *const std::ffi::c_void,
+            std::ptr::null(),
+            0,
+        )
+    };
+    assert_eq!(rc, libc::ENOENT);
+}
+
+#[test]
+fn test_inet6_scopeid_pton_invalid_name() {
+    // Non-numeric, non-existent interface name
+    let scope = b"nonexistent_iface_xyz_12345";
+    let addr = [0u8; 16];
+    let rc = unsafe {
+        __inet6_scopeid_pton(
+            addr.as_ptr() as *const std::ffi::c_void,
+            scope.as_ptr() as *const std::ffi::c_char,
+            scope.len(),
+        )
+    };
+    assert_eq!(rc, libc::ENOENT);
 }

@@ -25,6 +25,10 @@ if ! command -v cargo >/dev/null 2>&1; then
   echo "FAIL: cargo is required" >&2
   exit 2
 fi
+if ! command -v rch >/dev/null 2>&1; then
+  echo "FAIL: rch is required for cargo offload" >&2
+  exit 2
+fi
 if ! command -v cc >/dev/null 2>&1; then
   echo "FAIL: cc is required" >&2
   exit 2
@@ -45,7 +49,7 @@ for candidate in "${LIB_CANDIDATES[@]}"; do
 done
 
 if [[ -z "${LIB_PATH}" ]]; then
-  cargo build -p frankenlibc-abi --release >/dev/null
+  rch exec -- cargo build -p frankenlibc-abi --release >/dev/null
   for candidate in "${LIB_CANDIDATES[@]}"; do
     if [[ -f "${candidate}" ]]; then
       LIB_PATH="${candidate}"
@@ -214,16 +218,16 @@ cc -O2 -Wall -Wextra "${FIXTURE_SRC}" -o "${FIXTURE_BIN}" -pthread
 
 for mode in strict hardened; do
   run_case "${mode}" "rust_mutex_roundtrip_trylock_busy" \
-    "cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_roundtrip_and_trylock_busy -- --exact --nocapture --test-threads=1" \
+    "rch exec -- cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_roundtrip_and_trylock_busy -- --exact --nocapture --test-threads=1" \
     0 0
   run_case "${mode}" "rust_mutex_contention_counters" \
-    "cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_contention_increments_wait_and_wake_counters -- --exact --nocapture --test-threads=1" \
+    "rch exec -- cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_contention_increments_wait_and_wake_counters -- --exact --nocapture --test-threads=1" \
     0 0
   run_case "${mode}" "rust_mutex_destroy_while_locked_ebusy" \
-    "cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_destroy_while_locked_is_ebusy -- --exact --nocapture --test-threads=1" \
+    "rch exec -- cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_destroy_while_locked_is_ebusy -- --exact --nocapture --test-threads=1" \
     0 0
   run_case "${mode}" "rust_mutex_unlock_without_lock_eperm" \
-    "cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_unlock_without_lock_is_eperm -- --exact --nocapture --test-threads=1" \
+    "rch exec -- cargo test -p frankenlibc-abi --test pthread_mutex_core_test futex_mutex_unlock_without_lock_is_eperm -- --exact --nocapture --test-threads=1" \
     0 0
   run_case "${mode}" "c_fixture_pthread_mutex_adversarial" "${FIXTURE_BIN}" 0 0
 done

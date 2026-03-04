@@ -9,7 +9,9 @@
 //! Fork/exec/wait tests are in separate integration test suites
 //! because they require child process creation.
 
-use std::ffi::{c_int, CString};
+use std::ffi::{CString, c_char, c_int};
+use std::os::unix::fs::symlink;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::process_abi::*;
 
@@ -61,7 +63,11 @@ fn spawnattr_destroy_null_returns_einval() {
 fn spawnattr_destroy_uninitialized_returns_einval() {
     let mut attr = AlignedBuf::new();
     let rc = unsafe { posix_spawnattr_destroy(attr.as_mut_ptr().cast()) };
-    assert_eq!(rc, libc::EINVAL, "destroy uninitialized should return EINVAL");
+    assert_eq!(
+        rc,
+        libc::EINVAL,
+        "destroy uninitialized should return EINVAL"
+    );
 }
 
 // ===========================================================================
@@ -316,9 +322,7 @@ fn file_actions_addchdir_np() {
     unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) };
 
     let path = CString::new("/tmp").unwrap();
-    let rc = unsafe {
-        posix_spawn_file_actions_addchdir_np(fa.as_mut_ptr().cast(), path.as_ptr())
-    };
+    let rc = unsafe { posix_spawn_file_actions_addchdir_np(fa.as_mut_ptr().cast(), path.as_ptr()) };
     assert_eq!(rc, 0, "addchdir_np should succeed");
 
     unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };
@@ -402,10 +406,10 @@ fn posix_spawnp_true() {
         posix_spawnp(
             &mut pid,
             cmd.as_ptr(),
-            std::ptr::null(),      // file_actions
-            std::ptr::null(),      // attrp
-            argv.as_ptr().cast(),  // argv
-            std::ptr::null(),      // envp (inherit)
+            std::ptr::null(),     // file_actions
+            std::ptr::null(),     // attrp
+            argv.as_ptr().cast(), // argv
+            std::ptr::null(),     // envp (inherit)
         )
     };
     assert_eq!(rc, 0, "posix_spawnp(/bin/true) should succeed");
@@ -418,4 +422,90 @@ fn posix_spawnp_true() {
         libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
         "child should exit 0"
     );
+}
+
+#[test]
+fn posix_spawnp_missing_binary_returns_enoent() {
+    let missing =
+        CString::new("frankenlibc_nonexistent_spawn_binary_9f1e62f4b2c1478ab5f92cf0").unwrap();
+    let argv: [*const c_char; 2] = [missing.as_ptr(), std::ptr::null()];
+    let mut pid: libc::pid_t = -1;
+
+    let rc = unsafe {
+        posix_spawnp(
+            &mut pid,
+            missing.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            argv.as_ptr().cast(),
+            std::ptr::null(),
+        )
+    };
+
+    assert_eq!(
+        rc,
+        libc::ENOENT,
+        "posix_spawnp should surface ENOENT when PATH search finds nothing"
+    );
+    assert_eq!(pid, -1, "pid must remain unchanged on spawn failure");
+}
+
+#[test]
+fn execvp_continues_path_search_after_eacces() {
+    let uniq = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let base = std::env::temp_dir().join(format!("frankenlibc_execvp_path_{uniq}"));
+    let deny_dir = base.join("deny");
+    let ok_dir = base.join("ok");
+    std::fs::create_dir_all(&deny_dir).unwrap();
+    std::fs::create_dir_all(&ok_dir).unwrap();
+
+    let cmd_name = "frankenlibc_execvp_probe";
+    let deny_cmd = deny_dir.join(cmd_name);
+    std::fs::write(&deny_cmd, b"#!/bin/sh\nexit 66\n").unwrap();
+    std::fs::set_permissions(
+        &deny_cmd,
+        std::os::unix::fs::PermissionsExt::from_mode(0o644),
+    )
+    .unwrap();
+
+    let ok_cmd = ok_dir.join(cmd_name);
+    symlink("/bin/true", &ok_cmd).unwrap();
+
+    let pid = unsafe { libc::fork() };
+    assert!(pid >= 0, "fork should succeed in execvp path-search test");
+
+    if pid == 0 {
+        let path = CString::new(format!("{}:{}", deny_dir.display(), ok_dir.display())).unwrap();
+        let key = CString::new("PATH").unwrap();
+        unsafe { libc::setenv(key.as_ptr(), path.as_ptr(), 1) };
+
+        let cmd = CString::new(cmd_name).unwrap();
+        let argv: [*const c_char; 2] = [cmd.as_ptr(), std::ptr::null()];
+        let rc = unsafe { execvp(cmd.as_ptr(), argv.as_ptr()) };
+        let err = unsafe { *frankenlibc_abi::errno_abi::__errno_location() };
+        let code = if rc == -1 { 100 + (err & 0x7f) } else { 127 };
+        unsafe { libc::_exit(code) };
+    }
+
+    let mut status = 0;
+    let waited = unsafe { libc::waitpid(pid, &mut status, 0) };
+    assert_eq!(waited, pid);
+    assert!(
+        libc::WIFEXITED(status),
+        "child should exit normally after execvp path resolution"
+    );
+    assert_eq!(
+        libc::WEXITSTATUS(status),
+        0,
+        "execvp must keep searching PATH after EACCES and execute later candidate"
+    );
+
+    let _ = std::fs::remove_file(&ok_cmd);
+    let _ = std::fs::remove_file(&deny_cmd);
+    let _ = std::fs::remove_dir(&ok_dir);
+    let _ = std::fs::remove_dir(&deny_dir);
+    let _ = std::fs::remove_dir(&base);
 }

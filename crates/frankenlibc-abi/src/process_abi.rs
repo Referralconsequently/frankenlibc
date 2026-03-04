@@ -51,6 +51,8 @@ unsafe fn execvp_via_execve(file: *const c_char, argv: *const *const c_char) -> 
         std::env::var_os("PATH").unwrap_or_else(|| std::ffi::OsString::from("/bin:/usr/bin"));
     let path_bytes = path.as_os_str().as_bytes();
 
+    let mut saw_eacces = false;
+
     for dir in path_bytes.split(|b| *b == b':') {
         let dir = if dir.is_empty() { b"." as &[u8] } else { dir };
         let mut candidate = Vec::with_capacity(dir.len() + 1 + file_bytes.len() + 1);
@@ -70,12 +72,22 @@ unsafe fn execvp_via_execve(file: *const c_char, argv: *const *const c_char) -> 
         // execve only returns on failure (rc == -1); on success the process is replaced.
 
         let err = last_host_errno(libc::ENOENT);
-        if err != libc::ENOENT && err != libc::ENOTDIR {
-            return -1;
+        match err {
+            libc::ENOENT | libc::ENOTDIR => {}
+            libc::EACCES => {
+                saw_eacces = true;
+            }
+            _ => return -1,
         }
     }
 
-    unsafe { set_abi_errno(libc::ENOENT) };
+    unsafe {
+        set_abi_errno(if saw_eacces {
+            libc::EACCES
+        } else {
+            libc::ENOENT
+        });
+    }
     -1
 }
 
@@ -377,6 +389,8 @@ pub unsafe extern "C" fn execvpe(
         std::env::var_os("PATH").unwrap_or_else(|| std::ffi::OsString::from("/bin:/usr/bin"));
     let path_bytes = path.as_os_str().as_bytes();
 
+    let mut saw_eacces = false;
+
     for dir in path_bytes.split(|b| *b == b':') {
         let dir = if dir.is_empty() { b"." as &[u8] } else { dir };
         let mut candidate = Vec::with_capacity(dir.len() + 1 + file_bytes.len() + 1);
@@ -398,12 +412,22 @@ pub unsafe extern "C" fn execvpe(
         }
 
         let err = last_host_errno(libc::ENOENT);
-        if err != libc::ENOENT && err != libc::ENOTDIR {
-            return -1;
+        match err {
+            libc::ENOENT | libc::ENOTDIR => {}
+            libc::EACCES => {
+                saw_eacces = true;
+            }
+            _ => return -1,
         }
     }
 
-    unsafe { set_abi_errno(libc::ENOENT) };
+    unsafe {
+        set_abi_errno(if saw_eacces {
+            libc::EACCES
+        } else {
+            libc::ENOENT
+        });
+    }
     -1
 }
 
@@ -893,6 +917,29 @@ unsafe fn apply_file_actions(fa: &SpawnFileActions) -> c_int {
     0
 }
 
+#[inline]
+unsafe fn child_spawn_fail(err_fd: c_int, err: c_int) -> ! {
+    let mut to_write = err;
+    let mut written = 0usize;
+    while written < std::mem::size_of::<c_int>() {
+        let ptr = (&mut to_write as *mut c_int as *mut u8).wrapping_add(written);
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_write as c_long,
+                err_fd,
+                ptr.cast::<c_void>(),
+                std::mem::size_of::<c_int>() - written,
+            )
+        };
+        if rc <= 0 {
+            break;
+        }
+        written += rc as usize;
+    }
+    unsafe { libc::syscall(libc::SYS_exit_group as c_long, 127) };
+    unreachable!();
+}
+
 /// Core posix_spawn implementation shared between posix_spawn and posix_spawnp.
 /// `search_path` controls whether PATH search is done (posix_spawnp).
 unsafe fn posix_spawn_impl(
@@ -946,11 +993,30 @@ unsafe fn posix_spawn_impl(
         vec![path]
     };
 
+    // Use an error-report pipe so the child can report pre-exec failure errno.
+    // `O_CLOEXEC` ensures successful exec closes the write end and the parent
+    // observes EOF as success.
+    let mut err_pipe = [-1_i32; 2];
+    let pipe_rc = unsafe {
+        libc::syscall(
+            libc::SYS_pipe2 as c_long,
+            err_pipe.as_mut_ptr(),
+            libc::O_CLOEXEC,
+        )
+    } as c_int;
+    if pipe_rc < 0 {
+        return last_host_errno(libc::EAGAIN);
+    }
+
     // Fork using clone syscall (minimal flags = just SIGCHLD for basic fork)
     let child_pid =
         unsafe { libc::syscall(libc::SYS_clone, libc::SIGCHLD, 0, 0, 0, 0) } as libc::pid_t;
 
     if child_pid < 0 {
+        unsafe {
+            libc::syscall(libc::SYS_close as c_long, err_pipe[0]);
+            libc::syscall(libc::SYS_close as c_long, err_pipe[1]);
+        }
         return std::io::Error::last_os_error()
             .raw_os_error()
             .unwrap_or(libc::EAGAIN);
@@ -958,13 +1024,15 @@ unsafe fn posix_spawn_impl(
 
     if child_pid == 0 {
         // --- Child process ---
+        unsafe {
+            libc::syscall(libc::SYS_close as c_long, err_pipe[0]);
+        }
 
         // Apply file actions if provided
         if let Some(fa) = unsafe { read_file_actions(file_actions) } {
             let err = unsafe { apply_file_actions(fa) };
             if err != 0 {
-                unsafe { libc::syscall(libc::SYS_exit_group, 127) };
-                unreachable!();
+                unsafe { child_spawn_fail(err_pipe[1], err) };
             }
         }
 
@@ -977,20 +1045,80 @@ unsafe fn posix_spawn_impl(
 
         // Try execve for each candidate path. Iterating a Vec is just reading
         // memory (slice) and does not allocate, so it is async-signal safe.
+        let mut saw_eacces = false;
+        let mut final_err = libc::ENOENT;
         for &cand_path in candidate_ptrs.iter() {
             unsafe { libc::syscall(libc::SYS_execve, cand_path, argv, env) };
+            let err = last_host_errno(libc::ENOENT);
+            match err {
+                libc::ENOENT | libc::ENOTDIR => {}
+                libc::EACCES => {
+                    saw_eacces = true;
+                }
+                _ => {
+                    final_err = err;
+                    break;
+                }
+            }
         }
 
-        // If we get here, all execve attempts failed.
-        unsafe { libc::syscall(libc::SYS_exit_group, 127) };
-        unreachable!();
+        if saw_eacces {
+            final_err = libc::EACCES;
+        }
+        unsafe { child_spawn_fail(err_pipe[1], final_err) };
     }
 
     // --- Parent process ---
-    if !pid.is_null() {
-        unsafe { *pid = child_pid };
+    unsafe {
+        libc::syscall(libc::SYS_close as c_long, err_pipe[1]);
     }
-    0
+    let mut child_err: c_int = 0;
+    let mut bytes_read = 0usize;
+    while bytes_read < std::mem::size_of::<c_int>() {
+        let ptr = (&mut child_err as *mut c_int as *mut u8).wrapping_add(bytes_read);
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_read as c_long,
+                err_pipe[0],
+                ptr.cast::<c_void>(),
+                std::mem::size_of::<c_int>() - bytes_read,
+            )
+        } as isize;
+        if rc == 0 {
+            break; // EOF => exec succeeded.
+        }
+        if rc < 0 {
+            let err = last_host_errno(libc::EIO);
+            if err == libc::EINTR {
+                continue;
+            }
+            child_err = err;
+            bytes_read = std::mem::size_of::<c_int>();
+            break;
+        }
+        bytes_read += rc as usize;
+    }
+    unsafe {
+        libc::syscall(libc::SYS_close as c_long, err_pipe[0]);
+    }
+
+    if bytes_read > 0 {
+        unsafe {
+            libc::syscall(
+                libc::SYS_wait4 as c_long,
+                child_pid,
+                std::ptr::null_mut::<c_int>(),
+                0,
+                std::ptr::null_mut::<c_void>(),
+            );
+        }
+        if child_err == 0 { libc::EIO } else { child_err }
+    } else {
+        if !pid.is_null() {
+            unsafe { *pid = child_pid };
+        }
+        0
+    }
 }
 
 /// POSIX `posix_spawn` — spawn a new process from a file path.

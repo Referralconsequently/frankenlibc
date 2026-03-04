@@ -30,6 +30,10 @@ if ! command -v cargo >/dev/null 2>&1; then
   echo "FAIL: cargo is required" >&2
   exit 2
 fi
+if ! command -v rch >/dev/null 2>&1; then
+  echo "FAIL: rch is required for cargo offload" >&2
+  exit 2
+fi
 if ! command -v cc >/dev/null 2>&1; then
   echo "FAIL: cc is required" >&2
   exit 2
@@ -38,6 +42,12 @@ if [[ ! -f "${SCENARIO_SPEC}" ]]; then
   echo "FAIL: missing scenario spec ${SCENARIO_SPEC}" >&2
   exit 2
 fi
+for numeric_var in TIMEOUT_SECONDS FANOUT_ITERS DETACH_JOIN_ITERS; do
+  if ! [[ "${!numeric_var}" =~ ^[0-9]+$ ]]; then
+    echo "FAIL: ${numeric_var} must be an integer (got '${!numeric_var}')" >&2
+    exit 2
+  fi
+done
 
 LIB_CANDIDATES=(
   "${THREAD_STRESS_TARGET_DIR}/release/libfrankenlibc_abi.so"
@@ -55,7 +65,7 @@ for candidate in "${LIB_CANDIDATES[@]}"; do
 done
 
 if [[ -z "${LIB_PATH}" ]]; then
-  CARGO_TARGET_DIR="${THREAD_STRESS_TARGET_DIR}" cargo build -p frankenlibc-abi --release >/dev/null
+  rch exec -- env CARGO_TARGET_DIR="${THREAD_STRESS_TARGET_DIR}" cargo build -p frankenlibc-abi --release >/dev/null
   for candidate in "${LIB_CANDIDATES[@]}"; do
     if [[ -f "${candidate}" ]]; then
       LIB_PATH="${candidate}"
@@ -73,7 +83,7 @@ mkdir -p "${OUT_DIR}" "${BIN_DIR}"
 : > "${LOG_FILE}"
 
 # Prime pthread lifecycle test binary outside per-case timeouts.
-CARGO_TARGET_DIR="${THREAD_STRESS_TARGET_DIR}" \
+rch exec -- env CARGO_TARGET_DIR="${THREAD_STRESS_TARGET_DIR}" \
   cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test --no-run >/dev/null
 
 SEQ=0
@@ -251,9 +261,9 @@ FIXTURE_SRC="${ROOT}/tests/integration/fixture_pthread.c"
 FIXTURE_BIN="${BIN_DIR}/fixture_pthread"
 cc -O2 -Wall -Wextra "${FIXTURE_SRC}" -o "${FIXTURE_BIN}" -pthread
 
-fanout_single_cmd="cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test pthread_equal_reflexive_and_distinct_threads_not_equal -- --exact --nocapture --test-threads=1"
-create_join_churn_cmd="for i in \$(seq 1 ${FANOUT_ITERS}); do cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test pthread_equal_reflexive_and_distinct_threads_not_equal -- --exact --nocapture --test-threads=1 >/dev/null; done"
-mixed_detach_join_cmd="for i in \$(seq 1 ${DETACH_JOIN_ITERS}); do cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test pthread_detach_makes_subsequent_join_fail_with_esrch -- --exact --nocapture --test-threads=1 >/dev/null; done"
+fanout_single_cmd="rch exec -- env CARGO_TARGET_DIR=${THREAD_STRESS_TARGET_DIR} cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test pthread_equal_reflexive_and_distinct_threads_not_equal -- --exact --nocapture --test-threads=1"
+create_join_churn_cmd="for i in \$(seq 1 ${FANOUT_ITERS}); do rch exec -- env CARGO_TARGET_DIR=${THREAD_STRESS_TARGET_DIR} cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test pthread_equal_reflexive_and_distinct_threads_not_equal -- --exact --nocapture --test-threads=1 >/dev/null; done"
+mixed_detach_join_cmd="for i in \$(seq 1 ${DETACH_JOIN_ITERS}); do rch exec -- env CARGO_TARGET_DIR=${THREAD_STRESS_TARGET_DIR} cargo test -p frankenlibc-abi --test pthread_thread_lifecycle_test pthread_detach_makes_subsequent_join_fail_with_esrch -- --exact --nocapture --test-threads=1 >/dev/null; done"
 
 for mode in strict hardened; do
   run_case "${mode}" "fanout_fanin_single" "${fanout_single_cmd}" 0 0 '{"create":1,"join":1,"detach":0}'

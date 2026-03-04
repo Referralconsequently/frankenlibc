@@ -78,7 +78,11 @@ emit_trace() {
 # Build library if needed
 if [[ -z "${LIB_PATH}" ]]; then
   echo "c_fixture_suite: building frankenlibc-abi release artifact..."
-  cargo build -p frankenlibc-abi --release
+  if ! command -v rch >/dev/null 2>&1; then
+    echo "c_fixture_suite: rch is required for cargo build offload but was not found in PATH" >&2
+    exit 2
+  fi
+  rch exec -- cargo build -p frankenlibc-abi --release
   for candidate in "${LIB_CANDIDATES[@]}"; do
     if [[ -f "${candidate}" ]]; then
       LIB_PATH="${candidate}"
