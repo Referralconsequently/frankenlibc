@@ -7,6 +7,7 @@
 
 use std::ffi::{CStr, CString, c_char};
 use std::ptr;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use frankenlibc_abi::pwd_abi::{
@@ -14,6 +15,10 @@ use frankenlibc_abi::pwd_abi::{
 };
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Mutex to serialize tests that manipulate the FRANKENLIBC_PASSWD_PATH env var,
+/// since env var manipulation is process-global and not thread-safe.
+static PASSWD_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn temp_passwd_path() -> std::path::PathBuf {
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
@@ -24,9 +29,10 @@ fn temp_passwd_path() -> std::path::PathBuf {
 }
 
 fn with_passwd_file(content: &[u8], f: impl FnOnce()) {
+    let _guard = PASSWD_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = temp_passwd_path();
     std::fs::write(&path, content).expect("write temp passwd");
-    // SAFETY: Tests run single-threaded (--test-threads=1 or serialized).
+    // SAFETY: Serialized by PASSWD_ENV_LOCK — only one test thread at a time.
     unsafe { std::env::set_var("FRANKENLIBC_PASSWD_PATH", &path) };
     f();
     // SAFETY: Same as above.
