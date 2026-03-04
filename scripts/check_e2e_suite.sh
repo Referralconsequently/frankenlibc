@@ -325,6 +325,35 @@ else
 fi
 echo ""
 
+echo "--- Check 10: Startup smoke diagnostics contract ---"
+startup_contract_fail=0
+ld_smoke_script="${ROOT}/scripts/ld_preload_smoke.sh"
+if [[ ! -f "${ld_smoke_script}" ]]; then
+    echo "FAIL: scripts/ld_preload_smoke.sh not found"
+    startup_contract_fail=1
+else
+    for marker in \
+        "FAILURE_SIGNATURE_DENYLIST" \
+        "signature_guard_triggered" \
+        "startup_troubleshooting.md" \
+        "\"startup_path\"" \
+        "\"failure_signature\"" \
+        "classify_failure_signature" \
+        "case_startup_path"; do
+        if ! grep -Fq "${marker}" "${ld_smoke_script}"; then
+            echo "  missing marker in ld_preload_smoke.sh: ${marker}"
+            startup_contract_fail=1
+        fi
+    done
+fi
+if [[ "${startup_contract_fail}" -ne 0 ]]; then
+    echo "FAIL: startup smoke diagnostics contract regression"
+    failures=$((failures + 1))
+else
+    echo "PASS: startup smoke diagnostics contract markers present"
+fi
+echo ""
+
 echo "=== Summary ==="
 echo "Failures: ${failures}"
 echo "Note: interpose-stage functional failures are expected; this gate validates deterministic E2E infrastructure and policy reporting."

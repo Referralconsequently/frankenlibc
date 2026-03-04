@@ -92,10 +92,15 @@ fn ld_preload_smoke_script_declares_abi_parity_contract() {
         "ENFORCE_PERF_MODES",
         "PERF_RATIO_MAX_PPM",
         "VALGRIND_POLICY",
+        "FAILURE_SIGNATURE_DENYLIST",
+        "startup_troubleshooting.md",
+        "signature_guard_triggered",
+        "classify_failure_signature",
+        "case_startup_path",
         "rch is required for cargo build offload",
         "abi_compat_report.json",
         "CASE_TSV",
-        "\"bd-18qq.6\"",
+        "BEAD_ID",
         "case_skip_optional_binary_missing",
     ] {
         assert!(
@@ -129,10 +134,11 @@ fn ld_preload_smoke_report_schema_valid_when_present() {
         Some("v1"),
         "expected v1 schema"
     );
-    assert_eq!(
-        report["bead_id"].as_str(),
-        Some("bd-18qq.6"),
-        "expected bead id linkage"
+    let bead_id = report["bead_id"].as_str().unwrap_or_default();
+    assert!(
+        bead_id == "bd-18qq.6" || bead_id == "bd-1ah8",
+        "expected bead id linkage to bd-18qq.6 or bd-1ah8, got {}",
+        bead_id
     );
     assert!(report["summary"].is_object(), "summary must be an object");
     assert!(report["modes"].is_object(), "modes must be an object");
@@ -167,6 +173,21 @@ fn ld_preload_smoke_report_schema_valid_when_present() {
         }
     }
 
+    if let Some(first_case) = report["cases"].as_array().and_then(|cases| cases.first()) {
+        for field in [
+            "workload",
+            "startup_path",
+            "failure_signature",
+            "signature_guard_triggered",
+        ] {
+            assert!(first_case.get(field).is_some(), "case missing {}", field);
+        }
+        assert!(
+            first_case["signature_guard_triggered"].is_boolean(),
+            "case.signature_guard_triggered must be boolean"
+        );
+    }
+
     let trace_path = run_dir.join("trace.jsonl");
     if trace_path.exists() {
         let content = std::fs::read_to_string(&trace_path).expect("trace.jsonl should be readable");
@@ -184,9 +205,13 @@ fn ld_preload_smoke_report_schema_valid_when_present() {
                 "mode",
                 "case",
                 "status",
+                "workload",
+                "startup_path",
+                "failure_signature",
             ] {
                 assert!(obj[field].is_string(), "trace line missing {}", field);
             }
+            assert!(obj["timing"].is_object(), "trace line missing timing object");
             if !obj["api_family"].is_null() {
                 for field in ["api_family", "symbol", "decision_path", "healing_action"] {
                     assert!(obj[field].is_string(), "trace line missing {}", field);
@@ -200,6 +225,15 @@ fn ld_preload_smoke_report_schema_valid_when_present() {
                     obj["artifact_refs"].is_array(),
                     "trace line missing artifact_refs"
                 );
+                if obj["event"].as_str().unwrap_or_default().starts_with("case_")
+                    && !obj["signature_guard_triggered"].is_null()
+                {
+                    assert!(
+                        obj["signature_guard_triggered"].is_u64()
+                            || obj["signature_guard_triggered"].is_i64(),
+                        "case event signature_guard_triggered should be numeric when present"
+                    );
+                }
             }
             lines += 1;
         }
