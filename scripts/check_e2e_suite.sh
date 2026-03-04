@@ -175,6 +175,14 @@ with open("${latest_run}/trace.jsonl", "r", encoding="utf-8") as fh:
             if "artifact_policy" in obj and not isinstance(obj["artifact_policy"], dict):
                 print(f"line {i}: artifact_policy must be object")
                 errors += 1
+        if event == "case_fail":
+            for field in ("startup_path", "failure_signature", "signature_guard_triggered"):
+                if field not in obj:
+                    print(f"line {i}: case_fail missing {field}")
+                    errors += 1
+            if "signature_guard_triggered" in obj and not isinstance(obj["signature_guard_triggered"], (bool, int)):
+                print(f"line {i}: signature_guard_triggered must be bool/int")
+                errors += 1
         if event == "mode_pair_result":
             for field in ("scenario_id", "mode_pair_result", "drift_flags"):
                 if field not in obj:

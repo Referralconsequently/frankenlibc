@@ -238,6 +238,72 @@ should_retry_attempt() {
         --retryable-codes "${RETRYABLE_CODES}"
 }
 
+classify_failure_signature() {
+    local exit_code="$1"
+    local stdout_path="$2"
+    local stderr_path="$3"
+
+    local stdout_size=0
+    local stderr_size=0
+    if [[ -f "${stdout_path}" ]]; then
+        stdout_size=$(wc -c < "${stdout_path}" | tr -d ' ')
+    fi
+    if [[ -f "${stderr_path}" ]]; then
+        stderr_size=$(wc -c < "${stderr_path}" | tr -d ' ')
+    fi
+
+    local startup_path="steady_state"
+    local failure_signature="none"
+    local signature_guard_triggered=0
+
+    if [[ "${exit_code}" -eq 124 || "${exit_code}" -eq 125 ]]; then
+        startup_path="startup_or_early_runtime"
+        signature_guard_triggered=1
+        if [[ "${stdout_size}" -eq 0 && "${stderr_size}" -eq 0 ]]; then
+            failure_signature="timeout_silent_startup"
+        else
+            failure_signature="timeout_after_partial_output"
+        fi
+    elif [[ "${exit_code}" -eq 139 ]]; then
+        startup_path="runtime_fault"
+        failure_signature="segfault_139"
+        signature_guard_triggered=1
+    elif [[ "${exit_code}" -eq 134 ]]; then
+        startup_path="runtime_fault"
+        failure_signature="abort_134"
+        signature_guard_triggered=1
+    elif [[ "${exit_code}" -eq 127 ]]; then
+        startup_path="loader_or_exec"
+        failure_signature="exec_not_found_127"
+        signature_guard_triggered=1
+    elif [[ "${exit_code}" -ne 0 ]]; then
+        startup_path="runtime_nonzero"
+        failure_signature="nonzero_${exit_code}"
+        signature_guard_triggered=1
+    fi
+
+    if [[ -f "${stderr_path}" ]]; then
+        if grep -qiE 'undefined symbol|symbol lookup error' "${stderr_path}"; then
+            startup_path="dynamic_loader"
+            failure_signature="loader_symbol_lookup_error"
+            signature_guard_triggered=1
+        elif grep -qiE 'cannot open shared object file|No such file or directory' "${stderr_path}"; then
+            startup_path="dynamic_loader"
+            failure_signature="loader_shared_object_missing"
+            signature_guard_triggered=1
+        elif grep -qiE 'illegal instruction' "${stderr_path}"; then
+            startup_path="runtime_fault"
+            failure_signature="illegal_instruction"
+            signature_guard_triggered=1
+        fi
+    fi
+
+    printf '%s\t%s\t%s\n' \
+        "${startup_path}" \
+        "${failure_signature}" \
+        "${signature_guard_triggered}"
+}
+
 emit_quarantine_report() {
     QUARANTINE_TSV_PATH="${QUARANTINE_TSV}" \
     QUARANTINE_JSON_PATH="${QUARANTINE_REPORT_FILE}" \
@@ -653,6 +719,11 @@ run_e2e_case() {
     local retry_count flake_score verdict final_outcome final_exit_code is_flaky should_quarantine
     IFS=$'\t' read -r retry_count flake_score verdict final_outcome final_exit_code is_flaky should_quarantine <<<"${classification}"
 
+    local startup_path failure_signature signature_guard_triggered
+    local signature_classification
+    signature_classification="$(classify_failure_signature "${final_rc}" "${case_dir}/stdout.txt" "${case_dir}/stderr.txt")"
+    IFS=$'\t' read -r startup_path failure_signature signature_guard_triggered <<<"${signature_classification}"
+
     local total_elapsed_ns=0
     local latency_ns
     for latency_ns in "${latencies[@]}"; do
@@ -680,6 +751,9 @@ run_e2e_case() {
             echo "scenario_id=${scenario_id}"
             echo "replay_key=${replay_key}"
             echo "env_fingerprint=${env_fingerprint}"
+            echo "startup_path=${startup_path}"
+            echo "failure_signature=${failure_signature}"
+            echo "signature_guard_triggered=${signature_guard_triggered}"
         } > "${case_dir}/bundle.meta"
         env | sort > "${case_dir}/env.txt"
     fi
@@ -746,14 +820,14 @@ run_e2e_case() {
         level="warn"
     fi
 
-    emit_log "${level}" "${event}" "${mode}" "" "${label}" "${final_outcome}" "${total_elapsed_ns}" "\"scenario_id\":\"${scenario_id}\",\"scenario_pack\":\"${scenario}\",\"retry_count\":${retry_count},\"flake_score\":${flake_score},\"artifact_refs\":${artifact_refs_json},\"verdict\":\"${verdict}\",\"final_exit_code\":${final_exit_code},\"replay_key\":\"${replay_key}\",\"env_fingerprint\":\"${env_fingerprint}\",\"expected_outcome\":\"${expected_outcome}\",\"pass_condition\":\"${pass_condition}\",\"artifact_policy\":${artifact_policy}"
+    emit_log "${level}" "${event}" "${mode}" "" "${label}" "${final_outcome}" "${total_elapsed_ns}" "\"scenario_id\":\"${scenario_id}\",\"scenario_pack\":\"${scenario}\",\"retry_count\":${retry_count},\"flake_score\":${flake_score},\"artifact_refs\":${artifact_refs_json},\"verdict\":\"${verdict}\",\"final_exit_code\":${final_exit_code},\"replay_key\":\"${replay_key}\",\"env_fingerprint\":\"${env_fingerprint}\",\"expected_outcome\":\"${expected_outcome}\",\"pass_condition\":\"${pass_condition}\",\"artifact_policy\":${artifact_policy},\"startup_path\":\"${startup_path}\",\"failure_signature\":\"${failure_signature}\",\"signature_guard_triggered\":${signature_guard_triggered}"
 
     if [[ "${final_outcome}" == "pass" ]]; then
         echo "[PASS] ${scenario}/${mode}/${label} (verdict=${verdict}, retry_count=${retry_count}, flake_score=${flake_score})"
         return 0
     fi
 
-    echo "[FAIL] ${scenario}/${mode}/${label} (verdict=${verdict}, exit=${final_exit_code}, retry_count=${retry_count}, flake_score=${flake_score})"
+    echo "[FAIL] ${scenario}/${mode}/${label} (verdict=${verdict}, exit=${final_exit_code}, retry_count=${retry_count}, flake_score=${flake_score}, signature=${failure_signature})"
     return 1
 }
 

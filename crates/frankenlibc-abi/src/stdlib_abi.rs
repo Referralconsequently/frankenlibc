@@ -3405,15 +3405,7 @@ pub unsafe extern "C" fn glob_pattern_p(pattern: *const c_char, _quote: c_int) -
     }
 }
 
-/// `twalk_r` — walk a binary tree with user data pointer.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn twalk_r(
-    _root: *const c_void,
-    _action: Option<unsafe extern "C" fn(*const c_void, c_int, c_void)>,
-    _closure: *mut c_void,
-) {
-    // Tree walking with closure — stubbed (requires tsearch internals)
-}
+// twalk_r is implemented in search_abi.rs
 
 /// `ualarm` — schedule SIGALRM in microseconds.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

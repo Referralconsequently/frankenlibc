@@ -3536,6 +3536,8 @@ GLIBC_2.2.5 {
         __lll_lock_wake_private;
 
         /* Session 17: gconv (iconv internals) */
+        __gconv;
+        __gconv_close;
         __gconv_open;
         __gconv_create_spec;
         __gconv_destroy_spec;
@@ -3545,6 +3547,7 @@ GLIBC_2.2.5 {
         __gconv_transliterate;
 
         /* Session 17: resolver context internals */
+        __resolv_context_freeres;
         __resolv_context_get;
         __resolv_context_get_override;
         __resolv_context_get_preinit;

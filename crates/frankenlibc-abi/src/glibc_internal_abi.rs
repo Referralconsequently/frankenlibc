@@ -6703,6 +6703,41 @@ pub unsafe extern "C" fn __gconv_get_modules_db() -> *mut c_void {
     unsafe { f() }
 }
 
+/// `__gconv` — perform gconv character conversion step. GLIBC_PRIVATE.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __gconv(
+    step: *mut c_void,
+    step_data: *mut c_void,
+    inbuf: *mut *const c_void,
+    inbufend: *const c_void,
+    outbufstart: *mut *mut c_void,
+    outbufend: *mut c_void,
+    written: *mut SizeT,
+) -> c_int {
+    type F = unsafe extern "C" fn(
+        *mut c_void, *mut c_void, *mut *const c_void, *const c_void,
+        *mut *mut c_void, *mut c_void, *mut SizeT,
+    ) -> c_int;
+    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv".as_ptr()) };
+    if sym.is_null() {
+        return -1; // GCONV_NOCONV
+    }
+    let f: F = unsafe { std::mem::transmute(sym) };
+    unsafe { f(step, step_data, inbuf, inbufend, outbufstart, outbufend, written) }
+}
+
+/// `__gconv_close` — close a gconv conversion descriptor. GLIBC_PRIVATE.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __gconv_close(handle: *mut c_void) -> c_int {
+    type F = unsafe extern "C" fn(*mut c_void) -> c_int;
+    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_close".as_ptr()) };
+    if sym.is_null() {
+        return -1;
+    }
+    let f: F = unsafe { std::mem::transmute(sym) };
+    unsafe { f(handle) }
+}
+
 /// `__gconv_transliterate` — transliterate a character. GLIBC_PRIVATE.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_transliterate(
@@ -6777,6 +6812,17 @@ pub unsafe extern "C" fn __resolv_context_put(ctx: *mut c_void) {
     if !sym.is_null() {
         let f: F = unsafe { std::mem::transmute(sym) };
         unsafe { f(ctx) };
+    }
+}
+
+/// `__resolv_context_freeres` — free resolver context resources. GLIBC_PRIVATE.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __resolv_context_freeres() {
+    type F = unsafe extern "C" fn();
+    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_freeres".as_ptr()) };
+    if !sym.is_null() {
+        let f: F = unsafe { std::mem::transmute(sym) };
+        unsafe { f() };
     }
 }
 
@@ -7480,7 +7526,11 @@ pub unsafe extern "C" fn __call_tls_dtors() {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub static mut __abort_msg: *mut c_char = std::ptr::null_mut();
 
-/// `__copy_grp` — copy group entry. GLIBC_PRIVATE.
+/// `__copy_grp` — copy group entry into caller buffer (native).
+///
+/// Deep-copies a `struct group` from `src` to `dest`, placing all strings
+/// in the scratch buffer `buf` of size `buflen`. On success, `*result` is
+/// set to `dest` and returns 0. Returns ERANGE if buffer too small.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __copy_grp(
     dest: *mut c_void,
@@ -7489,22 +7539,79 @@ pub unsafe extern "C" fn __copy_grp(
     buflen: SizeT,
     result: *mut *mut c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(
-        *mut c_void,
-        *const c_void,
-        *mut c_char,
-        SizeT,
-        *mut *mut c_void,
-    ) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__copy_grp".as_ptr()) };
-    if sym.is_null() {
-        return libc::ENOSYS;
+    if dest.is_null() || src.is_null() || buf.is_null() || result.is_null() {
+        return libc::EINVAL;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(dest, src, buf, buflen, result) }
+    let dst = dest as *mut libc::group;
+    let s = src as *const libc::group;
+    let mut offset: usize = 0;
+
+    unsafe {
+        // Copy gid
+        (*dst).gr_gid = (*s).gr_gid;
+
+        // Copy gr_name
+        let name_len = libc::strlen((*s).gr_name) + 1;
+        if offset + name_len > buflen {
+            return libc::ERANGE;
+        }
+        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_name as *const c_void, name_len);
+        (*dst).gr_name = buf.add(offset);
+        offset += name_len;
+
+        // Copy gr_passwd
+        let passwd_len = libc::strlen((*s).gr_passwd) + 1;
+        if offset + passwd_len > buflen {
+            return libc::ERANGE;
+        }
+        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_passwd as *const c_void, passwd_len);
+        (*dst).gr_passwd = buf.add(offset);
+        offset += passwd_len;
+
+        // Count members
+        let mut nmem: usize = 0;
+        if !(*s).gr_mem.is_null() {
+            while !(*(*s).gr_mem.add(nmem)).is_null() {
+                nmem += 1;
+            }
+        }
+
+        // Align offset for pointer array
+        let align = std::mem::align_of::<*mut c_char>();
+        offset = (offset + align - 1) & !(align - 1);
+
+        // Allocate pointer array (nmem + 1 for NULL terminator)
+        let ptrs_size = (nmem + 1) * std::mem::size_of::<*mut c_char>();
+        if offset + ptrs_size > buflen {
+            return libc::ERANGE;
+        }
+        let mem_array = buf.add(offset) as *mut *mut c_char;
+        offset += ptrs_size;
+
+        // Copy each member string
+        for i in 0..nmem {
+            let member = *(*s).gr_mem.add(i);
+            let mlen = libc::strlen(member) + 1;
+            if offset + mlen > buflen {
+                return libc::ERANGE;
+            }
+            libc::memcpy(buf.add(offset) as *mut c_void, member as *const c_void, mlen);
+            *mem_array.add(i) = buf.add(offset);
+            offset += mlen;
+        }
+        *mem_array.add(nmem) = std::ptr::null_mut();
+        (*dst).gr_mem = mem_array;
+
+        *result = dest;
+    }
+    0
 }
 
-/// `__merge_grp` — merge group entries. GLIBC_PRIVATE.
+/// `__merge_grp` — merge group entries (native).
+///
+/// Deep-copies `src` into `dest`, merging member lists from both groups.
+/// Members from `dest` are kept, and new members from `src` (not already
+/// in `dest`) are appended. Returns 0 on success, ERANGE if buffer too small.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __merge_grp(
     dest: *mut c_void,
@@ -7513,19 +7620,117 @@ pub unsafe extern "C" fn __merge_grp(
     buflen: SizeT,
     result: *mut *mut c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(
-        *mut c_void,
-        *const c_void,
-        *mut c_char,
-        SizeT,
-        *mut *mut c_void,
-    ) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__merge_grp".as_ptr()) };
-    if sym.is_null() {
-        return libc::ENOSYS;
+    if dest.is_null() || src.is_null() || buf.is_null() || result.is_null() {
+        return libc::EINVAL;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(dest, src, buf, buflen, result) }
+    let dst = dest as *mut libc::group;
+    let s = src as *const libc::group;
+    let mut offset: usize = 0;
+
+    unsafe {
+        // Collect existing dest members
+        let mut dest_count: usize = 0;
+        if !(*dst).gr_mem.is_null() {
+            while !(*(*dst).gr_mem.add(dest_count)).is_null() {
+                dest_count += 1;
+            }
+        }
+
+        // Count src members not already in dest
+        let mut src_count: usize = 0;
+        let mut new_members: usize = 0;
+        if !(*s).gr_mem.is_null() {
+            while !(*(*s).gr_mem.add(src_count)).is_null() {
+                let src_mem = *(*s).gr_mem.add(src_count);
+                // Check if already in dest
+                let mut found = false;
+                for j in 0..dest_count {
+                    if libc::strcmp(*(*dst).gr_mem.add(j), src_mem) == 0 {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    new_members += 1;
+                }
+                src_count += 1;
+            }
+        }
+
+        let total = dest_count + new_members;
+
+        // Copy gr_name from src
+        (*dst).gr_gid = (*s).gr_gid;
+        let name_len = libc::strlen((*s).gr_name) + 1;
+        if offset + name_len > buflen {
+            return libc::ERANGE;
+        }
+        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_name as *const c_void, name_len);
+        (*dst).gr_name = buf.add(offset);
+        offset += name_len;
+
+        // Copy gr_passwd from src
+        let passwd_len = libc::strlen((*s).gr_passwd) + 1;
+        if offset + passwd_len > buflen {
+            return libc::ERANGE;
+        }
+        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_passwd as *const c_void, passwd_len);
+        (*dst).gr_passwd = buf.add(offset);
+        offset += passwd_len;
+
+        // Align for pointer array
+        let align = std::mem::align_of::<*mut c_char>();
+        offset = (offset + align - 1) & !(align - 1);
+
+        // Allocate merged pointer array
+        let ptrs_size = (total + 1) * std::mem::size_of::<*mut c_char>();
+        if offset + ptrs_size > buflen {
+            return libc::ERANGE;
+        }
+        let mem_array = buf.add(offset) as *mut *mut c_char;
+        offset += ptrs_size;
+
+        // Copy existing dest members
+        let mut idx = 0;
+        for i in 0..dest_count {
+            let member = *(*dst).gr_mem.add(i);
+            let mlen = libc::strlen(member) + 1;
+            if offset + mlen > buflen {
+                return libc::ERANGE;
+            }
+            libc::memcpy(buf.add(offset) as *mut c_void, member as *const c_void, mlen);
+            *mem_array.add(idx) = buf.add(offset);
+            offset += mlen;
+            idx += 1;
+        }
+
+        // Add new members from src (not already present)
+        for i in 0..src_count {
+            let src_mem = *(*s).gr_mem.add(i);
+            let mut found = false;
+            for j in 0..dest_count {
+                if libc::strcmp(*(*dst).gr_mem.add(j), src_mem) == 0 {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                let mlen = libc::strlen(src_mem) + 1;
+                if offset + mlen > buflen {
+                    return libc::ERANGE;
+                }
+                libc::memcpy(buf.add(offset) as *mut c_void, src_mem as *const c_void, mlen);
+                *mem_array.add(idx) = buf.add(offset);
+                offset += mlen;
+                idx += 1;
+            }
+        }
+        *mem_array.add(idx) = std::ptr::null_mut();
+        (*dst).gr_mem = mem_array;
+
+        *result = dest;
+    }
+    0
 }
 
 /// `__shm_get_name` — construct POSIX shared memory path (native).

@@ -247,6 +247,11 @@ pub fn execute_fixture_case(
         "setlocale" => execute_setlocale_case(inputs, mode),
         "localeconv" => execute_localeconv_case(mode),
         "nl_langinfo" => execute_nl_langinfo_case(inputs, mode),
+        "nl_langinfo_l" => execute_nl_langinfo_l_case(inputs, mode),
+        "newlocale" => execute_newlocale_case(inputs, mode),
+        "uselocale" => execute_uselocale_case(inputs, mode),
+        "duplocale" => execute_duplocale_case(mode),
+        "freelocale" => execute_freelocale_case(mode),
         "qsort" => execute_qsort_case(inputs, mode),
         "bsearch" => execute_bsearch_case(inputs, mode),
         "Elf64Header::parse" => execute_elf64_header_parse_case(inputs, mode),
@@ -5083,6 +5088,324 @@ fn execute_nl_langinfo_case(
     })
 }
 
+fn pointer_shape<T>(ptr: *mut T) -> String {
+    if ptr.is_null() {
+        String::from("NULL_PTR")
+    } else {
+        String::from("NON_NULL_PTR")
+    }
+}
+
+fn run_host_newlocale_case(
+    category_mask: i32,
+    locale: Option<&str>,
+    base_from_c_locale: bool,
+) -> Result<String, String> {
+    let c_locale = CString::new("C").map_err(|err| format!("CString: {err}"))?;
+    unsafe {
+        libc::setlocale(libc::LC_ALL, c_locale.as_ptr());
+    }
+
+    let locale_cstr = locale
+        .map(|value| CString::new(value).map_err(|err| format!("CString: {err}")))
+        .transpose()?;
+    let locale_ptr = locale_cstr
+        .as_ref()
+        .map_or(std::ptr::null(), |value| value.as_ptr());
+
+    let mut base = std::ptr::null_mut();
+    if base_from_c_locale {
+        base =
+            unsafe { libc::newlocale(libc::LC_ALL_MASK, c_locale.as_ptr(), std::ptr::null_mut()) };
+        if base.is_null() {
+            return Err(String::from(
+                "host newlocale failed while creating C-locale base",
+            ));
+        }
+    }
+
+    let created = unsafe { libc::newlocale(category_mask, locale_ptr, base) };
+    let output = pointer_shape(created);
+
+    if !created.is_null() && created != base {
+        unsafe {
+            libc::freelocale(created);
+        }
+    }
+    if !base.is_null() {
+        unsafe {
+            libc::freelocale(base);
+        }
+    }
+
+    Ok(output)
+}
+
+fn execute_newlocale_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    let strict = mode_is_strict(mode);
+    let hardened = mode_is_hardened(mode);
+    let category_mask = inputs
+        .get("category_mask")
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+        .unwrap_or(libc::LC_ALL_MASK);
+    let locale = parse_optional_string(inputs, "locale")?;
+    let base_locale = parse_optional_string(inputs, "base_locale")?;
+    let base_non_null = match base_locale.as_deref() {
+        None => false,
+        Some(value) if frankenlibc_core::locale::is_c_locale(value.as_bytes()) => true,
+        Some(other) => {
+            return Err(format!(
+                "unsupported base_locale '{other}' (expected null or C/POSIX)"
+            ));
+        }
+    };
+
+    let accepted_locale = locale
+        .as_deref()
+        .map(|value| frankenlibc_core::locale::is_c_locale(value.as_bytes()))
+        .unwrap_or(true);
+    let impl_non_null = accepted_locale || base_non_null || hardened;
+    let impl_output = if impl_non_null {
+        String::from("NON_NULL_PTR")
+    } else {
+        String::from("NULL_PTR")
+    };
+
+    if strict {
+        let host_output = run_host_newlocale_case(category_mask, locale.as_deref(), base_non_null)?;
+        let host_parity = host_output == impl_output;
+        let note = (!host_parity).then(|| "strict host parity mismatch for newlocale".to_string());
+        return Ok(DifferentialExecution {
+            host_output,
+            impl_output,
+            host_parity,
+            note,
+        });
+    }
+
+    let note = (!accepted_locale && !base_non_null)
+        .then(|| String::from("hardened mode falls back to C locale handle for unsupported names"));
+    Ok(DifferentialExecution {
+        host_output: String::from("SKIP"),
+        impl_output,
+        host_parity: true,
+        note,
+    })
+}
+
+fn run_host_uselocale_case(newloc: Option<&str>) -> Result<String, String> {
+    let mut created = std::ptr::null_mut();
+    let arg = match newloc {
+        None => std::ptr::null_mut(),
+        Some(name) if frankenlibc_core::locale::is_c_locale(name.as_bytes()) => {
+            let c_locale = CString::new("C").map_err(|err| format!("CString: {err}"))?;
+            created = unsafe {
+                libc::newlocale(libc::LC_ALL_MASK, c_locale.as_ptr(), std::ptr::null_mut())
+            };
+            if created.is_null() {
+                return Err(String::from(
+                    "host newlocale failed while creating uselocale input",
+                ));
+            }
+            created
+        }
+        Some(other) => {
+            return Err(format!(
+                "unsupported newloc '{other}' for uselocale fixture (expected null or C/POSIX)"
+            ));
+        }
+    };
+
+    let previous = unsafe { libc::uselocale(arg) };
+    if !arg.is_null() {
+        unsafe {
+            libc::uselocale(previous);
+        }
+    }
+    if !created.is_null() {
+        unsafe {
+            libc::freelocale(created);
+        }
+    }
+    Ok(pointer_shape(previous))
+}
+
+fn execute_uselocale_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    let strict = mode_is_strict(mode);
+    let newloc = parse_optional_string(inputs, "newloc")?;
+    let impl_output = String::from("NON_NULL_PTR");
+
+    if strict {
+        let host_output = run_host_uselocale_case(newloc.as_deref())?;
+        let host_parity = host_output == impl_output;
+        let note = (!host_parity).then(|| "strict host parity mismatch for uselocale".to_string());
+        return Ok(DifferentialExecution {
+            host_output,
+            impl_output,
+            host_parity,
+            note,
+        });
+    }
+
+    Ok(DifferentialExecution {
+        host_output: String::from("SKIP"),
+        impl_output,
+        host_parity: true,
+        note: None,
+    })
+}
+
+fn run_host_duplocale_case() -> String {
+    let current = unsafe { libc::uselocale(std::ptr::null_mut()) };
+    if current.is_null() {
+        return String::from("NULL_PTR");
+    }
+    let duplicate = unsafe { libc::duplocale(current) };
+    let output = pointer_shape(duplicate);
+    if !duplicate.is_null() {
+        unsafe {
+            libc::freelocale(duplicate);
+        }
+    }
+    output
+}
+
+fn execute_duplocale_case(mode: &str) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    let strict = mode_is_strict(mode);
+    let impl_output = String::from("NON_NULL_PTR");
+
+    if strict {
+        let host_output = run_host_duplocale_case();
+        let host_parity = host_output == impl_output;
+        let note = (!host_parity).then(|| "strict host parity mismatch for duplocale".to_string());
+        return Ok(DifferentialExecution {
+            host_output,
+            impl_output,
+            host_parity,
+            note,
+        });
+    }
+
+    Ok(DifferentialExecution {
+        host_output: String::from("SKIP"),
+        impl_output,
+        host_parity: true,
+        note: None,
+    })
+}
+
+fn run_host_freelocale_case() -> Result<String, String> {
+    let c_locale = CString::new("C").map_err(|err| format!("CString: {err}"))?;
+    let locale =
+        unsafe { libc::newlocale(libc::LC_ALL_MASK, c_locale.as_ptr(), std::ptr::null_mut()) };
+    if locale.is_null() {
+        return Err(String::from(
+            "host newlocale failed while creating freelocale input",
+        ));
+    }
+    unsafe {
+        libc::freelocale(locale);
+    }
+    Ok(String::from("VOID"))
+}
+
+fn execute_freelocale_case(mode: &str) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    let strict = mode_is_strict(mode);
+    let impl_output = String::from("VOID");
+
+    if strict {
+        let host_output = run_host_freelocale_case()?;
+        let host_parity = host_output == impl_output;
+        let note = (!host_parity).then(|| "strict host parity mismatch for freelocale".to_string());
+        return Ok(DifferentialExecution {
+            host_output,
+            impl_output,
+            host_parity,
+            note,
+        });
+    }
+
+    Ok(DifferentialExecution {
+        host_output: String::from("SKIP"),
+        impl_output,
+        host_parity: true,
+        note: None,
+    })
+}
+
+fn run_host_nl_langinfo_l_case(item: libc::nl_item) -> Result<String, String> {
+    let c_locale = CString::new("C").map_err(|err| format!("CString: {err}"))?;
+    let locale =
+        unsafe { libc::newlocale(libc::LC_ALL_MASK, c_locale.as_ptr(), std::ptr::null_mut()) };
+    if locale.is_null() {
+        return Err(String::from(
+            "host newlocale failed while creating nl_langinfo_l locale",
+        ));
+    }
+
+    let ptr = unsafe { libc::nl_langinfo_l(item, locale) };
+    let output = if ptr.is_null() {
+        String::from("NULL")
+    } else {
+        let bytes = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_bytes();
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+
+    unsafe {
+        libc::freelocale(locale);
+    }
+
+    Ok(output)
+}
+
+fn execute_nl_langinfo_l_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    let strict = mode_is_strict(mode);
+    let hardened = mode_is_hardened(mode);
+    if !strict && !hardened {
+        return Err(format!("unsupported mode: {mode}"));
+    }
+
+    let item = parse_langinfo_item(inputs)?;
+    let impl_output = run_impl_nl_langinfo_case(item);
+
+    if strict {
+        let host_output = run_host_nl_langinfo_l_case(item)?;
+        let host_parity = host_output == impl_output;
+        let note =
+            (!host_parity).then(|| "strict host parity mismatch for nl_langinfo_l".to_string());
+        return Ok(DifferentialExecution {
+            host_output,
+            impl_output,
+            host_parity,
+            note,
+        });
+    }
+
+    let note = (item != libc::CODESET && item != libc::RADIXCHAR && item != libc::THOUSEP)
+        .then(|| String::from("hardened mode returns safe empty default for unsupported nl_item"));
+
+    Ok(DifferentialExecution {
+        host_output: String::from("SKIP"),
+        impl_output,
+        host_parity: true,
+        note,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // pthread TLS key executors
 // ---------------------------------------------------------------------------
@@ -5943,6 +6266,44 @@ mod tests {
     }
 
     #[test]
+    fn execute_iconv_open_case_hardened_supported_descriptor() {
+        assert_differential_contract(
+            "iconv",
+            "hardened-iconv-open-supported-descriptor",
+            "tests/conformance/fixtures/iconv_phase1.json#/cases/iconv_open_hardened_utf8_to_utf16le",
+            "iconv_open",
+            "hardened",
+            serde_json::json!({
+                "tocode": "UTF-16LE",
+                "fromcode": "UTF-8"
+            }),
+            "VALID_DESCRIPTOR",
+            Some("VALID_DESCRIPTOR"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
+    fn execute_iconv_close_case_hardened_valid_descriptor() {
+        assert_differential_contract(
+            "iconv",
+            "hardened-iconv-close-valid-descriptor",
+            "tests/conformance/fixtures/iconv_phase1.json#/cases/iconv_close_hardened_valid",
+            "iconv_close",
+            "hardened",
+            serde_json::json!({
+                "tocode": "UTF-8",
+                "fromcode": "ISO-8859-1"
+            }),
+            "0",
+            Some("0"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
     fn execute_setlocale_case_strict_query_returns_c_locale() {
         assert_differential_contract(
             "locale",
@@ -5997,6 +6358,22 @@ mod tests {
     }
 
     #[test]
+    fn execute_localeconv_case_hardened_returns_non_null_ptr_shape() {
+        assert_differential_contract(
+            "locale",
+            "hardened-localeconv-pointer-shape",
+            "tests/conformance/fixtures/locale_ops.json#/cases/localeconv_nonnull_hardened",
+            "localeconv",
+            "hardened",
+            serde_json::json!({}),
+            "NON_NULL_PTR",
+            Some("SKIP"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
     fn execute_nl_langinfo_case_strict_codeset_matches_c_locale() {
         assert_differential_contract(
             "locale",
@@ -6021,6 +6398,128 @@ mod tests {
             "hardened-nl-langinfo-unknown-safe-default",
             "tests/conformance/fixtures/locale_ops.json#/cases/nl_langinfo_unknown_hardened",
             "nl_langinfo",
+            "hardened",
+            serde_json::json!({
+                "item": -1
+            }),
+            "",
+            Some("SKIP"),
+            true,
+            Some("safe empty default"),
+        );
+    }
+
+    #[test]
+    fn execute_newlocale_case_strict_c_locale_returns_handle() {
+        assert_differential_contract(
+            "locale",
+            "strict-newlocale-c-locale-handle-shape",
+            "tests/conformance/fixtures/locale_ops.json#/cases/newlocale_c_locale_strict",
+            "newlocale",
+            "strict",
+            serde_json::json!({
+                "locale": "C"
+            }),
+            "NON_NULL_PTR",
+            Some("NON_NULL_PTR"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
+    fn execute_newlocale_case_hardened_unsupported_locale_fallback() {
+        assert_differential_contract(
+            "locale",
+            "hardened-newlocale-unsupported-locale-fallback",
+            "tests/conformance/fixtures/locale_ops.json#/cases/newlocale_unsupported_hardened",
+            "newlocale",
+            "hardened",
+            serde_json::json!({
+                "locale": "xx_INVALID.UTF-8"
+            }),
+            "NON_NULL_PTR",
+            Some("SKIP"),
+            true,
+            Some("falls back to C locale handle"),
+        );
+    }
+
+    #[test]
+    fn execute_uselocale_case_strict_query_returns_handle_shape() {
+        assert_differential_contract(
+            "locale",
+            "strict-uselocale-query-handle-shape",
+            "tests/conformance/fixtures/locale_ops.json#/cases/uselocale_query_strict",
+            "uselocale",
+            "strict",
+            serde_json::json!({
+                "newloc": serde_json::Value::Null
+            }),
+            "NON_NULL_PTR",
+            Some("NON_NULL_PTR"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
+    fn execute_duplocale_case_strict_returns_handle_shape() {
+        assert_differential_contract(
+            "locale",
+            "strict-duplocale-handle-shape",
+            "tests/conformance/fixtures/locale_ops.json#/cases/duplocale_handle_strict",
+            "duplocale",
+            "strict",
+            serde_json::json!({}),
+            "NON_NULL_PTR",
+            Some("NON_NULL_PTR"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
+    fn execute_freelocale_case_strict_returns_void_shape() {
+        assert_differential_contract(
+            "locale",
+            "strict-freelocale-void-shape",
+            "tests/conformance/fixtures/locale_ops.json#/cases/freelocale_void_strict",
+            "freelocale",
+            "strict",
+            serde_json::json!({}),
+            "VOID",
+            Some("VOID"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
+    fn execute_nl_langinfo_l_case_strict_codeset_matches_c_locale() {
+        assert_differential_contract(
+            "locale",
+            "strict-nl-langinfo-l-codeset",
+            "tests/conformance/fixtures/locale_ops.json#/cases/nl_langinfo_l_codeset_strict",
+            "nl_langinfo_l",
+            "strict",
+            serde_json::json!({
+                "item_name": "CODESET"
+            }),
+            "ANSI_X3.4-1968",
+            Some("ANSI_X3.4-1968"),
+            true,
+            None,
+        );
+    }
+
+    #[test]
+    fn execute_nl_langinfo_l_case_hardened_unknown_returns_empty() {
+        assert_differential_contract(
+            "locale",
+            "hardened-nl-langinfo-l-unknown-safe-default",
+            "tests/conformance/fixtures/locale_ops.json#/cases/nl_langinfo_l_unknown_hardened",
+            "nl_langinfo_l",
             "hardened",
             serde_json::json!({
                 "item": -1

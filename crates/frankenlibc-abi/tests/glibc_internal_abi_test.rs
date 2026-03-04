@@ -4,6 +4,21 @@
 
 use frankenlibc_abi::glibc_internal_abi::{
     __asprintf,
+    __copy_grp,
+    __file_change_detection_for_path,
+    __file_change_detection_for_stat,
+    __file_is_unchanged,
+    __merge_grp,
+    __mktemp,
+    __ns_name_compress,
+    __ns_name_ntop,
+    __ns_name_pack,
+    __ns_name_pton,
+    __ns_name_skip,
+    __ns_name_uncompress,
+    __ns_name_uncompressed_p,
+    __ns_name_unpack,
+    __ns_samename,
     __nss_configure_lookup,
     __nss_database_lookup,
     __nss_group_lookup,
@@ -17,7 +32,9 @@ use frankenlibc_abi::glibc_internal_abi::{
     __res_mkquery,
     __res_send,
     __res_state,
+    __shm_get_name,
     __strtof128_internal,
+    __twalk_r,
     __uflow,
     __underflow,
     __wcstof128_internal,
@@ -85,7 +102,8 @@ use frankenlibc_abi::glibc_internal_abi::{
     xprt_register,
     xprt_unregister,
 };
-use std::ffi::CString;
+use std::ffi::{c_char, CStr, CString};
+use std::os::raw::c_void;
 use std::ptr;
 
 // ===========================================================================
@@ -1495,4 +1513,588 @@ fn wcstof128_internal_parses_number() {
 fn dl_find_object_returns_not_found() {
     let r = unsafe { _dl_find_object(ptr::null_mut(), ptr::null_mut()) };
     assert_eq!(r, -1);
+}
+
+// ===========================================================================
+// Session 19: Native DNS name functions (__ns_name_* batch)
+// ===========================================================================
+
+#[test]
+fn ns_name_ntop_converts_wire_to_dotted() {
+    // Wire format: \x07example\x03com\x00
+    let wire: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+    ];
+    let mut buf = [0i8; 256];
+    let ret = unsafe { __ns_name_ntop(wire.as_ptr(), buf.as_mut_ptr(), 256) };
+    assert!(ret > 0, "ns_name_ntop should return positive length");
+    let s = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
+    assert_eq!(s.to_str().unwrap(), "example.com");
+}
+
+#[test]
+fn ns_name_ntop_root_domain() {
+    let wire: &[u8] = &[0]; // root domain
+    let mut buf = [0i8; 256];
+    let ret = unsafe { __ns_name_ntop(wire.as_ptr(), buf.as_mut_ptr(), 256) };
+    assert!(ret > 0);
+    let s = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
+    assert_eq!(s.to_str().unwrap(), ".");
+}
+
+#[test]
+fn ns_name_pton_converts_dotted_to_wire() {
+    let name = CString::new("example.com").unwrap();
+    let mut buf = [0u8; 256];
+    let ret = unsafe { __ns_name_pton(name.as_ptr(), buf.as_mut_ptr(), 256) };
+    assert!(ret >= 0, "ns_name_pton should succeed");
+    // Verify wire format: \x07example\x03com\x00
+    assert_eq!(buf[0], 7); // "example" length
+    assert_eq!(&buf[1..8], b"example");
+    assert_eq!(buf[8], 3); // "com" length
+    assert_eq!(&buf[9..12], b"com");
+    assert_eq!(buf[12], 0); // terminator
+}
+
+#[test]
+fn ns_name_pton_fully_qualified() {
+    let name = CString::new("example.com.").unwrap();
+    let mut buf = [0u8; 256];
+    let ret = unsafe { __ns_name_pton(name.as_ptr(), buf.as_mut_ptr(), 256) };
+    assert_eq!(
+        ret, 1,
+        "trailing dot means fully qualified, should return 1"
+    );
+}
+
+#[test]
+fn ns_name_unpack_simple() {
+    // Message containing an uncompressed name: \x07example\x03com\x00
+    let msg: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+    ];
+    let mut buf = [0u8; 255];
+    let ret = unsafe {
+        __ns_name_unpack(
+            msg.as_ptr(),
+            msg.as_ptr().add(msg.len()),
+            msg.as_ptr(),
+            buf.as_mut_ptr(),
+            255,
+        )
+    };
+    assert!(ret > 0, "ns_name_unpack should return consumed bytes");
+    assert_eq!(ret as usize, msg.len());
+}
+
+#[test]
+fn ns_name_unpack_with_compression() {
+    // Simulate a message with a compression pointer.
+    // bytes 0-12: \x07example\x03com\x00  (the name)
+    // bytes 13-14: \xC0\x00  (compression pointer to offset 0)
+    let msg: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0, 0xC0, 0x00,
+    ];
+    let mut buf = [0u8; 255];
+    let ret = unsafe {
+        __ns_name_unpack(
+            msg.as_ptr(),
+            msg.as_ptr().add(msg.len()),
+            msg.as_ptr().add(13), // start at compression pointer
+            buf.as_mut_ptr(),
+            255,
+        )
+    };
+    assert!(ret > 0, "ns_name_unpack should follow compression pointer");
+    assert_eq!(ret, 2, "should consume 2 bytes (the compression pointer)");
+    // Result should be the uncompressed name
+    assert_eq!(buf[0], 7);
+    assert_eq!(&buf[1..8], b"example");
+}
+
+#[test]
+fn ns_name_pack_simple() {
+    // Pack an uncompressed wire-format name
+    let src: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+    ];
+    let mut dst = [0u8; 256];
+    let ret = unsafe {
+        __ns_name_pack(
+            src.as_ptr(),
+            dst.as_mut_ptr(),
+            256,
+            ptr::null_mut(),
+            ptr::null(),
+        )
+    };
+    assert_eq!(ret as usize, src.len());
+    assert_eq!(&dst[..src.len()], src);
+}
+
+#[test]
+fn ns_name_skip_uncompressed() {
+    let msg: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0, 42,
+    ];
+    let mut ptr: *const u8 = msg.as_ptr();
+    let eom = unsafe { msg.as_ptr().add(msg.len()) };
+    let ret = unsafe { __ns_name_skip(&mut ptr, eom) };
+    assert_eq!(ret, 0, "ns_name_skip should succeed");
+    // ptr should now point past the name (to the 42 byte)
+    assert_eq!(unsafe { ptr.offset_from(msg.as_ptr()) } as usize, 13);
+}
+
+#[test]
+fn ns_name_skip_compressed() {
+    let msg: &[u8] = &[0xC0, 0x00, 42]; // compression pointer + trailing data
+    let mut ptr: *const u8 = msg.as_ptr();
+    let eom = unsafe { msg.as_ptr().add(msg.len()) };
+    let ret = unsafe { __ns_name_skip(&mut ptr, eom) };
+    assert_eq!(ret, 0);
+    assert_eq!(unsafe { ptr.offset_from(msg.as_ptr()) } as usize, 2);
+}
+
+#[test]
+fn ns_name_uncompress_roundtrip() {
+    let msg: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+    ];
+    let mut buf = [0i8; 256];
+    let ret = unsafe {
+        __ns_name_uncompress(
+            msg.as_ptr(),
+            msg.as_ptr().add(msg.len()),
+            msg.as_ptr(),
+            buf.as_mut_ptr(),
+            256,
+        )
+    };
+    assert!(ret > 0);
+    let s = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
+    assert_eq!(s.to_str().unwrap(), "example.com");
+}
+
+#[test]
+fn ns_name_compress_roundtrip() {
+    let name = CString::new("test.example.com").unwrap();
+    let mut wire = [0u8; 256];
+    let ret = unsafe {
+        __ns_name_compress(
+            name.as_ptr(),
+            wire.as_mut_ptr(),
+            256,
+            ptr::null_mut(),
+            ptr::null(),
+        )
+    };
+    assert!(ret > 0, "ns_name_compress should succeed");
+    // Now uncompress to verify roundtrip
+    let mut dotted = [0i8; 256];
+    let ret2 = unsafe {
+        __ns_name_uncompress(
+            wire.as_ptr(),
+            wire.as_ptr().add(ret as usize),
+            wire.as_ptr(),
+            dotted.as_mut_ptr(),
+            256,
+        )
+    };
+    assert!(ret2 > 0);
+    let s = unsafe { std::ffi::CStr::from_ptr(dotted.as_ptr()) };
+    assert_eq!(s.to_str().unwrap(), "test.example.com");
+}
+
+#[test]
+fn ns_name_uncompressed_p_returns_true_for_simple() {
+    let msg: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
+    ];
+    let ret = unsafe {
+        __ns_name_uncompressed_p(msg.as_ptr(), msg.as_ptr().add(msg.len()), msg.as_ptr())
+    };
+    assert_eq!(ret, 1, "simple name should be uncompressed");
+}
+
+#[test]
+fn ns_name_uncompressed_p_returns_false_for_pointer() {
+    let msg: &[u8] = &[
+        7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0, 0xC0, 0x00,
+    ];
+    let ret = unsafe {
+        __ns_name_uncompressed_p(
+            msg.as_ptr(),
+            msg.as_ptr().add(msg.len()),
+            msg.as_ptr().add(13), // points to compression pointer
+        )
+    };
+    assert_eq!(ret, 0, "compression pointer should be detected");
+}
+
+#[test]
+fn ns_samename_same_names() {
+    let a = CString::new("example.com").unwrap();
+    let b = CString::new("example.com").unwrap();
+    assert_eq!(unsafe { __ns_samename(a.as_ptr(), b.as_ptr()) }, 1);
+}
+
+#[test]
+fn ns_samename_case_insensitive() {
+    let a = CString::new("Example.COM").unwrap();
+    let b = CString::new("example.com").unwrap();
+    assert_eq!(unsafe { __ns_samename(a.as_ptr(), b.as_ptr()) }, 1);
+}
+
+#[test]
+fn ns_samename_trailing_dot() {
+    let a = CString::new("example.com.").unwrap();
+    let b = CString::new("example.com").unwrap();
+    assert_eq!(unsafe { __ns_samename(a.as_ptr(), b.as_ptr()) }, 1);
+}
+
+#[test]
+fn ns_samename_different_names() {
+    let a = CString::new("example.com").unwrap();
+    let b = CString::new("example.org").unwrap();
+    assert_eq!(unsafe { __ns_samename(a.as_ptr(), b.as_ptr()) }, 0);
+}
+
+// ===========================================================================
+// Session 19: __twalk_r (native reentrant tree walk)
+// ===========================================================================
+
+#[test]
+fn twalk_r_counts_nodes() {
+    use frankenlibc_abi::search_abi::{tdelete, tsearch};
+    use std::os::raw::c_void;
+
+    unsafe extern "C" fn cmp(a: *const c_void, b: *const c_void) -> libc::c_int {
+        let a = a as usize;
+        let b = b as usize;
+        (a > b) as libc::c_int - (a < b) as libc::c_int
+    }
+
+    unsafe extern "C" fn counter(
+        _node: *const c_void,
+        visit: libc::c_int,
+        _level: libc::c_int,
+        closure: *mut c_void,
+    ) {
+        // Count only on preorder (0) or leaf (3), visiting each node exactly once
+        if visit == 0 || visit == 3 {
+            unsafe {
+                let cnt = &mut *(closure as *mut i32);
+                *cnt += 1;
+            }
+        }
+    }
+
+    let mut root: *mut c_void = ptr::null_mut();
+    // Insert 5 values
+    for i in 1..=5 {
+        unsafe { tsearch(i as *const c_void, &mut root, cmp) };
+    }
+
+    let mut count: i32 = 0;
+    unsafe {
+        __twalk_r(root, counter, &mut count as *mut i32 as *mut c_void);
+    }
+    assert_eq!(count, 5, "twalk_r should visit all 5 nodes");
+
+    // Cleanup
+    for i in 1..=5 {
+        unsafe { tdelete(i as *const c_void, &mut root, cmp) };
+    }
+}
+
+// ===========================================================================
+// Session 19: __mktemp (native)
+// ===========================================================================
+
+#[test]
+fn mktemp_replaces_x_chars() {
+    let mut template: Vec<u8> = b"/tmp/test_XXXXXX\0".to_vec();
+    let result = unsafe { __mktemp(template.as_mut_ptr() as *mut libc::c_char) };
+    assert!(!result.is_null());
+    // Verify the X chars were replaced
+    let s = unsafe { std::ffi::CStr::from_ptr(result) };
+    let name = s.to_str().unwrap();
+    assert!(name.starts_with("/tmp/test_"));
+    assert!(!name.contains("XXXXXX"), "X chars should be replaced");
+}
+
+#[test]
+fn mktemp_rejects_short_template() {
+    let mut template: Vec<u8> = b"short\0".to_vec();
+    let result = unsafe { __mktemp(template.as_mut_ptr() as *mut libc::c_char) };
+    assert!(!result.is_null());
+    // First byte should be 0 (error)
+    assert_eq!(unsafe { *result } as u8, 0);
+}
+
+// ===========================================================================
+// Session 19: __shm_get_name (native)
+// ===========================================================================
+
+#[test]
+fn shm_get_name_constructs_path() {
+    let name = CString::new("test_segment").unwrap();
+    let mut buf = [0u8; 256];
+    let ret = unsafe {
+        __shm_get_name(
+            buf.as_mut_ptr() as *mut std::os::raw::c_void,
+            256,
+            name.as_ptr(),
+        )
+    };
+    assert_eq!(ret, 0, "should succeed");
+    let s = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char) };
+    assert_eq!(s.to_str().unwrap(), "/dev/shm/test_segment");
+}
+
+#[test]
+fn shm_get_name_rejects_slash() {
+    let name = CString::new("bad/name").unwrap();
+    let mut buf = [0u8; 256];
+    let ret = unsafe {
+        __shm_get_name(
+            buf.as_mut_ptr() as *mut std::os::raw::c_void,
+            256,
+            name.as_ptr(),
+        )
+    };
+    assert_eq!(ret, libc::EINVAL);
+}
+
+#[test]
+fn shm_get_name_rejects_dot() {
+    let name = CString::new(".").unwrap();
+    let mut buf = [0u8; 256];
+    let ret = unsafe {
+        __shm_get_name(
+            buf.as_mut_ptr() as *mut std::os::raw::c_void,
+            256,
+            name.as_ptr(),
+        )
+    };
+    assert_eq!(ret, libc::EINVAL);
+}
+
+#[test]
+fn shm_get_name_rejects_dotdot() {
+    let name = CString::new("..").unwrap();
+    let mut buf = [0u8; 256];
+    let ret = unsafe {
+        __shm_get_name(
+            buf.as_mut_ptr() as *mut std::os::raw::c_void,
+            256,
+            name.as_ptr(),
+        )
+    };
+    assert_eq!(ret, libc::EINVAL);
+}
+
+// ===========================================================================
+// Session 19: File change detection (native)
+// ===========================================================================
+
+#[test]
+fn file_change_detection_for_path_works() {
+    // Use /etc/hostname which should exist on Linux
+    let path = CString::new("/etc/hostname").unwrap();
+    let mut result = [0u64; 8]; // 8-byte aligned for FileChangeDetection
+    let ret = unsafe {
+        __file_change_detection_for_path(
+            result.as_mut_ptr() as *mut std::os::raw::c_void,
+            path.as_ptr(),
+        )
+    };
+    assert_eq!(ret, 1, "should succeed for existing file");
+}
+
+#[test]
+fn file_change_detection_for_nonexistent() {
+    let path = CString::new("/nonexistent_file_12345").unwrap();
+    let mut result = [0u64; 8];
+    let ret = unsafe {
+        __file_change_detection_for_path(
+            result.as_mut_ptr() as *mut std::os::raw::c_void,
+            path.as_ptr(),
+        )
+    };
+    assert_eq!(ret, 0, "should fail for nonexistent file");
+}
+
+#[test]
+fn file_is_unchanged_same_data() {
+    let path = CString::new("/etc/hostname").unwrap();
+    let mut det1 = [0u64; 8];
+    let mut det2 = [0u64; 8];
+    unsafe {
+        __file_change_detection_for_path(
+            det1.as_mut_ptr() as *mut std::os::raw::c_void,
+            path.as_ptr(),
+        );
+        __file_change_detection_for_path(
+            det2.as_mut_ptr() as *mut std::os::raw::c_void,
+            path.as_ptr(),
+        );
+    }
+    let unchanged = unsafe {
+        __file_is_unchanged(
+            det1.as_ptr() as *const std::os::raw::c_void,
+            det2.as_ptr() as *const std::os::raw::c_void,
+        )
+    };
+    assert_eq!(unchanged, 1, "same file should be unchanged");
+}
+
+#[test]
+fn file_change_detection_for_stat_works() {
+    let path = CString::new("/etc/hostname").unwrap();
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    unsafe { libc::stat(path.as_ptr(), &mut st) };
+    let mut result = [0u64; 8];
+    let ret = unsafe {
+        __file_change_detection_for_stat(
+            result.as_mut_ptr() as *mut std::os::raw::c_void,
+            &st as *const libc::stat as *const std::os::raw::c_void,
+        )
+    };
+    assert_eq!(ret, 1, "should succeed");
+}
+
+// ===========================================================================
+// Session 19: __copy_grp and __merge_grp (native)
+// ===========================================================================
+
+#[test]
+fn copy_grp_copies_all_fields() {
+    let name = CString::new("testgrp").unwrap();
+    let passwd = CString::new("x").unwrap();
+    let mem1 = CString::new("alice").unwrap();
+    let mem2 = CString::new("bob").unwrap();
+    let mut members: [*mut c_char; 3] = [
+        mem1.as_ptr() as *mut c_char,
+        mem2.as_ptr() as *mut c_char,
+        std::ptr::null_mut(),
+    ];
+    let src = libc::group {
+        gr_name: name.as_ptr() as *mut c_char,
+        gr_passwd: passwd.as_ptr() as *mut c_char,
+        gr_gid: 1234,
+        gr_mem: members.as_mut_ptr(),
+    };
+    let mut dest: libc::group = unsafe { std::mem::zeroed() };
+    let mut buf = [0u8; 512];
+    let mut result: *mut std::os::raw::c_void = std::ptr::null_mut();
+    let ret = unsafe {
+        __copy_grp(
+            &mut dest as *mut libc::group as *mut std::os::raw::c_void,
+            &src as *const libc::group as *const std::os::raw::c_void,
+            buf.as_mut_ptr() as *mut c_char,
+            512,
+            &mut result,
+        )
+    };
+    assert_eq!(ret, 0, "copy should succeed");
+    assert!(!result.is_null());
+    assert_eq!(dest.gr_gid, 1234);
+    unsafe {
+        assert_eq!(CStr::from_ptr(dest.gr_name).to_str().unwrap(), "testgrp");
+        assert_eq!(CStr::from_ptr(dest.gr_passwd).to_str().unwrap(), "x");
+        assert!(!dest.gr_mem.is_null());
+        assert_eq!(CStr::from_ptr(*dest.gr_mem.add(0)).to_str().unwrap(), "alice");
+        assert_eq!(CStr::from_ptr(*dest.gr_mem.add(1)).to_str().unwrap(), "bob");
+        assert!((*dest.gr_mem.add(2)).is_null());
+    }
+}
+
+#[test]
+fn copy_grp_erange_on_small_buffer() {
+    let name = CString::new("testgrp").unwrap();
+    let passwd = CString::new("x").unwrap();
+    let mut members: [*mut c_char; 1] = [std::ptr::null_mut()];
+    let src = libc::group {
+        gr_name: name.as_ptr() as *mut c_char,
+        gr_passwd: passwd.as_ptr() as *mut c_char,
+        gr_gid: 1,
+        gr_mem: members.as_mut_ptr(),
+    };
+    let mut dest: libc::group = unsafe { std::mem::zeroed() };
+    let mut buf = [0u8; 4]; // way too small
+    let mut result: *mut std::os::raw::c_void = std::ptr::null_mut();
+    let ret = unsafe {
+        __copy_grp(
+            &mut dest as *mut libc::group as *mut std::os::raw::c_void,
+            &src as *const libc::group as *const std::os::raw::c_void,
+            buf.as_mut_ptr() as *mut c_char,
+            4,
+            &mut result,
+        )
+    };
+    assert_eq!(ret, libc::ERANGE, "should fail with ERANGE on tiny buffer");
+}
+
+#[test]
+fn merge_grp_adds_new_members() {
+    let name = CString::new("grp").unwrap();
+    let passwd = CString::new("x").unwrap();
+    let alice = CString::new("alice").unwrap();
+    let bob = CString::new("bob").unwrap();
+    let charlie = CString::new("charlie").unwrap();
+
+    // dest has alice
+    let mut dest_members: [*mut c_char; 2] = [
+        alice.as_ptr() as *mut c_char,
+        std::ptr::null_mut(),
+    ];
+    let mut dest = libc::group {
+        gr_name: name.as_ptr() as *mut c_char,
+        gr_passwd: passwd.as_ptr() as *mut c_char,
+        gr_gid: 100,
+        gr_mem: dest_members.as_mut_ptr(),
+    };
+
+    // src has alice (dup) and bob and charlie (new)
+    let mut src_members: [*mut c_char; 4] = [
+        alice.as_ptr() as *mut c_char,
+        bob.as_ptr() as *mut c_char,
+        charlie.as_ptr() as *mut c_char,
+        std::ptr::null_mut(),
+    ];
+    let src = libc::group {
+        gr_name: name.as_ptr() as *mut c_char,
+        gr_passwd: passwd.as_ptr() as *mut c_char,
+        gr_gid: 100,
+        gr_mem: src_members.as_mut_ptr(),
+    };
+
+    let mut buf = [0u8; 1024];
+    let mut result: *mut std::os::raw::c_void = std::ptr::null_mut();
+    let ret = unsafe {
+        __merge_grp(
+            &mut dest as *mut libc::group as *mut std::os::raw::c_void,
+            &src as *const libc::group as *const std::os::raw::c_void,
+            buf.as_mut_ptr() as *mut c_char,
+            1024,
+            &mut result,
+        )
+    };
+    assert_eq!(ret, 0, "merge should succeed");
+    assert!(!result.is_null());
+
+    // Collect merged members
+    let mut merged = Vec::new();
+    unsafe {
+        let mut i = 0;
+        while !(*dest.gr_mem.add(i)).is_null() {
+            merged.push(CStr::from_ptr(*dest.gr_mem.add(i)).to_str().unwrap().to_string());
+            i += 1;
+        }
+    }
+    assert_eq!(merged.len(), 3, "should have 3 unique members");
+    assert!(merged.contains(&"alice".to_string()));
+    assert!(merged.contains(&"bob".to_string()));
+    assert!(merged.contains(&"charlie".to_string()));
 }

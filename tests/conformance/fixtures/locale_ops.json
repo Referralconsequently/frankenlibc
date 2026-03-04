@@ -45,6 +45,16 @@
       "note": "Returns pointer to lconv struct"
     },
     {
+      "name": "localeconv_nonnull_hardened",
+      "function": "localeconv",
+      "spec_section": "C11 7.11.2.1 localeconv",
+      "inputs": {},
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "hardened",
+      "note": "Hardened mode preserves deterministic non-null pointer shape"
+    },
+    {
       "name": "nl_langinfo_codeset_strict",
       "function": "nl_langinfo",
       "spec_section": "POSIX nl_langinfo (CODESET)",
@@ -92,6 +102,106 @@
       "expected_errno": 0,
       "mode": "hardened",
       "note": "Unsupported locale falls back to C in hardened mode"
+    },
+    {
+      "name": "newlocale_c_locale_strict",
+      "function": "newlocale",
+      "spec_section": "POSIX.1-2008 newlocale",
+      "inputs": { "locale": "C" },
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "strict",
+      "note": "C locale returns a valid locale_t handle shape"
+    },
+    {
+      "name": "newlocale_unsupported_hardened",
+      "function": "newlocale",
+      "spec_section": "POSIX.1-2008 newlocale hardened fallback",
+      "inputs": { "locale": "xx_INVALID.UTF-8" },
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "hardened",
+      "note": "Unsupported locale falls back to C-locale handle in hardened mode"
+    },
+    {
+      "name": "uselocale_query_strict",
+      "function": "uselocale",
+      "spec_section": "POSIX.1-2008 uselocale",
+      "inputs": { "newloc": null },
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "strict",
+      "note": "Query mode returns current locale handle shape"
+    },
+    {
+      "name": "uselocale_query_hardened",
+      "function": "uselocale",
+      "spec_section": "POSIX.1-2008 uselocale hardened parity",
+      "inputs": { "newloc": null },
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "hardened",
+      "note": "Hardened mode preserves deterministic handle shape"
+    },
+    {
+      "name": "duplocale_handle_strict",
+      "function": "duplocale",
+      "spec_section": "POSIX.1-2008 duplocale",
+      "inputs": {},
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "strict",
+      "note": "Duplicate locale returns non-null handle shape"
+    },
+    {
+      "name": "duplocale_handle_hardened",
+      "function": "duplocale",
+      "spec_section": "POSIX.1-2008 duplocale hardened parity",
+      "inputs": {},
+      "expected_output": "NON_NULL_PTR",
+      "expected_errno": 0,
+      "mode": "hardened",
+      "note": "Hardened mode preserves deterministic handle shape"
+    },
+    {
+      "name": "freelocale_void_strict",
+      "function": "freelocale",
+      "spec_section": "POSIX.1-2008 freelocale",
+      "inputs": {},
+      "expected_output": "VOID",
+      "expected_errno": 0,
+      "mode": "strict",
+      "note": "freelocale is a void no-op for C-locale bootstrap handle"
+    },
+    {
+      "name": "freelocale_void_hardened",
+      "function": "freelocale",
+      "spec_section": "POSIX.1-2008 freelocale hardened parity",
+      "inputs": {},
+      "expected_output": "VOID",
+      "expected_errno": 0,
+      "mode": "hardened",
+      "note": "Hardened mode keeps freelocale deterministic and side-effect free"
+    },
+    {
+      "name": "nl_langinfo_l_codeset_strict",
+      "function": "nl_langinfo_l",
+      "spec_section": "POSIX nl_langinfo_l (CODESET)",
+      "inputs": { "item_name": "CODESET" },
+      "expected_output": "ANSI_X3.4-1968",
+      "expected_errno": 0,
+      "mode": "strict",
+      "note": "C locale codeset through locale-aware API"
+    },
+    {
+      "name": "nl_langinfo_l_unknown_hardened",
+      "function": "nl_langinfo_l",
+      "spec_section": "POSIX nl_langinfo_l (unsupported item hardened fallback)",
+      "inputs": { "item": -1 },
+      "expected_output": "",
+      "expected_errno": 0,
+      "mode": "hardened",
+      "note": "Unsupported locale-aware item returns safe empty string in hardened mode"
     }
   ]
 }
