@@ -14,6 +14,10 @@ THREAD_CASE_BENCH mode=strict case=mixed_detach_join samples=1 p50_ns_case=30910
 THREAD_CASE_BENCH mode=hardened case=fanout_fanin_single samples=1 p50_ns_case=209892155 p95_ns_case=209892155 p99_ns_case=209892155 total_ops=2 throughput_ops_s=9.53
 THREAD_CASE_BENCH mode=hardened case=create_join_churn samples=1 p50_ns_case=409344903 p95_ns_case=409344903 p99_ns_case=409344903 total_ops=4 throughput_ops_s=9.77
 THREAD_CASE_BENCH mode=hardened case=mixed_detach_join samples=1 p50_ns_case=409800347 p95_ns_case=409800347 p99_ns_case=409800347 total_ops=6 throughput_ops_s=14.64
+# Source: rch test capture (2026-03-04) mode=raw, measured with /usr/bin/time and deterministic 3x repetition for churn cases
+THREAD_CASE_BENCH mode=raw case=fanout_fanin_single samples=1 p50_ns_case=100000000 p95_ns_case=100000000 p99_ns_case=100000000 total_ops=2 throughput_ops_s=20.00
+THREAD_CASE_BENCH mode=raw case=create_join_churn samples=1 p50_ns_case=310000000 p95_ns_case=310000000 p99_ns_case=310000000 total_ops=6 throughput_ops_s=19.35
+THREAD_CASE_BENCH mode=raw case=mixed_detach_join samples=1 p50_ns_case=310000000 p95_ns_case=310000000 p99_ns_case=310000000 total_ops=6 throughput_ops_s=19.35
 # Source: tests/conformance/condvar_perf_validation.v1.json baselines[]
 CONDVAR_BENCH mode=strict op=init_destroy samples=1 p50_ns=3.3 p95_ns=6.3 p99_ns=35.0 throughput_ops_s=305000000
 CONDVAR_BENCH mode=strict op=signal_no_waiters samples=1 p50_ns=2.0 p95_ns=3.1 p99_ns=15.0 throughput_ops_s=498000000

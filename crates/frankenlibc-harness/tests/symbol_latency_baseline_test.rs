@@ -106,13 +106,13 @@ fn summary_counts_consistent() {
     }
 
     // We expect deterministic strict/hardened measurements from mutex + thread
-    // hot-path samples and raw measurements from mutex+condvar captures.
+    // hot-path samples and raw measurements from mutex+condvar+thread captures.
     let raw_p50 = measured["raw"]["p50"].as_u64().unwrap();
     let strict_p50 = measured["strict"]["p50"].as_u64().unwrap();
     let hardened_p50 = measured["hardened"]["p50"].as_u64().unwrap();
     assert!(
-        raw_p50 >= 9,
-        "expected at least 9 raw p50 measurements from ingestion, got {raw_p50}"
+        raw_p50 >= 12,
+        "expected at least 12 raw p50 measurements from ingestion, got {raw_p50}"
     );
     assert!(
         strict_p50 >= 12,
@@ -131,8 +131,8 @@ fn summary_counts_consistent() {
         "expected at least 12 symbols updated by ingestion, got {updated_symbols}"
     );
     assert!(
-        updated_modes >= 33,
-        "expected at least 33 mode rows updated by ingestion after raw ingestion, got {updated_modes}"
+        updated_modes >= 36,
+        "expected at least 36 mode rows updated by ingestion after raw thread ingestion, got {updated_modes}"
     );
 }
 
