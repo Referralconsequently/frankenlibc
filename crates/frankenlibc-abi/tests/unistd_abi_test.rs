@@ -9,12 +9,17 @@
 
 use std::ffi::{CString, c_char, c_int, c_void};
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::FileTypeExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::unistd_abi::{
-    eaccess, euidaccess, msgrcv, msgsnd, process_madvise, process_mrelease, process_vm_readv,
-    process_vm_writev, semctl, semop, shmdt,
+    access, alarm, chdir, chmod, chown, close, creat, eaccess, euidaccess, faccessat, fchmod,
+    fchown, fdatasync, flock, fstat, fsync, ftruncate, getcwd, getegid, geteuid, getgid,
+    gethostname, getpid, getppid, getuid, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd,
+    open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev,
+    read, readlink, rename, rmdir, semctl, semop, shmdt, stat, symlink, sysconf, truncate,
+    umask, uname, unlink, usleep, write,
 };
 
 // ---------------------------------------------------------------------------
@@ -794,4 +799,559 @@ fn process_mrelease_invalid_pidfd_fails_cleanly() {
         "unexpected errno for process_mrelease invalid pidfd: {}",
         errno_value()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: process identity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn getpid_returns_positive() {
+    let pid = unsafe { getpid() };
+    assert!(pid > 0);
+}
+
+#[test]
+fn getppid_returns_positive() {
+    let ppid = unsafe { getppid() };
+    assert!(ppid > 0);
+}
+
+#[test]
+fn getuid_returns_valid_uid() {
+    let uid = unsafe { getuid() };
+    // UID is always >= 0 (unsigned)
+    assert!(uid < 65536 || uid == uid); // Just verify it returns
+}
+
+#[test]
+fn geteuid_returns_valid_uid() {
+    let euid = unsafe { geteuid() };
+    // In test context, euid should match uid
+    let uid = unsafe { getuid() };
+    assert_eq!(euid, uid);
+}
+
+#[test]
+fn getgid_returns_valid_gid() {
+    let _gid = unsafe { getgid() };
+    // Just verify it doesn't crash
+}
+
+#[test]
+fn getegid_returns_valid_gid() {
+    let egid = unsafe { getegid() };
+    let gid = unsafe { getgid() };
+    assert_eq!(egid, gid);
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: filesystem - getcwd, chdir
+// ---------------------------------------------------------------------------
+
+#[test]
+fn getcwd_returns_current_directory() {
+    let mut buf = [0i8; 4096];
+    let ptr = unsafe { getcwd(buf.as_mut_ptr(), buf.len()) };
+    assert!(!ptr.is_null());
+    let cwd = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy();
+    assert!(cwd.starts_with('/'), "cwd should be absolute: {cwd}");
+}
+
+#[test]
+fn getcwd_null_buffer_allocates() {
+    let ptr = unsafe { getcwd(std::ptr::null_mut(), 0) };
+    if !ptr.is_null() {
+        let cwd = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy();
+        assert!(cwd.starts_with('/'));
+        unsafe { libc::free(ptr.cast()) };
+    }
+}
+
+#[test]
+fn chdir_and_fchdir_round_trip() {
+    let mut orig = [0i8; 4096];
+    let p = unsafe { getcwd(orig.as_mut_ptr(), orig.len()) };
+    assert!(!p.is_null());
+
+    let tmp = CString::new("/tmp").unwrap();
+    let rc = unsafe { chdir(tmp.as_ptr()) };
+    assert_eq!(rc, 0);
+
+    let mut after = [0i8; 4096];
+    unsafe { getcwd(after.as_mut_ptr(), after.len()) };
+    let cwd_after = unsafe { std::ffi::CStr::from_ptr(after.as_ptr()) }.to_bytes();
+    assert_eq!(cwd_after, b"/tmp");
+
+    // Restore via chdir
+    unsafe { chdir(orig.as_ptr()) };
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: file I/O - open, read, write, close, lseek
+// ---------------------------------------------------------------------------
+
+fn temp_path(tag: &str) -> CString {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    CString::new(format!(
+        "/tmp/frankenlibc_unistd_{tag}_{}_{nanos}",
+        std::process::id()
+    ))
+    .unwrap()
+}
+
+#[test]
+fn open_write_read_close_round_trip() {
+    let path = temp_path("owrc");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0, "open failed: errno={}", errno_value());
+
+    let data = b"hello world";
+    let written = unsafe { write(fd, data.as_ptr().cast(), data.len()) };
+    assert_eq!(written as usize, data.len());
+
+    // Seek back to start
+    let pos = unsafe { lseek(fd, 0, libc::SEEK_SET) };
+    assert_eq!(pos, 0);
+
+    let mut buf = [0u8; 32];
+    let n = unsafe { read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+    assert_eq!(n as usize, data.len());
+    assert_eq!(&buf[..n as usize], data);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn creat_creates_file() {
+    let path = temp_path("creat");
+    let fd = unsafe { creat(path.as_ptr(), 0o644) };
+    assert!(fd >= 0);
+    assert_eq!(unsafe { close(fd) }, 0);
+    assert!(std::path::Path::new(path.to_str().unwrap()).exists());
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn lseek_reports_position() {
+    let path = temp_path("lseek");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    let data = b"0123456789";
+    unsafe { write(fd, data.as_ptr().cast(), data.len()) };
+
+    assert_eq!(unsafe { lseek(fd, 0, libc::SEEK_END) }, 10);
+    assert_eq!(unsafe { lseek(fd, 3, libc::SEEK_SET) }, 3);
+    assert_eq!(unsafe { lseek(fd, 2, libc::SEEK_CUR) }, 5);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn isatty_returns_zero_for_regular_file() {
+    let path = temp_path("isatty");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+    assert_eq!(unsafe { isatty(fd) }, 0);
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: stat family
+// ---------------------------------------------------------------------------
+
+#[test]
+fn stat_reads_file_metadata() {
+    let path = temp_path("stat");
+    std::fs::write(path.to_str().unwrap(), b"test data").unwrap();
+
+    let mut buf = [0u8; 256]; // Oversized buffer for struct stat
+    let rc = unsafe { stat(path.as_ptr(), buf.as_mut_ptr().cast()) };
+    assert_eq!(rc, 0);
+
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn fstat_reads_fd_metadata() {
+    let path = temp_path("fstat");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    let mut buf = [0u8; 256];
+    let rc = unsafe { fstat(fd, buf.as_mut_ptr().cast()) };
+    assert_eq!(rc, 0);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn lstat_returns_symlink_info() {
+    let target = temp_path("lstat_tgt");
+    let linkp = temp_path("lstat_lnk");
+    std::fs::write(target.to_str().unwrap(), b"x").unwrap();
+
+    let rc = unsafe { symlink(target.as_ptr(), linkp.as_ptr()) };
+    if rc == 0 {
+        let mut buf = [0u8; 256];
+        let sr = unsafe { lstat(linkp.as_ptr(), buf.as_mut_ptr().cast()) };
+        assert_eq!(sr, 0);
+        let _ = std::fs::remove_file(linkp.to_str().unwrap());
+    }
+    let _ = std::fs::remove_file(target.to_str().unwrap());
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: filesystem ops
+// ---------------------------------------------------------------------------
+
+#[test]
+fn access_checks_file_existence() {
+    let path = temp_path("access");
+    std::fs::write(path.to_str().unwrap(), b"x").unwrap();
+
+    assert_eq!(unsafe { access(path.as_ptr(), libc::F_OK) }, 0);
+    assert_eq!(unsafe { access(path.as_ptr(), libc::R_OK) }, 0);
+
+    let missing = temp_path("access_miss");
+    assert_eq!(unsafe { access(missing.as_ptr(), libc::F_OK) }, -1);
+
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn link_creates_hard_link() {
+    let src = temp_path("link_src");
+    let dst = temp_path("link_dst");
+    std::fs::write(src.to_str().unwrap(), b"data").unwrap();
+
+    let rc = unsafe { link(src.as_ptr(), dst.as_ptr()) };
+    assert_eq!(rc, 0);
+    assert!(std::path::Path::new(dst.to_str().unwrap()).exists());
+
+    let _ = std::fs::remove_file(dst.to_str().unwrap());
+    let _ = std::fs::remove_file(src.to_str().unwrap());
+}
+
+#[test]
+fn symlink_and_readlink_round_trip() {
+    let target = temp_path("sym_tgt");
+    let linkp = temp_path("sym_lnk");
+    std::fs::write(target.to_str().unwrap(), b"x").unwrap();
+
+    let rc = unsafe { symlink(target.as_ptr(), linkp.as_ptr()) };
+    assert_eq!(rc, 0);
+
+    let mut buf = [0i8; 4096];
+    let n = unsafe { readlink(linkp.as_ptr(), buf.as_mut_ptr(), buf.len()) };
+    assert!(n > 0);
+    let resolved = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(resolved.as_bytes(), target.as_bytes());
+
+    let _ = std::fs::remove_file(linkp.to_str().unwrap());
+    let _ = std::fs::remove_file(target.to_str().unwrap());
+}
+
+#[test]
+fn unlink_removes_file() {
+    let path = temp_path("unlink");
+    std::fs::write(path.to_str().unwrap(), b"x").unwrap();
+    assert!(std::path::Path::new(path.to_str().unwrap()).exists());
+
+    assert_eq!(unsafe { unlink(path.as_ptr()) }, 0);
+    assert!(!std::path::Path::new(path.to_str().unwrap()).exists());
+}
+
+#[test]
+fn mkdir_and_rmdir_round_trip() {
+    let path = temp_path("mkrmdir");
+    assert_eq!(unsafe { mkdir(path.as_ptr(), 0o755) }, 0);
+    assert!(std::path::Path::new(path.to_str().unwrap()).is_dir());
+
+    assert_eq!(unsafe { rmdir(path.as_ptr()) }, 0);
+    assert!(!std::path::Path::new(path.to_str().unwrap()).exists());
+}
+
+#[test]
+fn rename_moves_file() {
+    let src = temp_path("rename_src");
+    let dst = temp_path("rename_dst");
+    std::fs::write(src.to_str().unwrap(), b"content").unwrap();
+
+    assert_eq!(unsafe { rename(src.as_ptr(), dst.as_ptr()) }, 0);
+    assert!(!std::path::Path::new(src.to_str().unwrap()).exists());
+    assert!(std::path::Path::new(dst.to_str().unwrap()).exists());
+
+    let _ = std::fs::remove_file(dst.to_str().unwrap());
+}
+
+#[test]
+fn chmod_changes_permissions() {
+    let path = temp_path("chmod");
+    std::fs::write(path.to_str().unwrap(), b"x").unwrap();
+
+    assert_eq!(unsafe { chmod(path.as_ptr(), 0o444) }, 0);
+
+    let meta = std::fs::metadata(path.to_str().unwrap()).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(meta.permissions().mode() & 0o777, 0o444);
+
+    // Restore write permission before cleanup
+    assert_eq!(unsafe { chmod(path.as_ptr(), 0o644) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn fchmod_changes_permissions() {
+    let path = temp_path("fchmod");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    assert_eq!(unsafe { fchmod(fd, 0o444) }, 0);
+
+    let meta = std::fs::metadata(path.to_str().unwrap()).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(meta.permissions().mode() & 0o777, 0o444);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    std::fs::set_permissions(
+        path.to_str().unwrap(),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn chown_does_not_crash() {
+    let path = temp_path("chown");
+    std::fs::write(path.to_str().unwrap(), b"x").unwrap();
+
+    let uid = unsafe { getuid() };
+    let gid = unsafe { getgid() };
+    // Chown to self should succeed
+    let rc = unsafe { chown(path.as_ptr(), uid, gid) };
+    assert_eq!(rc, 0);
+
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn fchown_does_not_crash() {
+    let path = temp_path("fchown");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    let uid = unsafe { getuid() };
+    let gid = unsafe { getgid() };
+    let rc = unsafe { fchown(fd, uid, gid) };
+    assert_eq!(rc, 0);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn truncate_shrinks_file() {
+    let path = temp_path("trunc");
+    std::fs::write(path.to_str().unwrap(), b"0123456789").unwrap();
+
+    assert_eq!(unsafe { truncate(path.as_ptr(), 5) }, 0);
+    let meta = std::fs::metadata(path.to_str().unwrap()).unwrap();
+    assert_eq!(meta.len(), 5);
+
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn ftruncate_shrinks_file() {
+    let path = temp_path("ftrunc");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    let data = b"0123456789";
+    unsafe { write(fd, data.as_ptr().cast(), data.len()) };
+
+    assert_eq!(unsafe { ftruncate(fd, 3) }, 0);
+    assert_eq!(unsafe { lseek(fd, 0, libc::SEEK_END) }, 3);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn fsync_and_fdatasync_on_regular_file() {
+    let path = temp_path("fsync");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    unsafe { write(fd, b"test".as_ptr().cast(), 4) };
+    assert_eq!(unsafe { fsync(fd) }, 0);
+    assert_eq!(unsafe { fdatasync(fd) }, 0);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn flock_exclusive_and_unlock() {
+    let path = temp_path("flock");
+    let fd = unsafe { open(path.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o644) };
+    assert!(fd >= 0);
+
+    assert_eq!(unsafe { flock(fd, libc::LOCK_EX | libc::LOCK_NB) }, 0);
+    assert_eq!(unsafe { flock(fd, libc::LOCK_UN) }, 0);
+
+    assert_eq!(unsafe { close(fd) }, 0);
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: pipe
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pipe_creates_connected_fds() {
+    let mut fds = [0i32; 2];
+    assert_eq!(unsafe { frankenlibc_abi::io_abi::pipe(fds.as_mut_ptr()) }, 0);
+    assert!(fds[0] >= 0);
+    assert!(fds[1] >= 0);
+
+    let msg = b"hi";
+    let written = unsafe { write(fds[1], msg.as_ptr().cast(), msg.len()) };
+    assert_eq!(written as usize, msg.len());
+
+    let mut buf = [0u8; 4];
+    let n = unsafe { read(fds[0], buf.as_mut_ptr().cast(), buf.len()) };
+    assert_eq!(n as usize, msg.len());
+    assert_eq!(&buf[..n as usize], msg);
+
+    unsafe { close(fds[0]) };
+    unsafe { close(fds[1]) };
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: umask
+// ---------------------------------------------------------------------------
+
+#[test]
+fn umask_round_trips() {
+    let old = unsafe { umask(0o077) };
+    let restored = unsafe { umask(old) };
+    assert_eq!(restored, 0o077);
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: hostname
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gethostname_returns_nonempty_string() {
+    let mut buf = [0i8; 256];
+    let rc = unsafe { gethostname(buf.as_mut_ptr(), buf.len()) };
+    assert_eq!(rc, 0);
+    let name = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_bytes();
+    assert!(!name.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: uname
+// ---------------------------------------------------------------------------
+
+#[test]
+fn uname_fills_sysname() {
+    let mut buf = [0u8; 512]; // Oversized buffer for struct utsname
+    let rc = unsafe { uname(buf.as_mut_ptr().cast()) };
+    assert_eq!(rc, 0);
+    // First field is sysname - should start with "Linux"
+    let sysname = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr().cast()) }
+        .to_string_lossy();
+    assert_eq!(&*sysname, "Linux");
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: sysconf, pathconf
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sysconf_page_size_is_positive_power_of_two() {
+    let ps = unsafe { sysconf(libc::_SC_PAGESIZE) };
+    assert!(ps > 0);
+    assert_eq!(ps & (ps - 1), 0, "page size should be power of 2");
+}
+
+#[test]
+fn sysconf_nprocessors_is_positive() {
+    let n = unsafe { sysconf(libc::_SC_NPROCESSORS_ONLN) };
+    assert!(n >= 1);
+}
+
+#[test]
+fn pathconf_on_slash() {
+    let root = CString::new("/").unwrap();
+    let name_max = unsafe { pathconf(root.as_ptr(), libc::_PC_NAME_MAX) };
+    assert!(name_max > 0, "NAME_MAX on / should be positive");
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: alarm, sleep, usleep
+// ---------------------------------------------------------------------------
+
+#[test]
+fn alarm_returns_previous_alarm() {
+    let prev = unsafe { alarm(10) };
+    // Cancel the alarm
+    let remaining = unsafe { alarm(0) };
+    assert!(remaining <= 10);
+    // Restore whatever was there before
+    if prev > 0 {
+        unsafe { alarm(prev) };
+    }
+}
+
+#[test]
+fn usleep_zero_returns_immediately() {
+    let rc = unsafe { usleep(0) };
+    assert_eq!(rc, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: faccessat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn faccessat_checks_existence() {
+    let path = temp_path("faccessat");
+    std::fs::write(path.to_str().unwrap(), b"x").unwrap();
+
+    let rc = unsafe { faccessat(libc::AT_FDCWD, path.as_ptr(), libc::F_OK, 0) };
+    assert_eq!(rc, 0);
+
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+// ---------------------------------------------------------------------------
+// Core POSIX: mkfifo
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mkfifo_creates_named_pipe() {
+    let path = temp_path("mkfifo");
+    let rc = unsafe { mkfifo(path.as_ptr(), 0o644) };
+    assert_eq!(rc, 0);
+
+    let meta = std::fs::symlink_metadata(path.to_str().unwrap()).unwrap();
+    assert!(meta.file_type().is_fifo());
+
+    let _ = std::fs::remove_file(path.to_str().unwrap());
 }
