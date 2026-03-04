@@ -233,12 +233,12 @@ emit_trace() {
   local startup_path="${12:-orchestration}"
   local failure_signature="${13:-none}"
   local timing_json="${14:-{}}"
-  local extra="${15:-}"
+  local detail_json="${15:-{}}"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   local trace_id="${BEAD_ID}::${RUN_ID}::${mode}::${label}"
-  printf '{"timestamp":"%s","trace_id":"%s","level":"%s","event":"%s","bead_id":"%s","run_id":"%s","mode":"%s","case":"%s","status":"%s","api_family":"abi-interposition","symbol":"%s","decision_path":"%s","healing_action":"%s","errno":%s,"latency_ns":%s,"artifact_refs":%s,"workload":"%s","startup_path":"%s","failure_signature":"%s","timing":%s%s}\n' \
+  printf '{"timestamp":"%s","trace_id":"%s","level":"%s","event":"%s","bead_id":"%s","run_id":"%s","mode":"%s","case":"%s","status":"%s","api_family":"abi-interposition","symbol":"%s","decision_path":"%s","healing_action":"%s","errno":%s,"latency_ns":%s,"artifact_refs":%s,"workload":"%s","startup_path":"%s","failure_signature":"%s","timing":%s,"details":%s}\n' \
     "${ts}" \
     "${trace_id}" \
     "${level}" \
@@ -258,7 +258,7 @@ emit_trace() {
     "${startup_path}" \
     "${failure_signature}" \
     "${timing_json}" \
-    "${extra}" \
+    "${detail_json}" \
     >> "${TRACE_FILE}"
 }
 
@@ -522,8 +522,8 @@ run_case() {
     "${mode}" "${label}" \
     "$([[ "${valgrind_checked}" -eq 1 ]] && printf ',"%s/%s/valgrind.stdout.txt","%s/%s/valgrind.stderr.txt"' "${mode}" "${label}" "${mode}" "${label}")")
 
-  local extra
-  extra=$(printf ',\"parity_required\":%d,\"parity_pass\":%d,\"perf_required\":%d,\"perf_pass\":%d,\"latency_ratio_ppm\":%d,\"baseline_rc\":%d,\"preload_rc\":%d,\"stdout_match\":%d,\"stderr_match\":%d,\"baseline_latency_ns\":%d,\"preload_latency_ns\":%d,\"valgrind_checked\":%d,\"valgrind_pass\":%d,\"valgrind_rc\":%d,\"signature_guard_triggered\":%d' \
+  local detail_json
+  detail_json=$(printf '{"parity_required":%d,"parity_pass":%d,"perf_required":%d,"perf_pass":%d,"latency_ratio_ppm":%d,"baseline_rc":%d,"preload_rc":%d,"stdout_match":%d,"stderr_match":%d,"baseline_latency_ns":%d,"preload_latency_ns":%d,"valgrind_checked":%d,"valgrind_pass":%d,"valgrind_rc":%d,"signature_guard_triggered":%d}' \
     "${parity_required}" \
     "${parity_pass}" \
     "${perf_required}" \
@@ -547,7 +547,7 @@ run_case() {
       "${perf_required}" "${perf_pass}" "${latency_ratio_ppm}" \
       "${baseline_rc}" "${preload_rc}" "${stdout_match}" "${stderr_match}" \
       "${baseline_latency_ns}" "${preload_latency_ns}" "${valgrind_checked}" "${valgrind_pass}"
-    emit_trace "info" "case_pass" "${mode}" "${label}" "${status}" "${decision_path}" "None" "${errno_value}" "${preload_latency_ns}" "${artifact_refs_json}" "${workload}" "${startup_path}" "${failure_signature}" "${timing_json}" "${extra}"
+    emit_trace "info" "case_pass" "${mode}" "${label}" "${status}" "${decision_path}" "None" "${errno_value}" "${preload_latency_ns}" "${artifact_refs_json}" "${workload}" "${startup_path}" "${failure_signature}" "${timing_json}" "${detail_json}"
     echo "[PASS] mode=${mode} case=${label}"
     return 0
   fi
@@ -558,7 +558,7 @@ run_case() {
     "${perf_required}" "${perf_pass}" "${latency_ratio_ppm}" \
     "${baseline_rc}" "${preload_rc}" "${stdout_match}" "${stderr_match}" \
     "${baseline_latency_ns}" "${preload_latency_ns}" "${valgrind_checked}" "${valgrind_pass}"
-  emit_trace "error" "case_fail" "${mode}" "${label}" "${status}" "${decision_path}" "None" "${errno_value}" "${preload_latency_ns}" "${artifact_refs_json}" "${workload}" "${startup_path}" "${failure_signature}" "${timing_json}" "${extra}"
+  emit_trace "error" "case_fail" "${mode}" "${label}" "${status}" "${decision_path}" "None" "${errno_value}" "${preload_latency_ns}" "${artifact_refs_json}" "${workload}" "${startup_path}" "${failure_signature}" "${timing_json}" "${detail_json}"
   if [[ "${signature_guard_triggered}" -eq 1 ]]; then
     echo "[FAIL] mode=${mode} case=${label} (guarded failure signature: ${failure_signature})"
   elif [[ "${preload_rc}" -eq 124 || "${preload_rc}" -eq 125 ]]; then
@@ -594,10 +594,12 @@ run_optional_case() {
       "0" "0" "0" "1"
     local timing_json
     timing_json='{"baseline_latency_ns":0,"preload_latency_ns":0,"latency_ratio_ppm":0}'
+    local detail_json
+    detail_json=$(printf '{"required_binary":"%s","signature_guard_triggered":0}' "${required_binary}")
     emit_trace "warn" "case_skip_optional_binary_missing" "${mode}" "${label}" "skip" \
       "optional_binary_missing" "None" "0" "0" "[]" \
       "${workload}" "${startup_path}" "none" "${timing_json}" \
-      ",\"required_binary\":\"${required_binary}\",\"signature_guard_triggered\":0"
+      "${detail_json}"
     echo "[SKIP] mode=${mode} case=${label} (missing optional binary: ${required_binary})"
     return 0
   fi
@@ -659,16 +661,25 @@ echo "perf_ratio_max_ppm=${PERF_RATIO_MAX_PPM}"
 echo "valgrind_policy=${VALGRIND_POLICY}"
 
 suite_start_timing=$(printf '{"timeout_seconds":%d,"stress_iters":%d}' "${TIMEOUT_SECONDS}" "${STRESS_ITERS}")
+suite_start_details=$(printf '{"timeout_seconds":%d,"stress_iters":%d,"lib_path":"%s","enforce_parity_modes":"%s","enforce_perf_modes":"%s","perf_ratio_max_ppm":%d,"valgrind_policy":"%s"}' \
+  "${TIMEOUT_SECONDS}" \
+  "${STRESS_ITERS}" \
+  "${LIB_PATH}" \
+  "${ENFORCE_PARITY_MODES}" \
+  "${ENFORCE_PERF_MODES}" \
+  "${PERF_RATIO_MAX_PPM}" \
+  "${VALGRIND_POLICY}")
 emit_trace "info" "suite_start" "all" "all" "running" \
   "orchestration" "None" "0" "0" "[]" "suite" "orchestration" "none" "${suite_start_timing}" \
-  ",\"timeout_seconds\":${TIMEOUT_SECONDS},\"stress_iters\":${STRESS_ITERS},\"lib_path\":\"${LIB_PATH}\",\"enforce_parity_modes\":\"${ENFORCE_PARITY_MODES}\",\"enforce_perf_modes\":\"${ENFORCE_PERF_MODES}\",\"perf_ratio_max_ppm\":${PERF_RATIO_MAX_PPM},\"valgrind_policy\":\"${VALGRIND_POLICY}\""
+  "${suite_start_details}"
 overall_failed=0
 run_suite_for_mode strict || overall_failed=1
 run_suite_for_mode hardened || overall_failed=1
 suite_end_timing=$(printf '{"passes":%d,"fails":%d,"skips":%d}' "${passes}" "${fails}" "${skips}")
+suite_end_details=$(printf '{"passes":%d,"fails":%d,"skips":%d}' "${passes}" "${fails}" "${skips}")
 emit_trace "info" "suite_end" "all" "all" "$([[ "${overall_failed}" -eq 0 ]] && echo "pass" || echo "fail")" \
   "orchestration" "None" "0" "0" "[]" "suite" "orchestration" "none" "${suite_end_timing}" \
-  ",\"passes\":${passes},\"fails\":${fails},\"skips\":${skips}"
+  "${suite_end_details}"
 
 python3 - <<PY
 import csv
