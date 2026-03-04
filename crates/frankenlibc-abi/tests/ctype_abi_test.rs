@@ -263,6 +263,98 @@ fn locale_variants_match_base() {
     }
 }
 
+#[test]
+fn locale_alnum_l_matches_base() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { isalnum_l(c, locale) },
+            unsafe { isalnum(c) },
+            "isalnum_l mismatch at c={c}"
+        );
+    }
+}
+
+#[test]
+fn locale_space_l_matches_base() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { isspace_l(c, locale) },
+            unsafe { isspace(c) },
+            "isspace_l mismatch at c={c}"
+        );
+    }
+}
+
+#[test]
+fn locale_upper_lower_l_matches_base() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { isupper_l(c, locale) },
+            unsafe { isupper(c) },
+            "isupper_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { islower_l(c, locale) },
+            unsafe { islower(c) },
+            "islower_l mismatch at c={c}"
+        );
+    }
+}
+
+#[test]
+fn locale_print_graph_l_matches_base() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { isprint_l(c, locale) },
+            unsafe { isprint(c) },
+            "isprint_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { isgraph_l(c, locale) },
+            unsafe { isgraph(c) },
+            "isgraph_l mismatch at c={c}"
+        );
+    }
+}
+
+#[test]
+fn locale_punct_xdigit_l_matches_base() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { ispunct_l(c, locale) },
+            unsafe { ispunct(c) },
+            "ispunct_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { isxdigit_l(c, locale) },
+            unsafe { isxdigit(c) },
+            "isxdigit_l mismatch at c={c}"
+        );
+    }
+}
+
+#[test]
+fn locale_blank_cntrl_l_matches_base() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { isblank_l(c, locale) },
+            unsafe { isblank(c) },
+            "isblank_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { iscntrl_l(c, locale) },
+            unsafe { iscntrl(c) },
+            "iscntrl_l mismatch at c={c}"
+        );
+    }
+}
+
 // ===========================================================================
 // Double-underscore __is*_l aliases
 // ===========================================================================
@@ -272,15 +364,72 @@ fn double_underscore_aliases_match() {
     let locale = std::ptr::null_mut();
     assert_eq!(unsafe { __isalnum_l(b'5' as c_int, locale) }, unsafe {
         isalnum_l(b'5' as c_int, locale)
-    },);
+    });
     assert_eq!(unsafe { __isalpha_l(b'A' as c_int, locale) }, unsafe {
         isalpha_l(b'A' as c_int, locale)
-    },);
-    assert_eq!(unsafe { __isascii_l(0x80, locale) }, 0,);
-    assert_eq!(unsafe { __isascii_l(0x41, locale) }, 1,);
-    assert_eq!(unsafe { __toascii_l(0xFF, locale) }, 0x7F,);
-    assert_eq!(unsafe { __toupper_l(b'a' as c_int, locale) }, b'A' as c_int,);
-    assert_eq!(unsafe { __tolower_l(b'A' as c_int, locale) }, b'a' as c_int,);
+    });
+    assert_eq!(unsafe { __isascii_l(0x80, locale) }, 0);
+    assert_eq!(unsafe { __isascii_l(0x41, locale) }, 1);
+    assert_eq!(unsafe { __toascii_l(0xFF, locale) }, 0x7F);
+    assert_eq!(unsafe { __toupper_l(b'a' as c_int, locale) }, b'A' as c_int);
+    assert_eq!(unsafe { __tolower_l(b'A' as c_int, locale) }, b'a' as c_int);
+}
+
+#[test]
+fn double_underscore_classification_sweep() {
+    let locale = std::ptr::null_mut();
+    for c in 0..=127i32 {
+        assert_eq!(
+            unsafe { __isblank_l(c, locale) },
+            unsafe { isblank_l(c, locale) },
+            "__isblank_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __iscntrl_l(c, locale) },
+            unsafe { iscntrl_l(c, locale) },
+            "__iscntrl_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __isdigit_l(c, locale) },
+            unsafe { isdigit_l(c, locale) },
+            "__isdigit_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __isgraph_l(c, locale) },
+            unsafe { isgraph_l(c, locale) },
+            "__isgraph_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __islower_l(c, locale) },
+            unsafe { islower_l(c, locale) },
+            "__islower_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __isprint_l(c, locale) },
+            unsafe { isprint_l(c, locale) },
+            "__isprint_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __ispunct_l(c, locale) },
+            unsafe { ispunct_l(c, locale) },
+            "__ispunct_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __isspace_l(c, locale) },
+            unsafe { isspace_l(c, locale) },
+            "__isspace_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __isupper_l(c, locale) },
+            unsafe { isupper_l(c, locale) },
+            "__isupper_l mismatch at c={c}"
+        );
+        assert_eq!(
+            unsafe { __isxdigit_l(c, locale) },
+            unsafe { isxdigit_l(c, locale) },
+            "__isxdigit_l mismatch at c={c}"
+        );
+    }
 }
 
 // ===========================================================================

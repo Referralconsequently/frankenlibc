@@ -1,9 +1,9 @@
 #![cfg(target_os = "linux")]
 
-use std::ffi::{CStr, c_void};
+use std::ffi::{CStr, CString, c_void};
 use std::sync::Mutex;
 
-use frankenlibc_abi::dlfcn_abi::{dl_iterate_phdr, dladdr, dlerror};
+use frankenlibc_abi::dlfcn_abi::{dl_iterate_phdr, dladdr, dlclose, dlerror, dlopen, dlsym};
 
 static TEST_GUARD: Mutex<()> = Mutex::new(());
 
@@ -54,5 +54,82 @@ fn dladdr_non_null_inputs_return_zero_and_publish_unavailable_error() {
             err.contains("operation unavailable"),
             "unexpected dlerror payload: {err}"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// dlopen / dlsym / dlclose
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dlopen_null_returns_main_handle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    assert!(
+        !handle.is_null(),
+        "dlopen(NULL, RTLD_NOW) should return main program handle"
+    );
+    unsafe { dlclose(handle) };
+}
+
+#[test]
+fn dlopen_nonexistent_library_returns_null() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let name = CString::new("libnonexistent_zzz_12345.so").unwrap();
+    let handle = unsafe { dlopen(name.as_ptr(), libc::RTLD_NOW) };
+    assert!(handle.is_null(), "dlopen nonexistent library should return NULL");
+
+    let err_ptr = unsafe { dlerror() };
+    assert!(!err_ptr.is_null(), "dlerror should be set after failed dlopen");
+}
+
+#[test]
+fn dlsym_finds_known_symbol() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    assert!(!handle.is_null());
+
+    let sym_name = CString::new("printf").unwrap();
+    let sym = unsafe { dlsym(handle, sym_name.as_ptr()) };
+    // printf should be found in the main program (via libc)
+    assert!(
+        !sym.is_null(),
+        "dlsym should find 'printf' in main handle"
+    );
+
+    unsafe { dlclose(handle) };
+}
+
+#[test]
+fn dlsym_unknown_symbol_returns_null() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    assert!(!handle.is_null());
+
+    let sym_name = CString::new("zzz_nonexistent_symbol_99999").unwrap();
+    let sym = unsafe { dlsym(handle, sym_name.as_ptr()) };
+    assert!(sym.is_null(), "dlsym should return NULL for unknown symbol");
+
+    unsafe { dlclose(handle) };
+}
+
+#[test]
+fn dlclose_null_returns_error() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rc = unsafe { dlclose(std::ptr::null_mut()) };
+    assert_ne!(rc, 0, "dlclose(NULL) should return error");
+}
+
+#[test]
+fn dlerror_returns_null_when_no_error() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    // Clear any pending error
+    unsafe { dlerror() };
+    // A successful dlopen should clear the error
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    if !handle.is_null() {
+        let err = unsafe { dlerror() };
+        assert!(err.is_null(), "dlerror should be NULL after successful dlopen");
+        unsafe { dlclose(handle) };
     }
 }

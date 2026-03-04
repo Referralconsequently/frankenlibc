@@ -10,11 +10,12 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use frankenlibc_abi::stdio_abi::{
-    asprintf, dprintf, fclose, fdopen, fflush, fgetc, fgetc_unlocked, fgetpos, fgetpos64, fgets,
-    fileno, flockfile, fopen, fopen64, fopencookie, fprintf, fputc, fputc_unlocked, fputs, fread,
-    freopen, fseek, fseeko64, fsetpos, fsetpos64, ftello64, ftrylockfile, funlockfile, fwrite,
-    getc, getc_unlocked, getdelim, getline, printf, putc, putc_unlocked, remove as stdio_remove,
-    setbuf, setlinebuf, setvbuf, snprintf, sprintf, tmpfile, tmpnam, ungetc,
+    asprintf, clearerr, dprintf, fclose, fdopen, feof, ferror, fflush, fgetc, fgetc_unlocked,
+    fgetpos, fgetpos64, fgets, fileno, flockfile, fopen, fopen64, fopencookie, fprintf, fputc,
+    fputc_unlocked, fputs, fread, freopen, fseek, fseeko64, fsetpos, fsetpos64, ftell, ftello64,
+    ftrylockfile, funlockfile, fwrite, getc, getc_unlocked, getdelim, getline, mktemp, printf,
+    putc, putc_unlocked, remove as stdio_remove, rewind, setbuf, setlinebuf, setvbuf, snprintf,
+    sprintf, sscanf, tmpfile, tmpnam, ungetc,
 };
 
 const IOFBF: i32 = 0;
@@ -1020,4 +1021,136 @@ fn tmpnam_null_uses_static_buffer() {
     assert!(!p1.is_null());
     let name = unsafe { CStr::from_ptr(p1) };
     assert!(name.to_bytes().starts_with(b"/tmp/"));
+}
+
+// ===========================================================================
+// feof / ferror / clearerr / rewind / ftell
+// ===========================================================================
+
+#[test]
+fn feof_and_ferror_report_stream_state() {
+    let path = temp_path("feof");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let stream = unsafe { fopen(path_c.as_ptr(), c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+
+    // Write a single byte then rewind
+    assert_eq!(unsafe { fputc(b'X' as i32, stream) }, b'X' as i32);
+    assert_eq!(unsafe { fflush(stream) }, 0);
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    // Not at EOF yet
+    assert_eq!(unsafe { feof(stream) }, 0);
+    assert_eq!(unsafe { ferror(stream) }, 0);
+
+    // Read the one byte
+    assert_eq!(unsafe { fgetc(stream) }, b'X' as i32);
+    // Now read past EOF
+    assert_eq!(unsafe { fgetc(stream) }, libc::EOF);
+    // EOF flag should now be set
+    assert_ne!(unsafe { feof(stream) }, 0);
+
+    // clearerr should clear the EOF flag
+    unsafe { clearerr(stream) };
+    assert_eq!(unsafe { feof(stream) }, 0);
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn rewind_and_ftell_position_tracking() {
+    let path = temp_path("rewind");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let stream = unsafe { fopen(path_c.as_ptr(), c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+
+    assert_eq!(unsafe { fputs(c"ABCDE".as_ptr(), stream) }, 0);
+    assert_eq!(unsafe { fflush(stream) }, 0);
+
+    // ftell should report position 5
+    assert_eq!(unsafe { ftell(stream) }, 5);
+
+    // rewind should set position to 0
+    unsafe { rewind(stream) };
+    assert_eq!(unsafe { ftell(stream) }, 0);
+
+    // Should be able to read from the beginning
+    assert_eq!(unsafe { fgetc(stream) }, b'A' as i32);
+    assert_eq!(unsafe { ftell(stream) }, 1);
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+    let _ = fs::remove_file(path);
+}
+
+// ===========================================================================
+// sscanf
+// ===========================================================================
+
+#[test]
+fn sscanf_parses_integers_and_strings() {
+    let input = c"42 hello";
+    let mut num: c_int = 0;
+    let mut buf = [0_i8; 32];
+
+    // SAFETY: format matches arguments.
+    let n = unsafe { sscanf(input.as_ptr(), c"%d %s".as_ptr(), &mut num, buf.as_mut_ptr()) };
+    assert_eq!(n, 2);
+    assert_eq!(num, 42);
+    let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+    assert_eq!(s.to_bytes(), b"hello");
+}
+
+#[test]
+fn sscanf_returns_zero_on_mismatch() {
+    let input = c"not_a_number";
+    let mut num: c_int = -1;
+
+    let n = unsafe { sscanf(input.as_ptr(), c"%d".as_ptr(), &mut num) };
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn sscanf_returns_eof_on_empty_input() {
+    let input = c"";
+    let mut num: c_int = -1;
+
+    let n = unsafe { sscanf(input.as_ptr(), c"%d".as_ptr(), &mut num) };
+    assert!(n <= 0, "sscanf on empty input should return 0 or EOF");
+}
+
+// ===========================================================================
+// mktemp
+// ===========================================================================
+
+#[test]
+fn mktemp_generates_unique_name() {
+    let mut tmpl = *b"/tmp/frankenlibc_XXXXXX\0";
+    let ptr = unsafe { mktemp(tmpl.as_mut_ptr().cast::<c_char>()) };
+    assert!(!ptr.is_null());
+
+    let name = unsafe { CStr::from_ptr(ptr) };
+    let name_str = name.to_string_lossy();
+    // The X's should have been replaced
+    assert!(!name_str.contains("XXXXXX"), "template should be filled: {name_str}");
+    assert!(name_str.starts_with("/tmp/frankenlibc_"));
+}
+
+#[test]
+fn mktemp_consecutive_calls_produce_different_names() {
+    let mut tmpl1 = *b"/tmp/frankenlibc_XXXXXX\0";
+    let mut tmpl2 = *b"/tmp/frankenlibc_XXXXXX\0";
+
+    let p1 = unsafe { mktemp(tmpl1.as_mut_ptr().cast::<c_char>()) };
+    let p2 = unsafe { mktemp(tmpl2.as_mut_ptr().cast::<c_char>()) };
+    assert!(!p1.is_null());
+    assert!(!p2.is_null());
+
+    let n1 = unsafe { CStr::from_ptr(p1) };
+    let n2 = unsafe { CStr::from_ptr(p2) };
+    assert_ne!(n1, n2, "consecutive mktemp calls should produce different names");
 }
