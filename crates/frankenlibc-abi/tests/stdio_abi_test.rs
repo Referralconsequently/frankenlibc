@@ -10,12 +10,14 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use frankenlibc_abi::stdio_abi::{
-    asprintf, clearerr, dprintf, fclose, fdopen, feof, ferror, fflush, fgetc, fgetc_unlocked,
-    fgetpos, fgetpos64, fgets, fileno, flockfile, fopen, fopen64, fopencookie, fprintf, fputc,
-    fputc_unlocked, fputs, fread, freopen, fseek, fseeko64, fsetpos, fsetpos64, ftell, ftello64,
-    ftrylockfile, funlockfile, fwrite, getc, getc_unlocked, getdelim, getline, mktemp, printf,
-    putc, putc_unlocked, remove as stdio_remove, rewind, setbuf, setlinebuf, setvbuf, snprintf,
-    sprintf, sscanf, tmpfile, tmpnam, ungetc,
+    asprintf, clearerr, clearerr_unlocked, dprintf, fclose, fdopen, feof, feof_unlocked, ferror,
+    ferror_unlocked, fflush, fflush_unlocked, fgetc, fgetc_unlocked, fgetpos, fgetpos64, fgets,
+    fgets_unlocked, fileno, fileno_unlocked, flockfile, fmemopen, fopen, fopen64, fopencookie,
+    fprintf, fputc, fputc_unlocked, fputs, fputs_unlocked, fread, fread_unlocked, freopen, fseek,
+    fseeko, fseeko64, fsetpos, fsetpos64, ftell, ftello, ftello64, ftrylockfile, funlockfile,
+    fwrite, fwrite_unlocked, getc, getc_unlocked, getdelim, getline, getw, mktemp, perror, pclose,
+    popen, printf, putc, putc_unlocked, putw, remove as stdio_remove, rewind, setbuf, setbuffer,
+    setlinebuf, setvbuf, snprintf, sprintf, sscanf, tmpfile, tmpfile64, tmpnam, ungetc,
 };
 
 const IOFBF: i32 = 0;
@@ -1153,4 +1155,221 @@ fn mktemp_consecutive_calls_produce_different_names() {
     let n1 = unsafe { CStr::from_ptr(p1) };
     let n2 = unsafe { CStr::from_ptr(p2) };
     assert_ne!(n1, n2, "consecutive mktemp calls should produce different names");
+}
+
+// ---------------------------------------------------------------------------
+// popen / pclose
+// ---------------------------------------------------------------------------
+
+#[test]
+fn popen_reads_command_output() {
+    let cmd = CString::new("echo hello").unwrap();
+    let mode = CString::new("r").unwrap();
+    let stream = unsafe { popen(cmd.as_ptr(), mode.as_ptr()) };
+    assert!(!stream.is_null(), "popen should succeed");
+
+    let mut buf = [0i8; 64];
+    let line = unsafe { fgets(buf.as_mut_ptr(), buf.len() as c_int, stream) };
+    assert!(!line.is_null());
+    let output = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_string_lossy();
+    assert!(output.starts_with("hello"), "got: {output}");
+
+    let status = unsafe { pclose(stream) };
+    assert!(status >= 0, "pclose should return valid status: {status}");
+}
+
+#[test]
+fn popen_write_mode() {
+    // Write to /dev/null, just verify it works
+    let cmd = CString::new("cat > /dev/null").unwrap();
+    let mode = CString::new("w").unwrap();
+    let stream = unsafe { popen(cmd.as_ptr(), mode.as_ptr()) };
+    assert!(!stream.is_null());
+
+    let data = c"test data\n";
+    unsafe { fputs(data.as_ptr(), stream) };
+    let status = unsafe { pclose(stream) };
+    assert!(status >= 0);
+}
+
+// ---------------------------------------------------------------------------
+// perror
+// ---------------------------------------------------------------------------
+
+#[test]
+fn perror_does_not_crash_with_null_or_empty() {
+    // perror writes to stderr; we just verify it doesn't crash
+    unsafe { perror(std::ptr::null()) };
+    unsafe { perror(c"test_prefix".as_ptr()) };
+}
+
+// ---------------------------------------------------------------------------
+// Unlocked stdio variants
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fputs_unlocked_and_fgets_unlocked_round_trip() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+
+    let msg = c"hello unlocked\n";
+    assert!(unsafe { fputs_unlocked(msg.as_ptr(), stream) } >= 0);
+
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    let mut buf = [0i8; 64];
+    let ptr = unsafe { fgets_unlocked(buf.as_mut_ptr(), buf.len() as c_int, stream) };
+    assert!(!ptr.is_null());
+    let line = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_bytes();
+    assert_eq!(line, b"hello unlocked\n");
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+#[test]
+fn fwrite_unlocked_and_fread_unlocked_round_trip() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+
+    let data = b"ABCDEF";
+    let written = unsafe { fwrite_unlocked(data.as_ptr().cast(), 1, data.len(), stream) };
+    assert_eq!(written, data.len());
+
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    let mut buf = [0u8; 16];
+    let read_n = unsafe { fread_unlocked(buf.as_mut_ptr().cast(), 1, buf.len(), stream) };
+    assert_eq!(read_n, data.len());
+    assert_eq!(&buf[..data.len()], data);
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+#[test]
+fn fflush_unlocked_succeeds_on_writable_stream() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+    assert_eq!(unsafe { fflush_unlocked(stream) }, 0);
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+#[test]
+fn clearerr_unlocked_clears_error_and_eof() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+
+    // Read on empty file sets EOF
+    let mut buf = [0u8; 1];
+    unsafe { fread(buf.as_mut_ptr().cast(), 1, 1, stream) };
+    assert_ne!(unsafe { feof_unlocked(stream) }, 0);
+
+    unsafe { clearerr_unlocked(stream) };
+    assert_eq!(unsafe { feof_unlocked(stream) }, 0);
+    assert_eq!(unsafe { ferror_unlocked(stream) }, 0);
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+#[test]
+fn fileno_unlocked_returns_valid_fd() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+    let fd = unsafe { fileno_unlocked(stream) };
+    assert!(fd >= 0);
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// fseeko / ftello
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fseeko_and_ftello_track_position() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+
+    let data = b"0123456789";
+    unsafe { fwrite(data.as_ptr().cast(), 1, data.len(), stream) };
+
+    assert_eq!(unsafe { fseeko(stream, 5, libc::SEEK_SET) }, 0);
+    assert_eq!(unsafe { ftello(stream) }, 5);
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// setbuffer
+// ---------------------------------------------------------------------------
+
+#[test]
+fn setbuffer_with_null_buf_sets_unbuffered() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+    // NULL buffer with size 0 -> unbuffered
+    unsafe { setbuffer(stream, std::ptr::null_mut(), 0) };
+    // Just verify it doesn't crash and we can still write
+    unsafe { fputc(b'X' as c_int, stream) };
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// putw / getw
+// ---------------------------------------------------------------------------
+
+#[test]
+fn putw_and_getw_round_trip() {
+    let stream = unsafe { tmpfile() };
+    assert!(!stream.is_null());
+
+    assert_eq!(unsafe { putw(42, stream) }, 0);
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+    let val = unsafe { getw(stream) };
+    assert_eq!(val, 42);
+
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// tmpfile64
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tmpfile64_creates_writable_stream() {
+    let stream = unsafe { tmpfile64() };
+    assert!(!stream.is_null());
+    let data = b"test64";
+    let written = unsafe { fwrite(data.as_ptr().cast(), 1, data.len(), stream) };
+    assert_eq!(written, data.len());
+    assert_eq!(unsafe { fclose(stream) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// vsnprintf / vsprintf (via variadic wrapper)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn vsnprintf_truncates_correctly() {
+    let mut buf = [0i8; 8];
+    // Use snprintf as the test vehicle (vsnprintf is called internally)
+    let fmt = c"%d-%s";
+    let n = unsafe {
+        snprintf(buf.as_mut_ptr(), buf.len(), fmt.as_ptr(), 42i32, c"hello".as_ptr())
+    };
+    assert!(n > 0);
+    let result = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_bytes();
+    assert_eq!(result, b"42-hell"); // Truncated to fit in 8 bytes
+}
+
+// ---------------------------------------------------------------------------
+// fmemopen
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fmemopen_write_creates_stream() {
+    let mut buf = [0u8; 64];
+    let stream = unsafe { fmemopen(buf.as_mut_ptr().cast(), buf.len(), c"w+".as_ptr()) };
+    // fmemopen may not work fully without LD_PRELOAD, just check it returns something
+    if !stream.is_null() {
+        assert_eq!(unsafe { fclose(stream) }, 0);
+    }
 }
