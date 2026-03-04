@@ -2,7 +2,7 @@
 //!
 //! Provides:
 //! - Hash table: `hcreate`, `hsearch`, `hdestroy`, `hcreate_r`, `hsearch_r`, `hdestroy_r`
-//! - Binary tree: `tsearch`, `tfind`, `tdelete`, `twalk`
+//! - Binary tree: `tsearch`, `tfind`, `tdelete`, `twalk`, `twalk_r`
 //! - Linear search: `lfind`, `lsearch`
 //! - Linked list: `insque`, `remque`
 
@@ -393,6 +393,48 @@ fn twalk_recursive(
         unsafe { action(node_ptr, Visit::Postorder, level) };
         twalk_recursive(right, action, level + 1);
         unsafe { action(node_ptr, Visit::Endorder, level) };
+    }
+}
+
+/// GNU `twalk_r` — traverse a binary tree with closure data (reentrant).
+///
+/// Like `twalk`, but the action callback receives an additional `closure`
+/// pointer, and the `VISIT` enum is passed as a plain `c_int` per the
+/// GNU extension ABI (leaf=0, preorder=1, postorder=2, endorder=3 —
+/// note: glibc actually uses the same `VISIT` enum values mapped to int).
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn twalk_r(
+    root: *const c_void,
+    action: unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void),
+    closure: *mut c_void,
+) {
+    if root.is_null() {
+        return;
+    }
+    twalk_r_recursive(root as *const TreeNode, action, closure, 0);
+}
+
+fn twalk_r_recursive(
+    node: *const TreeNode,
+    action: unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void),
+    closure: *mut c_void,
+    level: c_int,
+) {
+    if node.is_null() {
+        return;
+    }
+    let left = unsafe { (*node).left };
+    let right = unsafe { (*node).right };
+    let node_ptr = node as *const c_void;
+
+    if left.is_null() && right.is_null() {
+        unsafe { action(node_ptr, Visit::Leaf as c_int, level, closure) };
+    } else {
+        unsafe { action(node_ptr, Visit::Preorder as c_int, level, closure) };
+        twalk_r_recursive(left, action, closure, level + 1);
+        unsafe { action(node_ptr, Visit::Postorder as c_int, level, closure) };
+        twalk_r_recursive(right, action, closure, level + 1);
+        unsafe { action(node_ptr, Visit::Endorder as c_int, level, closure) };
     }
 }
 

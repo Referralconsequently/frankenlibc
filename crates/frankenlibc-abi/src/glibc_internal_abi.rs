@@ -6303,16 +6303,65 @@ pub unsafe extern "C" fn __clock_gettime(clock_id: c_int, tp: *mut c_void) -> c_
     unsafe { libc::syscall(libc::SYS_clock_gettime, clock_id, tp) as c_int }
 }
 
-/// `__mktemp` — internal mktemp alias (delegates to host).
+/// `__mktemp` — internal mktemp alias (native).
+///
+/// Replaces trailing `XXXXXX` in `template` with random characters.
+/// Returns `template` on success, or `template` with first byte set to 0 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __mktemp(template: *mut c_char) -> *mut c_char {
-    type F = unsafe extern "C" fn(*mut c_char) -> *mut c_char;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"mktemp".as_ptr()) };
-    if sym.is_null() {
+    if template.is_null() {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
         return template;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(template) }
+    let len = unsafe { libc::strlen(template) };
+    if len < 6 {
+        unsafe {
+            *template = 0;
+            *libc::__errno_location() = libc::EINVAL;
+        }
+        return template;
+    }
+    // Verify last 6 chars are 'X'
+    let suffix_start = len - 6;
+    for i in 0..6 {
+        if unsafe { *template.add(suffix_start + i) } as u8 != b'X' {
+            unsafe {
+                *template = 0;
+                *libc::__errno_location() = libc::EINVAL;
+            }
+            return template;
+        }
+    }
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    // Use getrandom for random bytes
+    let mut rand_bytes = [0u8; 6];
+    let ret = unsafe {
+        libc::syscall(libc::SYS_getrandom, rand_bytes.as_mut_ptr(), 6usize, 0u32)
+    };
+    if ret != 6 {
+        // Fallback: use clock_gettime for entropy
+        let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+        let mut seed = ts.tv_nsec as u64 ^ ts.tv_sec as u64;
+        for b in &mut rand_bytes {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            *b = (seed >> 33) as u8;
+        }
+    }
+    for i in 0..6 {
+        let idx = (rand_bytes[i] as usize) % CHARS.len();
+        unsafe { *template.add(suffix_start + i) = CHARS[idx] as c_char };
+    }
+    // Check that the file doesn't exist (per mktemp spec)
+    let mut statbuf: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::stat(template, &mut statbuf) } == 0 {
+        // File exists — set first byte to 0 and return error
+        unsafe {
+            *template = 0;
+            *libc::__errno_location() = libc::EEXIST;
+        }
+    }
+    template
 }
 
 /// `__sigtimedwait` — internal sigtimedwait alias.
@@ -6429,25 +6478,14 @@ pub unsafe extern "C" fn __twalk(
     unsafe { crate::search_abi::twalk(root, action) }
 }
 
-/// `__twalk_r` — reentrant tree walk with closure data.
+/// `__twalk_r` — reentrant tree walk with closure data (native).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __twalk_r(
     root: *const c_void,
     action: unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void),
     closure: *mut c_void,
 ) {
-    // twalk_r is a GNU extension; walk the tree passing closure data.
-    // Delegate to host glibc since our search_abi doesn't have twalk_r yet.
-    type F = unsafe extern "C" fn(
-        *const c_void,
-        unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void),
-        *mut c_void,
-    );
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"twalk_r".as_ptr()) };
-    if !sym.is_null() {
-        let f: F = unsafe { std::mem::transmute(sym) };
-        unsafe { f(root, action, closure) };
-    }
+    unsafe { crate::search_abi::twalk_r(root, action, closure) }
 }
 
 // ---------------------------------------------------------------------------
@@ -6742,38 +6780,234 @@ pub unsafe extern "C" fn __idna_from_dns_encoding(
 }
 
 // ---------------------------------------------------------------------------
-// ns_name DNS name handling — delegate to host libresolv
+// ns_name DNS name handling — native RFC 1035 implementation
 // ---------------------------------------------------------------------------
 
-/// `__ns_name_ntop` — convert network DNS name to presentation.
+/// Maximum length of a fully-qualified DNS name in wire format (RFC 1035).
+const NS_MAXCDNAME: usize = 255;
+/// Maximum label length (RFC 1035).
+const NS_MAXLABEL: usize = 63;
+/// Compression pointer flag bits.
+const NS_CMPRSFLGS: u8 = 0xC0;
+
+/// `__ns_name_ntop` — convert network (wire-format) DNS name to presentation (dotted) form.
+///
+/// Wire format: sequence of (length, label-bytes) ending with a zero-length label.
+/// Returns the number of bytes written (including NUL), or -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_ntop(
     src: *const u8,
     dst: *mut c_char,
     dstsiz: SizeT,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const u8, *mut c_char, SizeT) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_ntop".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(src, dst, dstsiz) }
+    if src.is_null() || dst.is_null() || dstsiz == 0 {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
+        return -1;
+    }
+    let mut sp = src;
+    let mut dp = 0usize; // index into dst
+    let mut first = true;
+
+    loop {
+        let label_len = unsafe { *sp } as usize;
+        sp = unsafe { sp.add(1) };
+        if label_len == 0 {
+            break;
+        }
+        if label_len > NS_MAXLABEL {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        // Add dot separator between labels
+        if !first {
+            if dp >= dstsiz {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            unsafe { *dst.add(dp) = b'.' as c_char };
+            dp += 1;
+        }
+        first = false;
+        // Copy label bytes, escaping special characters
+        for _ in 0..label_len {
+            let c = unsafe { *sp };
+            sp = unsafe { sp.add(1) };
+            if c == b'.' || c == b'\\' {
+                // Escape dots and backslashes
+                if dp + 2 > dstsiz {
+                    unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                    return -1;
+                }
+                unsafe { *dst.add(dp) = b'\\' as c_char };
+                dp += 1;
+                unsafe { *dst.add(dp) = c as c_char };
+                dp += 1;
+            } else if c < 0x21 || c > 0x7E {
+                // Escape non-printable as \DDD
+                if dp + 4 > dstsiz {
+                    unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                    return -1;
+                }
+                unsafe { *dst.add(dp) = b'\\' as c_char };
+                dp += 1;
+                unsafe { *dst.add(dp) = (b'0' + c / 100) as c_char };
+                dp += 1;
+                unsafe { *dst.add(dp) = (b'0' + (c / 10) % 10) as c_char };
+                dp += 1;
+                unsafe { *dst.add(dp) = (b'0' + c % 10) as c_char };
+                dp += 1;
+            } else {
+                if dp >= dstsiz {
+                    unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                    return -1;
+                }
+                unsafe { *dst.add(dp) = c as c_char };
+                dp += 1;
+            }
+        }
+    }
+    // Handle root domain (empty name)
+    if first {
+        if dp >= dstsiz {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        unsafe { *dst.add(dp) = b'.' as c_char };
+        dp += 1;
+    }
+    // NUL-terminate
+    if dp >= dstsiz {
+        unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+        return -1;
+    }
+    unsafe { *dst.add(dp) = 0 };
+    dp as c_int
 }
 
-/// `__ns_name_pton` — convert presentation DNS name to network.
+/// `__ns_name_pton` — convert presentation (dotted) DNS name to wire format.
+///
+/// Returns the number of bytes written, or -1 on error. Returns 1 if
+/// the input was a fully-qualified name (trailing dot), 0 otherwise.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_pton(
     src: *const c_char,
     dst: *mut u8,
     dstsiz: SizeT,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const c_char, *mut u8, SizeT) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_pton".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(src, dst, dstsiz) }
+    if src.is_null() || dst.is_null() || dstsiz == 0 {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
+        return -1;
+    }
+
+    let mut sp = src;
+    let mut dp = 0usize;
+    let mut label_start = dp;
+    let mut label_len: usize = 0;
+    let mut fully_qualified = false;
+
+    // Reserve space for first label length byte
+    if dp >= dstsiz {
+        unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+        return -1;
+    }
+    dp += 1; // skip label length byte, fill in later
+    label_start = dp - 1;
+
+    loop {
+        let c = unsafe { *sp } as u8;
+        if c == 0 {
+            break;
+        }
+        sp = unsafe { sp.add(1) };
+
+        if c == b'.' {
+            // End of label
+            if label_len == 0 && unsafe { *sp } as u8 == 0 {
+                // Trailing dot = fully qualified
+                fully_qualified = true;
+                break;
+            }
+            if label_len == 0 || label_len > NS_MAXLABEL {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            // Write label length
+            unsafe { *dst.add(label_start) = label_len as u8 };
+            label_len = 0;
+            // Start next label
+            if dp >= dstsiz {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            label_start = dp;
+            dp += 1;
+        } else if c == b'\\' {
+            // Escape sequence
+            let next = unsafe { *sp } as u8;
+            if next >= b'0' && next <= b'9' {
+                // \DDD decimal escape
+                let d1 = (next - b'0') as u16;
+                sp = unsafe { sp.add(1) };
+                let d2 = (unsafe { *sp } as u8 - b'0') as u16;
+                sp = unsafe { sp.add(1) };
+                let d3 = (unsafe { *sp } as u8 - b'0') as u16;
+                sp = unsafe { sp.add(1) };
+                let val = d1 * 100 + d2 * 10 + d3;
+                if val > 255 {
+                    unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                    return -1;
+                }
+                if dp >= dstsiz {
+                    unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                    return -1;
+                }
+                unsafe { *dst.add(dp) = val as u8 };
+                dp += 1;
+                label_len += 1;
+            } else {
+                // \X literal escape
+                if dp >= dstsiz {
+                    unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                    return -1;
+                }
+                unsafe { *dst.add(dp) = next };
+                dp += 1;
+                sp = unsafe { sp.add(1) };
+                label_len += 1;
+            }
+        } else {
+            if dp >= dstsiz {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            unsafe { *dst.add(dp) = c };
+            dp += 1;
+            label_len += 1;
+        }
+    }
+
+    // Write final label length (may be 0 if trailing dot or empty)
+    if label_len > NS_MAXLABEL {
+        unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+        return -1;
+    }
+    unsafe { *dst.add(label_start) = label_len as u8 };
+
+    // Append terminating zero-length label
+    if dp >= dstsiz {
+        unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+        return -1;
+    }
+    unsafe { *dst.add(dp) = 0 };
+
+    if fully_qualified { 1 } else { 0 }
 }
 
-/// `__ns_name_unpack` — unpack compressed DNS name.
+/// `__ns_name_unpack` — unpack compressed DNS name from a message.
+///
+/// Follows RFC 1035 compression pointers (two-byte, top bits 0xC0).
+/// Writes the uncompressed wire-format name to `dst`.
+/// Returns the number of bytes consumed from `src`, or -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_unpack(
     msg: *const u8,
@@ -6782,30 +7016,138 @@ pub unsafe extern "C" fn __ns_name_unpack(
     dst: *mut u8,
     dstsiz: SizeT,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const u8, *const u8, *const u8, *mut u8, SizeT) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_unpack".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(msg, eom, src, dst, dstsiz) }
+    if msg.is_null() || eom.is_null() || src.is_null() || dst.is_null() {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
+        return -1;
+    }
+    let msg_len = unsafe { eom.offset_from(msg) } as usize;
+    let mut sp = src;
+    let mut dp = 0usize;
+    let mut checked = 0usize;
+    let mut save_sp: *const u8 = std::ptr::null();
+    let maxdst = if dstsiz > NS_MAXCDNAME { NS_MAXCDNAME } else { dstsiz };
+
+    loop {
+        if sp >= eom {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        let label_type = unsafe { *sp };
+
+        if (label_type & NS_CMPRSFLGS) == NS_CMPRSFLGS {
+            // Compression pointer
+            if unsafe { sp.add(1) } >= eom {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            let offset = ((label_type as usize & !NS_CMPRSFLGS as usize) << 8)
+                | unsafe { *sp.add(1) } as usize;
+            if offset >= msg_len {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            checked += 2;
+            if checked >= msg_len {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            if save_sp.is_null() {
+                save_sp = unsafe { sp.add(2) };
+            }
+            sp = unsafe { msg.add(offset) };
+        } else if label_type == 0 {
+            // End of name
+            if dp >= maxdst {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            unsafe { *dst.add(dp) = 0 };
+            let consumed = if save_sp.is_null() {
+                unsafe { sp.add(1).offset_from(src) } as c_int
+            } else {
+                unsafe { save_sp.offset_from(src) } as c_int
+            };
+            return consumed;
+        } else {
+            // Regular label
+            let len = label_type as usize;
+            if len > NS_MAXLABEL {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            sp = unsafe { sp.add(1) };
+            if dp + len + 1 > maxdst || unsafe { sp.add(len) } > eom {
+                unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+                return -1;
+            }
+            // Write label: length byte + label bytes
+            unsafe { *dst.add(dp) = len as u8 };
+            dp += 1;
+            unsafe { std::ptr::copy_nonoverlapping(sp, dst.add(dp), len) };
+            dp += len;
+            sp = unsafe { sp.add(len) };
+            if save_sp.is_null() {
+                checked += len + 1;
+            }
+        }
+    }
 }
 
-/// `__ns_name_pack` — pack DNS name with compression.
+/// `__ns_name_pack` — pack DNS name into wire format with optional compression.
+///
+/// `src` is an uncompressed wire-format name (length-prefixed labels).
+/// `dnptrs`/`lastdnptr` are the compression pointer table.
+/// Returns number of bytes written to `dst`, or -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_pack(
     src: *const u8,
     dst: *mut u8,
     dstsiz: c_int,
-    dnptrs: *mut *const u8,
-    lastdnptr: *const *const u8,
+    _dnptrs: *mut *const u8,
+    _lastdnptr: *const *const u8,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const u8, *mut u8, c_int, *mut *const u8, *const *const u8) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_pack".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(src, dst, dstsiz, dnptrs, lastdnptr) }
+    if src.is_null() || dst.is_null() || dstsiz < 0 {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
+        return -1;
+    }
+    // Simple implementation: copy the uncompressed name without compression.
+    // Full compression pointer support would require tracking the output buffer,
+    // but the basic pack is a straight copy of the wire-format name.
+    let dstsiz = dstsiz as usize;
+    let mut sp = src;
+    let mut dp = 0usize;
+
+    loop {
+        let label_len = unsafe { *sp } as usize;
+        if dp >= dstsiz {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        unsafe { *dst.add(dp) = label_len as u8 };
+        dp += 1;
+        if label_len == 0 {
+            break;
+        }
+        if label_len > NS_MAXLABEL {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        sp = unsafe { sp.add(1) };
+        if dp + label_len > dstsiz {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        unsafe { std::ptr::copy_nonoverlapping(sp, dst.add(dp), label_len) };
+        dp += label_len;
+        sp = unsafe { sp.add(label_len) };
+    }
+
+    dp as c_int
 }
 
 /// `__ns_name_uncompress` — uncompress DNS name (wrapper around unpack+ntop).
+///
+/// Returns the number of bytes consumed from src, or -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_uncompress(
     msg: *const u8,
@@ -6814,14 +7156,22 @@ pub unsafe extern "C" fn __ns_name_uncompress(
     dst: *mut c_char,
     dstsiz: SizeT,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const u8, *const u8, *const u8, *mut c_char, SizeT) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_uncompress".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(msg, eom, src, dst, dstsiz) }
+    let mut tmp = [0u8; NS_MAXCDNAME];
+    let consumed = unsafe { __ns_name_unpack(msg, eom, src, tmp.as_mut_ptr(), NS_MAXCDNAME) };
+    if consumed < 0 {
+        return -1;
+    }
+    let ret = unsafe { __ns_name_ntop(tmp.as_ptr(), dst, dstsiz) };
+    if ret < 0 {
+        return -1;
+    }
+    consumed
 }
 
-/// `__ns_name_compress` — compress DNS name.
+/// `__ns_name_compress` — compress DNS name (pton + pack).
+///
+/// Converts presentation name to wire format and packs it.
+/// Returns number of bytes written, or -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_compress(
     src: *const c_char,
@@ -6830,24 +7180,133 @@ pub unsafe extern "C" fn __ns_name_compress(
     dnptrs: *mut *const u8,
     lastdnptr: *const *const u8,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const c_char, *mut u8, SizeT, *mut *const u8, *const *const u8) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_compress".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(src, dst, dstsiz, dnptrs, lastdnptr) }
+    let mut tmp = [0u8; NS_MAXCDNAME];
+    let ret = unsafe { __ns_name_pton(src, tmp.as_mut_ptr(), NS_MAXCDNAME) };
+    if ret < 0 {
+        return -1;
+    }
+    unsafe { __ns_name_pack(tmp.as_ptr(), dst, dstsiz as c_int, dnptrs, lastdnptr) }
 }
 
-/// `__ns_name_skip` — skip over a compressed DNS name.
+/// `__ns_name_skip` — skip over a compressed DNS name in a message.
+///
+/// Advances `*ptrptr` past the name. Returns 0 on success, -1 on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ns_name_skip(
     ptrptr: *mut *const u8,
     eom: *const u8,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut *const u8, *const u8) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ns_name_skip".as_ptr()) };
-    if sym.is_null() { return -1; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(ptrptr, eom) }
+    if ptrptr.is_null() || eom.is_null() {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
+        return -1;
+    }
+    let mut cp = unsafe { *ptrptr };
+
+    loop {
+        if cp >= eom {
+            unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+            return -1;
+        }
+        let label_type = unsafe { *cp };
+
+        if (label_type & NS_CMPRSFLGS) == NS_CMPRSFLGS {
+            // Compression pointer — skip 2 bytes and done
+            cp = unsafe { cp.add(2) };
+            break;
+        } else if label_type == 0 {
+            // End of name — skip the zero byte
+            cp = unsafe { cp.add(1) };
+            break;
+        } else {
+            // Regular label — skip length + label bytes
+            let len = label_type as usize;
+            cp = unsafe { cp.add(1 + len) };
+        }
+    }
+
+    if cp > eom {
+        unsafe { *libc::__errno_location() = libc::EMSGSIZE };
+        return -1;
+    }
+
+    unsafe { *ptrptr = cp };
+    0
+}
+
+/// `__ns_name_uncompressed_p` — check if a DNS name has no compression pointers.
+///
+/// Returns 1 if the name at `src` contains no compression pointers, 0 otherwise.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __ns_name_uncompressed_p(
+    msg: *const u8,
+    eom: *const u8,
+    src: *const u8,
+) -> c_int {
+    if msg.is_null() || eom.is_null() || src.is_null() {
+        return 0;
+    }
+    let _ = msg; // msg is not needed for this check
+    let mut cp = src;
+
+    loop {
+        if cp >= eom {
+            return 0;
+        }
+        let label_type = unsafe { *cp };
+        if (label_type & NS_CMPRSFLGS) != 0 {
+            // Found a compression pointer
+            return 0;
+        }
+        if label_type == 0 {
+            // End of name — no compression found
+            return 1;
+        }
+        let len = label_type as usize;
+        cp = unsafe { cp.add(1 + len) };
+    }
+}
+
+/// `__ns_samename` — compare two DNS names case-insensitively.
+///
+/// Returns 1 if same, 0 if different, -1 on error.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn __ns_samename(
+    a: *const c_char,
+    b: *const c_char,
+) -> c_int {
+    if a.is_null() || b.is_null() {
+        unsafe { *libc::__errno_location() = libc::EINVAL };
+        return -1;
+    }
+    // Compare presentation-form DNS names case-insensitively,
+    // ignoring trailing dots.
+    let mut ap = a;
+    let mut bp = b;
+
+    loop {
+        let ac = unsafe { *ap } as u8;
+        let bc = unsafe { *bp } as u8;
+
+        // Handle end of both strings
+        if ac == 0 && bc == 0 {
+            return 1;
+        }
+        // Handle trailing dot normalization
+        if ac == b'.' && unsafe { *ap.add(1) } as u8 == 0 && bc == 0 {
+            return 1;
+        }
+        if bc == b'.' && unsafe { *bp.add(1) } as u8 == 0 && ac == 0 {
+            return 1;
+        }
+        // Compare case-insensitively
+        let ac_lower = if ac >= b'A' && ac <= b'Z' { ac + 32 } else { ac };
+        let bc_lower = if bc >= b'A' && bc <= b'Z' { bc + 32 } else { bc };
+        if ac_lower != bc_lower {
+            return 0;
+        }
+        ap = unsafe { ap.add(1) };
+        bp = unsafe { bp.add(1) };
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -6964,18 +7423,51 @@ pub unsafe extern "C" fn __merge_grp(
     unsafe { f(dest, src, buf, buflen, result) }
 }
 
-/// `__shm_get_name` — construct POSIX shared memory path.
+/// `__shm_get_name` — construct POSIX shared memory path (native).
+///
+/// Constructs "/dev/shm/<name>" in `buf`. Returns 0 on success, or errno on error.
+/// Per glibc convention, `name` must not be empty, must not contain '/',
+/// and must not be "." or "..".
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __shm_get_name(
     buf: *mut c_void,
     buflen: SizeT,
     name: *const c_char,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, SizeT, *const c_char) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__shm_get_name".as_ptr()) };
-    if sym.is_null() { return libc::ENOSYS; }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(buf, buflen, name) }
+    const SHM_DIR: &[u8] = b"/dev/shm/";
+
+    if buf.is_null() || name.is_null() {
+        return libc::EINVAL;
+    }
+    let name_len = unsafe { libc::strlen(name) };
+    if name_len == 0 {
+        return libc::EINVAL;
+    }
+    // Reject "." and ".."
+    if name_len == 1 && unsafe { *name } as u8 == b'.' {
+        return libc::EINVAL;
+    }
+    if name_len == 2 && unsafe { *name } as u8 == b'.' && unsafe { *name.add(1) } as u8 == b'.' {
+        return libc::EINVAL;
+    }
+    // Reject names containing '/'
+    for i in 0..name_len {
+        if unsafe { *name.add(i) } as u8 == b'/' {
+            return libc::EINVAL;
+        }
+    }
+    // Check that the full path fits
+    let total_len = SHM_DIR.len() + name_len + 1; // +1 for NUL
+    if total_len > buflen {
+        return libc::ENAMETOOLONG;
+    }
+    let dst = buf as *mut u8;
+    unsafe {
+        std::ptr::copy_nonoverlapping(SHM_DIR.as_ptr(), dst, SHM_DIR.len());
+        std::ptr::copy_nonoverlapping(name as *const u8, dst.add(SHM_DIR.len()), name_len);
+        *dst.add(SHM_DIR.len() + name_len) = 0;
+    }
+    0
 }
 
 /// `__netlink_assert_response` — assert valid netlink response. GLIBC_PRIVATE.
