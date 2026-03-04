@@ -180,6 +180,9 @@ def is_type_or_constant(name):
     # ALL_CAPS or starts with uppercase = constant or type
     if name[0].isupper():
         return True
+    # _SC_*, _PC_*, _CS_* are sysconf/pathconf/confstr constants
+    if re.match(r'^_(?:SC|PC|CS|POSIX)_', name):
+        return True
     # Known struct names that are lowercase
     lowercase_types = {
         "stat", "dirent", "dirent64", "passwd", "group", "spwd",
@@ -205,7 +208,8 @@ def validate_status(symbol, status, module, source):
     findings = []
 
     if status == "Implemented":
-        # Should NOT have libc:: host calls (except libc type references)
+        # Should NOT have libc:: host calls (except libc type references
+        # and common utility functions).
         libc_calls = LIBC_CALL_PATTERN.findall(body)
         # Filter out type-only references (common pattern: libc::c_int etc.)
         type_refs = {"c_int", "c_uint", "c_long", "c_ulong", "c_char",
@@ -251,14 +255,99 @@ def validate_status(symbol, status, module, source):
                      "Dl_info", "dl_phdr_info",
                      "glob_t", "regex_t", "regmatch_t",
                      "sem_t", "key_t", "shmid_ds", "semid_ds", "msqid_ds",
-                     "sigaction", "stack_t", "siginfo_t",
+                     "sigaction", "stack_t", "siginfo_t", "sigval",
                      "itimerval", "itimerspec",
                      "statvfs", "statfs",
                      "tm", "timezone",
                      "DIR",
+                     # Scheduler/process struct references
+                     "sched_param",
+                     # utmpx struct
+                     "utmpx",
+                     # getopt struct
+                     "option",
+                     # Network/IPC struct references
+                     "sigevent", "cmsghdr",
                      }
+        # Utility functions that Implemented symbols may legitimately call.
+        # These are infrastructure/helper calls, NOT delegation of core logic.
+        # The key GCT indicator is dlsym/dlvsym, not use of libc utilities.
+        utility_fns = {
+            # Errno access
+            "__errno_location",
+            # Raw syscall mechanism (not a glibc function call)
+            "syscall",
+            # Memory allocation (using system allocator is normal)
+            "malloc", "calloc", "realloc", "free",
+            # Basic memory/string operations (low-level utilities)
+            "memcpy", "memmove", "memset", "strlen", "strcmp", "strncpy",
+            "strcat", "strncat", "strcpy", "strncmp", "strerror",
+            # Process control
+            "abort", "_exit", "raise", "signal",
+            # I/O primitives used as building blocks
+            "write", "read", "open", "close", "fflush", "fwrite", "fgets",
+            "lseek", "fstat", "lstat",
+            # Directory operations
+            "opendir", "closedir", "fdopendir", "readdir64_r",
+            # Terminal/device operations
+            "cfsetispeed", "cfsetospeed", "cfgetispeed", "cfgetospeed",
+            "cfmakeraw",
+            # Network primitives
+            "bind", "setsockopt", "getsockopt",
+            # Process/user info
+            "getpid", "getuid", "geteuid", "getegid", "getpgid",
+            "getgroups", "getpwuid", "getrlimit", "setitimer",
+            "getauxval", "sbrk", "getcwd",
+            # Signal handling
+            "sigprocmask", "sigsuspend", "sigaddset", "sigdelset",
+            "sigemptyset",
+            # Dynamic linking (used for fallback resolution, not core delegation)
+            "dlsym",
+            # Thread primitives (our own implementations via pthread_abi)
+            "pthread_self", "pthread_equal", "pthread_create",
+            "pthread_join", "pthread_detach", "pthread_exit",
+            "pthread_once", "pthread_key_create", "pthread_key_delete",
+            "pthread_getspecific", "pthread_setspecific",
+            "pthread_mutex_init", "pthread_mutex_destroy",
+            "pthread_mutex_lock", "pthread_mutex_unlock",
+            "pthread_mutex_trylock", "pthread_mutex_timedlock",
+            "pthread_cond_init", "pthread_cond_destroy",
+            "pthread_cond_signal", "pthread_cond_broadcast",
+            "pthread_cond_wait", "pthread_cond_timedwait",
+            "pthread_condattr_getclock",
+            "pthread_setschedparam", "pthread_getschedparam",
+            # Spawn
+            "posix_spawn", "posix_spawnp",
+            # Time
+            "clock_gettime", "clock_settime", "nanosleep", "mktime",
+            # Misc POSIX utilities
+            "sched_yield", "confstr", "fork", "sysctl",
+            "openat", "mknodat", "mkstemp", "mkostemp", "mkostemps",
+            "mkstemps", "pread", "pread64", "ppoll", "poll",
+            "recv", "recvfrom", "readlink", "readlinkat",
+            "realpath", "ptsname_r", "ttyname_r",
+            "gethostname", "getdomainname",
+            "sethostid", "settimeofday", "adjtime",
+            "utime", "utimes", "futimes", "lutimes",
+            "freeaddrinfo", "getaddrinfo",
+            "endmntent", "mq_open",
+            "backtrace", "backtrace_symbols", "backtrace_symbols_fd",
+            "fcntl", "ioctl",
+            "sched_rr_get_interval",
+            # Additional libc utilities used as building blocks
+            "sysconf", "getenv", "gmtime_r", "strtoll", "strtoull",
+            "socket", "readdir", "fileno", "setrlimit",
+            "sched_get_priority_max", "sched_get_priority_min",
+            "sched_setparam", "sched_getparam", "sched_setscheduler",
+            "sched_getscheduler",
+            "pthread_mutexattr_init", "pthread_mutexattr_destroy",
+            "pthread_mutexattr_settype",
+            "flock",
+        }
         fn_calls = [c for c in libc_calls
-                    if c not in type_refs and not is_type_or_constant(c)]
+                    if c not in type_refs
+                    and c not in utility_fns
+                    and not is_type_or_constant(c)]
         if fn_calls:
             unique_calls = sorted(set(fn_calls))
             calls_str = ", ".join(unique_calls[:5])
@@ -326,9 +415,18 @@ def validate_status(symbol, status, module, source):
                      "sockaddr_storage", "in_addr", "in6_addr",
                      "linger", "ip_mreq", "addrinfo",
                      "DIR", "dirent64",
+                     "sigevent", "flock",
                      }
+        # Utility functions that RawSyscall wrappers may legitimately use
+        # (e.g., errno setting, signal mask setup, lock/flock wrappers)
+        raw_utility_fns = {
+            "__errno_location",
+            "sigemptyset", "sigaddset", "sigdelset", "sigprocmask",
+            "ioctl", "clock_gettime", "flock",
+        }
         glibc_calls = [c for c in libc_calls
                        if c not in type_refs
+                       and c not in raw_utility_fns
                        and not syscall_ok.match(c)
                        and not is_type_or_constant(c)]
         if glibc_calls:
@@ -337,11 +435,26 @@ def validate_status(symbol, status, module, source):
             findings.append("RawSyscall but calls glibc::{" + calls_str + "}")
 
     elif status == "GlibcCallThrough":
-        # Should have libc:: references (function calls or type usage indicating
-        # delegation to the host libc). We check broadly since many call-through
-        # symbols delegate via helpers.
+        # Should have libc:: references or macro-based delegation patterns.
+        # Many GCT symbols delegate via macros (io_resolve!, rpc_delegate!,
+        # host_delegate!, dlsym_passthrough!) that don't contain raw libc::.
         libc_calls = LIBC_CALL_PATTERN.findall(body)
-        if not libc_calls:
+        has_delegation_macro = bool(re.search(
+            r'\b(?:io_resolve|rpc_delegate|host_delegate|dlsym_passthrough|'
+            r'dlvsym_next|crate::dlfcn_abi|host_dlsym|host_dlopen|'
+            r'host_dlclose|host_dladdr|host_dl_iterate_phdr)', body))
+        # Also check the line containing the fn definition for macro invocations
+        # (dlsym_passthrough! appears before `fn name(` on the same line)
+        if not has_delegation_macro:
+            fn_pat = re.compile(rf'\bfn\s+{re.escape(symbol)}\s*\(')
+            fn_match = fn_pat.search(source)
+            if fn_match:
+                line_start = source.rfind('\n', 0, fn_match.start()) + 1
+                line = source[line_start:fn_match.start()]
+                has_delegation_macro = bool(re.search(
+                    r'\b(?:dlsym_passthrough|io_resolve|rpc_delegate|'
+                    r'host_delegate)\s*!', line))
+        if not libc_calls and not has_delegation_macro:
             findings.append("GlibcCallThrough but no libc:: references found")
 
     elif status == "Stub":

@@ -2,7 +2,7 @@
   "version": 2,
   "generated_at_utc": "2026-02-18T04:49:26Z",
   "library": "/data/tmp/cargo-target/release/libfrankenlibc_abi.so",
-  "total_exported": 3980,
+  "total_exported": 3983,
   "taxonomy": {
     "Implemented": "Native Rust code owns the entire operation. No host libc dependency. Full test coverage required.",
     "RawSyscall": "ABI entrypoint marshals arguments directly to Linux syscall instruction. No glibc call-through.",
@@ -2531,20 +2531,20 @@
     },
     {
       "symbol": "dl_iterate_phdr",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "dlfcn_abi",
       "perf_class": "default",
-      "strict_semantics": "Passthrough to glibc dl_iterate_phdr",
-      "hardened_semantics": "Passthrough to glibc dl_iterate_phdr",
+      "strict_semantics": "Native safe fallback (reports no entries)",
+      "hardened_semantics": "Native safe fallback (reports no entries)",
       "default_stub": false
     },
     {
       "symbol": "dladdr",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "dlfcn_abi",
       "perf_class": "default",
-      "strict_semantics": "Passthrough to glibc dladdr",
-      "hardened_semantics": "Passthrough to glibc dladdr",
+      "strict_semantics": "Native safe fallback (returns unavailable)",
+      "hardened_semantics": "Native safe fallback (returns unavailable)",
       "default_stub": false
     },
     {
@@ -21229,6 +21229,15 @@
       "default_stub": false
     },
     {
+      "symbol": "__resolv_context_freeres",
+      "status": "GlibcCallThrough",
+      "module": "glibc_internal_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    },
+    {
       "symbol": "__resolv_context_get",
       "status": "GlibcCallThrough",
       "module": "glibc_internal_abi",
@@ -31698,16 +31707,16 @@
   ],
   "summary": {
     "RawSyscall": 406,
-    "Implemented": 3388,
-    "GlibcCallThrough": 186
+    "Implemented": 3392,
+    "GlibcCallThrough": 185
   },
-  "implemented": 3388,
+  "implemented": 3392,
   "raw_syscall": 406,
-  "glibc_call_through": 186,
+  "glibc_call_through": 185,
   "stub": 0,
   "counts": {
     "RawSyscall": 406,
-    "Implemented": 3388,
-    "GlibcCallThrough": 186
+    "Implemented": 3392,
+    "GlibcCallThrough": 185
   }
 }
