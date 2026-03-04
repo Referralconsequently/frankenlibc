@@ -24,7 +24,7 @@
 use core::hint::spin_loop;
 use core::marker::PhantomData;
 use core::mem::{MaybeUninit, size_of};
-use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering, fence};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering, fence};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -34,8 +34,12 @@ use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering, fence};
 /// Matches TLS_TABLE_SLOTS from tls.rs for consistency.
 const MAX_RCU_THREADS: usize = 256;
 
-/// Sentinel value indicating an unregistered slot.
+/// Sentinel value indicating a never-used slot (terminates probe chains).
 const SLOT_EMPTY: u32 = 0;
+
+/// Sentinel value indicating a previously-used slot (probe chains continue
+/// past tombstones, but new registrations can reclaim them).
+const SLOT_TOMBSTONE: u32 = u32::MAX;
 
 /// Sentinel epoch value for offline (unregistered or quiescent) threads.
 const EPOCH_OFFLINE: u64 = 0;
@@ -55,7 +59,10 @@ const SEQLOCK_LANES: usize = SEQLOCK_MAX_BYTES / SEQLOCK_LANE_BYTES;
 /// Each registered thread has one slot. The `epoch` field is updated
 /// by the reader at quiescent points and read by writers during
 /// `synchronize_rcu()`.
-#[repr(C)]
+///
+/// Layout: tid (4 bytes) + alignment padding (4 bytes) + epoch (8 bytes) = 16
+/// bytes of data before explicit padding. Total must equal CACHE_LINE (64).
+#[repr(C, align(64))]
 struct ReaderSlot {
     /// Thread ID that owns this slot (0 = empty).
     tid: AtomicU32,
@@ -63,8 +70,9 @@ struct ReaderSlot {
     /// read-side critical section or when the thread is unregistered.
     epoch: AtomicU64,
     /// Padding to fill a cache line (64 bytes).
-    /// tid (4) + epoch (8) = 12 bytes; need 52 bytes of padding.
-    _pad: [u8; CACHE_LINE - 12],
+    /// tid (4) + implicit alignment pad (4) + epoch (8) = 16 bytes;
+    /// need 48 bytes of explicit padding.
+    _pad: [u8; CACHE_LINE - 16],
 }
 
 impl ReaderSlot {
@@ -72,7 +80,7 @@ impl ReaderSlot {
         Self {
             tid: AtomicU32::new(SLOT_EMPTY),
             epoch: AtomicU64::new(EPOCH_OFFLINE),
-            _pad: [0u8; CACHE_LINE - 12],
+            _pad: [0u8; CACHE_LINE - 16],
         }
     }
 }
@@ -130,6 +138,9 @@ static CB_WRITE_IDX: AtomicUsize = AtomicUsize::new(0);
 /// Read index into the callback queue (for processing completed callbacks).
 static CB_READ_IDX: AtomicUsize = AtomicUsize::new(0);
 
+/// Guard flag to prevent concurrent callback processing (double-invoke).
+static CB_PROCESSING: AtomicBool = AtomicBool::new(false);
+
 // ---------------------------------------------------------------------------
 // Reader-side API
 // ---------------------------------------------------------------------------
@@ -142,11 +153,13 @@ static CB_READ_IDX: AtomicUsize = AtomicUsize::new(0);
 /// Thread registration is idempotent: re-registering the same TID returns
 /// the existing slot.
 pub fn rcu_register_thread(tid: u32) -> Result<usize, i32> {
-    if tid == SLOT_EMPTY {
+    if tid == SLOT_EMPTY || tid == SLOT_TOMBSTONE {
         return Err(crate::errno::EINVAL);
     }
-    // First check if already registered.
     let start = (tid as usize) % MAX_RCU_THREADS;
+    // Track the first tombstone we see so we can reuse it if tid is not
+    // already registered.
+    let mut first_tombstone: Option<usize> = None;
     for i in 0..MAX_RCU_THREADS {
         let idx = (start + i) % MAX_RCU_THREADS;
         let slot_tid = READER_SLOTS[idx].tid.load(Ordering::Acquire);
@@ -154,10 +167,24 @@ pub fn rcu_register_thread(tid: u32) -> Result<usize, i32> {
             // Already registered, return existing slot.
             return Ok(idx);
         }
+        if slot_tid == SLOT_TOMBSTONE {
+            // Remember first tombstone but keep probing — the tid might
+            // exist further along the probe chain.
+            if first_tombstone.is_none() {
+                first_tombstone = Some(idx);
+            }
+            continue;
+        }
         if slot_tid == SLOT_EMPTY {
-            // Try to claim this slot.
-            match READER_SLOTS[idx].tid.compare_exchange(
-                SLOT_EMPTY,
+            // End of probe chain. Prefer reclaiming an earlier tombstone.
+            let claim_idx = first_tombstone.unwrap_or(idx);
+            let expected = if first_tombstone.is_some() {
+                SLOT_TOMBSTONE
+            } else {
+                SLOT_EMPTY
+            };
+            match READER_SLOTS[claim_idx].tid.compare_exchange(
+                expected,
                 tid,
                 Ordering::AcqRel,
                 Ordering::Acquire,
@@ -165,17 +192,38 @@ pub fn rcu_register_thread(tid: u32) -> Result<usize, i32> {
                 Ok(_) => {
                     // Initialize epoch to current global (online).
                     let ge = GLOBAL_EPOCH.load(Ordering::Acquire);
-                    READER_SLOTS[idx].epoch.store(ge, Ordering::Release);
+                    READER_SLOTS[claim_idx].epoch.store(ge, Ordering::Release);
                     REGISTERED_COUNT.fetch_add(1, Ordering::AcqRel);
-                    return Ok(idx);
+                    return Ok(claim_idx);
                 }
                 Err(actual) => {
                     // Someone else grabbed it. Check if it's us.
                     if actual == tid {
-                        return Ok(idx);
+                        return Ok(claim_idx);
                     }
                     // Continue probing.
                     continue;
+                }
+            }
+        }
+    }
+    // Full table scan with no empty slot found; try tombstone if available.
+    if let Some(tomb_idx) = first_tombstone {
+        match READER_SLOTS[tomb_idx].tid.compare_exchange(
+            SLOT_TOMBSTONE,
+            tid,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => {
+                let ge = GLOBAL_EPOCH.load(Ordering::Acquire);
+                READER_SLOTS[tomb_idx].epoch.store(ge, Ordering::Release);
+                REGISTERED_COUNT.fetch_add(1, Ordering::AcqRel);
+                return Ok(tomb_idx);
+            }
+            Err(actual) => {
+                if actual == tid {
+                    return Ok(tomb_idx);
                 }
             }
         }
@@ -188,7 +236,7 @@ pub fn rcu_register_thread(tid: u32) -> Result<usize, i32> {
 /// After unregistration, the thread is implicitly quiescent — writers
 /// will not wait for it during grace periods.
 pub fn rcu_unregister_thread(tid: u32) -> Result<(), i32> {
-    if tid == SLOT_EMPTY {
+    if tid == SLOT_EMPTY || tid == SLOT_TOMBSTONE {
         return Err(crate::errno::EINVAL);
     }
     let start = (tid as usize) % MAX_RCU_THREADS;
@@ -200,7 +248,11 @@ pub fn rcu_unregister_thread(tid: u32) -> Result<(), i32> {
             READER_SLOTS[idx]
                 .epoch
                 .store(EPOCH_OFFLINE, Ordering::Release);
-            READER_SLOTS[idx].tid.store(SLOT_EMPTY, Ordering::Release);
+            // Use tombstone instead of SLOT_EMPTY to preserve linear probe
+            // chains for downstream entries.
+            READER_SLOTS[idx]
+                .tid
+                .store(SLOT_TOMBSTONE, Ordering::Release);
             REGISTERED_COUNT.fetch_sub(1, Ordering::AcqRel);
             return Ok(());
         }
@@ -208,6 +260,7 @@ pub fn rcu_unregister_thread(tid: u32) -> Result<(), i32> {
             // Not found — was never registered or already unregistered.
             return Ok(());
         }
+        // SLOT_TOMBSTONE: keep probing.
     }
     Ok(())
 }
@@ -235,6 +288,7 @@ pub fn rcu_quiescent_state(tid: u32) {
         if slot_tid == SLOT_EMPTY {
             return; // Not registered.
         }
+        // SLOT_TOMBSTONE: keep probing.
     }
 }
 
@@ -289,8 +343,8 @@ pub fn synchronize_rcu() {
     for slot in &READER_SLOTS {
         loop {
             let slot_tid = slot.tid.load(Ordering::Acquire);
-            if slot_tid == SLOT_EMPTY {
-                break; // Empty slot, skip.
+            if slot_tid == SLOT_EMPTY || slot_tid == SLOT_TOMBSTONE {
+                break; // Empty or tombstone slot, skip.
             }
             let reader_epoch = slot.epoch.load(Ordering::Acquire);
             if reader_epoch == EPOCH_OFFLINE || reader_epoch >= new_epoch {
@@ -356,6 +410,15 @@ pub unsafe fn call_rcu(func: fn(usize), arg: usize) -> Result<(), i32> {
 /// The caller must ensure `call_rcu` was called with valid function pointers.
 #[allow(unsafe_code)]
 pub fn process_rcu_callbacks() {
+    // Only one thread may process callbacks at a time to prevent
+    // double-invocation of freed callbacks (e.g., double-free).
+    if CB_PROCESSING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
     let min_epoch = min_reader_epoch();
     let read_idx = CB_READ_IDX.load(Ordering::Acquire);
     let write_idx = CB_WRITE_IDX.load(Ordering::Acquire);
@@ -393,6 +456,7 @@ pub fn process_rcu_callbacks() {
         current += 1;
     }
     CB_READ_IDX.store(current, Ordering::Release);
+    CB_PROCESSING.store(false, Ordering::Release);
 }
 
 /// Return the minimum epoch across all registered readers.
@@ -402,7 +466,7 @@ fn min_reader_epoch() -> u64 {
     let mut min = u64::MAX;
     for slot in &READER_SLOTS {
         let slot_tid = slot.tid.load(Ordering::Acquire);
-        if slot_tid == SLOT_EMPTY {
+        if slot_tid == SLOT_EMPTY || slot_tid == SLOT_TOMBSTONE {
             continue;
         }
         let epoch = slot.epoch.load(Ordering::Acquire);
@@ -1009,7 +1073,10 @@ mod tests {
         let idx = rcu_register_thread(400).unwrap();
         assert_eq!(REGISTERED_COUNT.load(Ordering::Acquire), 1);
         rcu_unregister_thread(400).unwrap();
-        assert_eq!(READER_SLOTS[idx].tid.load(Ordering::Acquire), SLOT_EMPTY);
+        assert_eq!(
+            READER_SLOTS[idx].tid.load(Ordering::Acquire),
+            SLOT_TOMBSTONE
+        );
         assert_eq!(
             READER_SLOTS[idx].epoch.load(Ordering::Acquire),
             EPOCH_OFFLINE

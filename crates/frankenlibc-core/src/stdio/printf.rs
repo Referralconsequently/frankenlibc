@@ -472,6 +472,12 @@ pub fn format_float(value: f64, spec: &FormatSpec, buf: &mut Vec<u8>) {
             spec.conversion.is_ascii_uppercase(),
             spec.flags.alt_form,
         ),
+        b'a' => format_a(
+            abs,
+            precision,
+            spec.conversion.is_ascii_uppercase(),
+            spec.flags.alt_form,
+        ),
         _ => format_f(abs, precision, spec.flags.alt_form),
     };
 
@@ -661,18 +667,20 @@ fn format_f(value: f64, precision: usize, alt_form: bool) -> String {
 }
 
 /// `%e` / `%E` formatting: scientific notation.
-fn format_e(value: f64, precision: usize, uppercase: bool, _alt_form: bool) -> String {
+fn format_e(value: f64, precision: usize, uppercase: bool, alt_form: bool) -> String {
+    let e_char = if uppercase { 'E' } else { 'e' };
     if value == 0.0 {
-        let e_char = if uppercase { 'E' } else { 'e' };
         if precision == 0 {
-            return alloc::format!("0{e_char}+00");
+            let dot = if alt_form { "." } else { "" };
+            return alloc::format!("0{dot}{e_char}+00");
         }
         let zeros: String = core::iter::repeat_n('0', precision).collect();
         return alloc::format!("0.{zeros}{e_char}+00");
     }
-    let exp = value.log10().floor() as i32;
-    // For subnormal floats, 10^exp can underflow to 0.0. Use iterative scaling instead.
-    let mantissa = if exp.abs() > 300 {
+    // Use log10 + floor to compute the exponent, then correct for rounding
+    // edge cases (e.g., log10(1e15) might yield 14.999… instead of 15).
+    let mut exp = value.log10().floor() as i32;
+    let mut mantissa = if exp.abs() > 300 {
         let mut m = value;
         if exp > 0 {
             for _ in 0..exp {
@@ -687,11 +695,27 @@ fn format_e(value: f64, precision: usize, uppercase: bool, _alt_form: bool) -> S
     } else {
         value / 10_f64.powi(exp)
     };
-    let e_char = if uppercase { 'E' } else { 'e' };
+    // Correct log10 imprecision: mantissa should be in [1.0, 10.0).
+    if mantissa >= 10.0 {
+        mantissa /= 10.0;
+        exp += 1;
+    } else if mantissa < 1.0 && mantissa > 0.0 {
+        mantissa *= 10.0;
+        exp -= 1;
+    }
+    // Handle rounding carry: rounding the formatted mantissa may push it to 10.
+    let scale = 10_f64.powi(precision as i32);
+    let rounded_mantissa = (mantissa * scale).round() / scale;
+    if rounded_mantissa >= 10.0 {
+        mantissa = rounded_mantissa / 10.0;
+        exp += 1;
+    }
     let sign = if exp < 0 { '-' } else { '+' };
     let abs_exp = exp.unsigned_abs();
     if precision == 0 {
-        alloc::format!("{}{e_char}{sign}{abs_exp:02}", mantissa.round() as u64)
+        let digit = mantissa.round() as u64;
+        let dot = if alt_form { "." } else { "" };
+        alloc::format!("{digit}{dot}{e_char}{sign}{abs_exp:02}")
     } else {
         alloc::format!(
             "{:.prec$}{e_char}{sign}{abs_exp:02}",
@@ -738,6 +762,92 @@ fn format_g(value: f64, precision: usize, uppercase: bool, alt_form: bool) -> St
             }
         }
         s
+    }
+}
+
+/// `%a` / `%A` formatting: hexadecimal floating-point.
+///
+/// Produces output of the form `0xh.hhhhp±d` where `h` are hex digits and
+/// `d` is the binary exponent in decimal.
+fn format_a(value: f64, precision: usize, uppercase: bool, alt_form: bool) -> String {
+    let p_char = if uppercase { 'P' } else { 'p' };
+    let hex_alpha = if uppercase { b'A' } else { b'a' };
+
+    if value == 0.0 {
+        let prefix = if uppercase { "0X" } else { "0x" };
+        if precision == 0 && !alt_form {
+            return alloc::format!("{prefix}0{p_char}+0");
+        }
+        let prec = if precision == 0 { 0 } else { precision };
+        if prec == 0 {
+            return alloc::format!("{prefix}0.{p_char}+0");
+        }
+        let zeros: String = core::iter::repeat_n('0', prec).collect();
+        return alloc::format!("{prefix}0.{zeros}{p_char}+0");
+    }
+
+    let bits = value.to_bits();
+    let mantissa_bits = bits & 0x000F_FFFF_FFFF_FFFF;
+    let biased_exp = ((bits >> 52) & 0x7FF) as i32;
+
+    let (lead_digit, bin_exp) = if biased_exp == 0 {
+        // Subnormal: leading digit is 0, exponent is -1022.
+        (0u8, -1022i32)
+    } else {
+        // Normal: leading digit is 1, exponent is biased_exp - 1023.
+        (1u8, biased_exp - 1023)
+    };
+
+    // The 52-bit mantissa gives 13 hex digits of fractional part.
+    let default_prec = 13;
+    let prec = if precision == 0 && !alt_form {
+        // When precision is unspecified (0 default), use enough digits to
+        // represent the value exactly.
+        if mantissa_bits == 0 {
+            0
+        } else {
+            // Strip trailing zero nibbles.
+            let mut trailing = 0;
+            let mut m = mantissa_bits;
+            while m & 0xF == 0 && trailing < default_prec {
+                m >>= 4;
+                trailing += 1;
+            }
+            default_prec - trailing
+        }
+    } else {
+        precision
+    };
+
+    let prefix = if uppercase { "0X" } else { "0x" };
+    let sign = if bin_exp < 0 { '-' } else { '+' };
+    let abs_exp = bin_exp.unsigned_abs();
+
+    if prec == 0 {
+        let dot = if alt_form { "." } else { "" };
+        let lead_hex = if lead_digit < 10 {
+            (b'0' + lead_digit) as char
+        } else {
+            (hex_alpha + (lead_digit - 10)) as char
+        };
+        alloc::format!("{prefix}{lead_hex}{dot}{p_char}{sign}{abs_exp}")
+    } else {
+        // Build hex fractional digits from mantissa_bits, left-to-right.
+        let mut frac = String::with_capacity(prec);
+        for i in 0..prec {
+            let nibble = if i < default_prec {
+                ((mantissa_bits >> (48 - i * 4)) & 0xF) as u8
+            } else {
+                0
+            };
+            let ch = if nibble < 10 {
+                (b'0' + nibble) as char
+            } else {
+                (hex_alpha + (nibble - 10)) as char
+            };
+            frac.push(ch);
+        }
+        alloc::format!("{prefix}{lead_digit}.{frac}{p_char}{sign}{abs_exp}")
     }
 }
 

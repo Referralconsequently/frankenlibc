@@ -1185,6 +1185,12 @@ pub unsafe extern "C" fn posix_memalign(
 /// Caller must eventually `free` the returned pointer exactly once.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void {
+    // POSIX requires alignment to be a power of two.
+    if alignment == 0 || !alignment.is_power_of_two() {
+        unsafe { set_abi_errno(EINVAL as c_int) };
+        return std::ptr::null_mut();
+    }
+
     let Some(_reentry_guard) = enter_allocator_reentry_guard() else {
         // SAFETY: direct delegation avoids recursive aligned-allocation lock paths.
         let out = unsafe { native_libc_memalign(alignment, size) };
@@ -1265,8 +1271,8 @@ pub unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void 
 /// Caller must eventually `free` the returned pointer exactly once.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn aligned_alloc(alignment: usize, size: usize) -> *mut c_void {
-    // C11 requires size to be a multiple of alignment
-    if alignment == 0 || !size.is_multiple_of(alignment) {
+    // C11 requires alignment to be a power of two and size to be a multiple of alignment.
+    if alignment == 0 || !alignment.is_power_of_two() || !size.is_multiple_of(alignment) {
         unsafe { set_abi_errno(EINVAL as c_int) };
         return std::ptr::null_mut();
     }

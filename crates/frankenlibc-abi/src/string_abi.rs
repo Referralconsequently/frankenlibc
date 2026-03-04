@@ -1259,7 +1259,9 @@ pub unsafe extern "C" fn strncmp(s1: *const c_char, s2: *const c_char, n: usize)
     };
     let cmp_limit = match (lhs_bound, rhs_bound) {
         (Some(a), Some(b)) => a.min(b).min(n),
-        _ => n,
+        (Some(a), None) => a.min(n),
+        (None, Some(b)) => b.min(n),
+        (None, None) => n,
     };
     let adverse = repair && cmp_limit < n;
 
@@ -2547,10 +2549,12 @@ pub unsafe extern "C" fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_i
 
     // SAFETY: bounded scan within known limits.
     let (result, span) = unsafe {
-        let (s1_len, _) = scan_c_string(s1, lhs_bound);
-        let (s2_len, _) = scan_c_string(s2, rhs_bound);
-        let s1_slice = std::slice::from_raw_parts(s1.cast::<u8>(), s1_len + 1);
-        let s2_slice = std::slice::from_raw_parts(s2.cast::<u8>(), s2_len + 1);
+        let (s1_len, s1_term) = scan_c_string(s1, lhs_bound);
+        let (s2_len, s2_term) = scan_c_string(s2, rhs_bound);
+        let s1_slice_len = if s1_term { s1_len + 1 } else { s1_len };
+        let s2_slice_len = if s2_term { s2_len + 1 } else { s2_len };
+        let s1_slice = std::slice::from_raw_parts(s1.cast::<u8>(), s1_slice_len);
+        let s2_slice = std::slice::from_raw_parts(s2.cast::<u8>(), s2_slice_len);
         let r = frankenlibc_core::string::str::strcasecmp(s1_slice, s2_slice);
         (r, s1_len.max(s2_len))
     };
@@ -2628,7 +2632,9 @@ pub unsafe extern "C" fn strncasecmp(s1: *const c_char, s2: *const c_char, n: us
     };
     let cmp_limit = match (lhs_bound, rhs_bound) {
         (Some(a), Some(b)) => a.min(b).min(n),
-        _ => n,
+        (Some(a), None) => a.min(n),
+        (None, Some(b)) => b.min(n),
+        (None, None) => n,
     };
     let adverse = repair && cmp_limit < n;
 
@@ -3895,10 +3901,12 @@ pub unsafe extern "C" fn strsep(stringp: *mut *mut c_char, delim: *const c_char)
 
     // SAFETY: bounded scan.
     let (result, span) = unsafe {
-        let (s_len, _) = scan_c_string(s, s_bound);
-        let (delim_len, _) = scan_c_string(delim, delim_bound);
-        let s_slice = std::slice::from_raw_parts_mut(s.cast::<u8>(), s_len + 1);
-        let delim_slice = std::slice::from_raw_parts(delim.cast::<u8>(), delim_len + 1);
+        let (s_len, s_term) = scan_c_string(s, s_bound);
+        let (delim_len, delim_term) = scan_c_string(delim, delim_bound);
+        let s_slice_len = if s_term { s_len + 1 } else { s_len };
+        let delim_slice_len = if delim_term { delim_len + 1 } else { delim_len };
+        let s_slice = std::slice::from_raw_parts_mut(s.cast::<u8>(), s_slice_len);
+        let delim_slice = std::slice::from_raw_parts(delim.cast::<u8>(), delim_slice_len);
         match frankenlibc_core::string::str::strsep(s_slice, delim_slice) {
             Some(idx) => {
                 // Update *stringp to point past the delimiter.
