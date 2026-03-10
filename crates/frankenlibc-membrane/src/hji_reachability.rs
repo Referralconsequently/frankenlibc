@@ -59,6 +59,9 @@
 //! Hamilton-Jacobi-Isaacs reachability analysis for attacker-controller
 //! safety boundaries.
 
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
 /// Grid resolution per dimension.
 const GRID: usize = 4;
 /// Total discrete states = GRID³.
@@ -77,6 +80,8 @@ const HJI_WARMUP: u64 = 64;
 const EWMA_ALPHA: f64 = 0.05;
 /// Value threshold separating Safe from Approaching.
 const APPROACH_MARGIN: f64 = 0.3;
+/// Number of discrete outside-kernel states to keep as proof witnesses.
+const BOUNDARY_WITNESS_COUNT: usize = 5;
 
 // ── State encoding ──────────────────────────────────────────────
 
@@ -158,6 +163,10 @@ const SAFE_REWARD: f64 = 1.0;
 const UNSAFE_PENALTY: f64 = -20.0;
 
 fn solve_hji() -> [f64; STATES] {
+    solve_hji_with_trace(VALUE_ITERS).0
+}
+
+fn solve_hji_with_trace(iterations: usize) -> ([f64; STATES], Vec<HjiConvergencePoint>) {
     let mut v = [0.0f64; STATES];
 
     // Initialize.
@@ -170,8 +179,10 @@ fn solve_hji() -> [f64; STATES] {
         };
     }
 
-    for _ in 0..VALUE_ITERS {
+    let mut convergence = Vec::with_capacity(iterations);
+    for iteration in 0..iterations {
         let prev = v;
+        let mut max_delta = 0.0f64;
         for (s, val) in v.iter_mut().enumerate() {
             let (r, l, a) = decode(s);
             if is_unsafe(r, a) {
@@ -188,14 +199,80 @@ fn solve_hji() -> [f64; STATES] {
                 }
                 best_ctrl = best_ctrl.max(worst_dist);
             }
+            max_delta = max_delta.max((best_ctrl - prev[s]).abs());
             *val = best_ctrl;
+        }
+
+        convergence.push(HjiConvergencePoint {
+            iteration: (iteration + 1) as u32,
+            max_delta,
+            kernel_volume: count_viable_states(&v) as u32,
+        });
+
+        if max_delta == 0.0 {
+            break;
         }
     }
 
-    v
+    (v, convergence)
 }
 
 // ── Public types ────────────────────────────────────────────────
+
+/// Controller action selected by the membrane-side player.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HjiControllerAction {
+    Relax,
+    Hold,
+    Tighten,
+    Emergency,
+}
+
+impl HjiControllerAction {
+    const ALL: [Self; CTRL_ACTIONS] = [Self::Relax, Self::Hold, Self::Tighten, Self::Emergency];
+
+    const fn as_index(self) -> usize {
+        match self {
+            Self::Relax => 0,
+            Self::Hold => 1,
+            Self::Tighten => 2,
+            Self::Emergency => 3,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Relax => "relax",
+            Self::Hold => "hold",
+            Self::Tighten => "tighten",
+            Self::Emergency => "emergency",
+        }
+    }
+}
+
+/// Disturbance action selected by the adversary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HjiDisturbanceAction {
+    Benign,
+    Probe,
+    Burst,
+    Sustained,
+}
+
+impl HjiDisturbanceAction {
+    const ALL: [Self; DIST_ACTIONS] = [Self::Benign, Self::Probe, Self::Burst, Self::Sustained];
+
+    const fn as_index(self) -> usize {
+        match self {
+            Self::Benign => 0,
+            Self::Probe => 1,
+            Self::Burst => 2,
+            Self::Sustained => 3,
+        }
+    }
+}
 
 /// Reachability safety state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,6 +296,146 @@ pub struct HjiSummary {
     pub risk_level: u8,
     pub latency_level: u8,
     pub adverse_level: u8,
+}
+
+/// One Bellman-residual convergence point for the discrete HJI solver.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HjiConvergencePoint {
+    pub iteration: u32,
+    pub max_delta: f64,
+    pub kernel_volume: u32,
+}
+
+/// Adversary witness showing a non-viable successor for one controller action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HjiControllerWitness {
+    pub controller: HjiControllerAction,
+    pub disturbance: HjiDisturbanceAction,
+    pub successor_state: [u8; 3],
+    pub successor_value: f64,
+}
+
+/// Discrete boundary witness for a state outside the viability kernel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HjiBoundaryWitness {
+    pub state: [u8; 3],
+    pub value: f64,
+    pub controller_witnesses: Vec<HjiControllerWitness>,
+}
+
+/// Deterministic proof artifact for the live discrete HJI controller.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HjiViabilityComputation {
+    pub schema_version: String,
+    pub model: String,
+    pub grid_resolution: u32,
+    pub state_count: u32,
+    pub gamma: f64,
+    pub configured_iterations: u32,
+    pub converged_iteration: u32,
+    pub safe_kernel_volume: u32,
+    pub non_viable_volume: u32,
+    pub winning_policy_histogram: BTreeMap<String, u32>,
+    pub convergence: Vec<HjiConvergencePoint>,
+    pub boundary_witnesses: Vec<HjiBoundaryWitness>,
+}
+
+fn count_viable_states(value_fn: &[f64; STATES]) -> usize {
+    value_fn.iter().filter(|&&value| value > 0.0).count()
+}
+
+fn winning_action(value_fn: &[f64; STATES], s: usize) -> Option<HjiControllerAction> {
+    let (r, l, a) = decode(s);
+    if value_fn[s] <= 0.0 {
+        return None;
+    }
+
+    HjiControllerAction::ALL.into_iter().find(|ctrl| {
+        HjiDisturbanceAction::ALL.into_iter().all(|dist| {
+            let next = transition(r, l, a, ctrl.as_index(), dist.as_index());
+            value_fn[next] > 0.0
+        })
+    })
+}
+
+fn boundary_witness(value_fn: &[f64; STATES], s: usize) -> Option<HjiBoundaryWitness> {
+    if value_fn[s] > 0.0 {
+        return None;
+    }
+
+    let (r, l, a) = decode(s);
+    let mut controller_witnesses = Vec::with_capacity(CTRL_ACTIONS);
+    for ctrl in HjiControllerAction::ALL {
+        let mut witness = None;
+        for dist in HjiDisturbanceAction::ALL {
+            let next = transition(r, l, a, ctrl.as_index(), dist.as_index());
+            if value_fn[next] <= 0.0 {
+                let (nr, nl, na) = decode(next);
+                witness = Some(HjiControllerWitness {
+                    controller: ctrl,
+                    disturbance: dist,
+                    successor_state: [nr as u8, nl as u8, na as u8],
+                    successor_value: value_fn[next],
+                });
+                break;
+            }
+        }
+        controller_witnesses.push(witness?);
+    }
+
+    Some(HjiBoundaryWitness {
+        state: [r as u8, l as u8, a as u8],
+        value: value_fn[s],
+        controller_witnesses,
+    })
+}
+
+#[must_use]
+pub fn viability_proof_artifact() -> HjiViabilityComputation {
+    let (value_fn, convergence) = solve_hji_with_trace(VALUE_ITERS);
+    let mut winning_policy_histogram = BTreeMap::from([
+        (HjiControllerAction::Relax.label().to_string(), 0u32),
+        (HjiControllerAction::Hold.label().to_string(), 0u32),
+        (HjiControllerAction::Tighten.label().to_string(), 0u32),
+        (HjiControllerAction::Emergency.label().to_string(), 0u32),
+    ]);
+
+    for s in 0..STATES {
+        if let Some(ctrl) = winning_action(&value_fn, s) {
+            *winning_policy_histogram
+                .entry(ctrl.label().to_string())
+                .or_default() += 1;
+        }
+    }
+
+    let mut outside_states: Vec<(usize, f64)> = value_fn
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, value)| *value <= 0.0)
+        .collect();
+    outside_states.sort_by(|lhs, rhs| rhs.1.total_cmp(&lhs.1).then(lhs.0.cmp(&rhs.0)));
+
+    let boundary_witnesses = outside_states
+        .into_iter()
+        .filter_map(|(s, _)| boundary_witness(&value_fn, s))
+        .take(BOUNDARY_WITNESS_COUNT)
+        .collect();
+
+    HjiViabilityComputation {
+        schema_version: "v1".to_string(),
+        model: "discrete_hji_risk_latency_adverse".to_string(),
+        grid_resolution: GRID as u32,
+        state_count: STATES as u32,
+        gamma: GAMMA,
+        configured_iterations: VALUE_ITERS as u32,
+        converged_iteration: convergence.last().map_or(0, |point| point.iteration),
+        safe_kernel_volume: count_viable_states(&value_fn) as u32,
+        non_viable_volume: value_fn.iter().filter(|&&value| value <= 0.0).count() as u32,
+        winning_policy_histogram,
+        convergence,
+        boundary_witnesses,
+    }
 }
 
 /// Hamilton-Jacobi-Isaacs reachability controller.
@@ -502,6 +719,37 @@ mod tests {
                 maxmin <= minmax + 1e-10,
                 "minimax violation at state {s}: maxmin={maxmin}, minmax={minmax}"
             );
+        }
+    }
+
+    #[test]
+    fn viability_artifact_reports_expected_kernel_counts() {
+        let artifact = viability_proof_artifact();
+        assert_eq!(artifact.safe_kernel_volume, 48);
+        assert_eq!(artifact.non_viable_volume, 16);
+        assert_eq!(artifact.converged_iteration, 2);
+        assert_eq!(artifact.boundary_witnesses.len(), BOUNDARY_WITNESS_COUNT);
+    }
+
+    #[test]
+    fn viability_artifact_has_witnesses_for_every_safe_state() {
+        let artifact = viability_proof_artifact();
+        let total_witnessed: u32 = artifact.winning_policy_histogram.values().sum();
+        assert_eq!(total_witnessed, artifact.safe_kernel_volume);
+        assert_eq!(artifact.winning_policy_histogram["hold"], 0);
+    }
+
+    #[test]
+    fn viability_artifact_boundary_witnesses_cover_all_controller_actions() {
+        let artifact = viability_proof_artifact();
+        for witness in artifact.boundary_witnesses {
+            assert_eq!(witness.controller_witnesses.len(), CTRL_ACTIONS);
+            for controller_witness in witness.controller_witnesses {
+                assert!(
+                    controller_witness.successor_value <= 0.0,
+                    "boundary witness must remain outside the viability kernel"
+                );
+            }
         }
     }
 }

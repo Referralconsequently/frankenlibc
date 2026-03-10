@@ -7,7 +7,7 @@
 //! fdopendir, dirfd.
 
 use std::collections::HashSet;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use frankenlibc_abi::dirent_abi::*;
@@ -29,8 +29,7 @@ fn make_test_dir() -> (CString, String) {
     }
     for name in &["aaa.txt", "bbb.txt", "ccc.txt"] {
         let full = format!("{}/{}\0", base, name);
-        let fd =
-            unsafe { libc::open(full.as_ptr().cast(), libc::O_CREAT | libc::O_WRONLY, 0o644) };
+        let fd = unsafe { libc::open(full.as_ptr().cast(), libc::O_CREAT | libc::O_WRONLY, 0o644) };
         if fd >= 0 {
             unsafe { libc::close(fd) };
         }
@@ -387,7 +386,10 @@ fn scandir_with_alphasort() {
     let mut namelist: *mut *mut libc::dirent = std::ptr::null_mut();
 
     let n = unsafe { scandir(path.as_ptr(), &mut namelist, None, Some(alphasort)) };
-    assert!(n >= 5, "scandir with alphasort should find entries (got {n})");
+    assert!(
+        n >= 5,
+        "scandir with alphasort should find entries (got {n})"
+    );
     assert!(!namelist.is_null());
 
     // Verify alphabetical order
@@ -449,7 +451,10 @@ fn readdir64_exhaustion() {
         }
         count += 1;
     }
-    assert!(count >= 5, "readdir64 should read at least 5 entries (got {count})");
+    assert!(
+        count >= 5,
+        "readdir64 should read at least 5 entries (got {count})"
+    );
 
     unsafe { closedir(dirp) };
     cleanup_test_dir(&base);

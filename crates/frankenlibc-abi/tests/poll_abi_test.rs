@@ -110,8 +110,19 @@ fn select_timeout_zero() {
         tv_sec: 0,
         tv_usec: 0,
     };
-    let rc = unsafe { select(r + 1, &mut readfds, ptr::null_mut(), ptr::null_mut(), &mut tv) };
-    assert_eq!(rc, 0, "select with zero timeout and no data should return 0");
+    let rc = unsafe {
+        select(
+            r + 1,
+            &mut readfds,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut tv,
+        )
+    };
+    assert_eq!(
+        rc, 0,
+        "select with zero timeout and no data should return 0"
+    );
     unsafe {
         close(r);
         close(w);
@@ -131,7 +142,15 @@ fn select_detects_readable() {
         tv_sec: 1,
         tv_usec: 0,
     };
-    let rc = unsafe { select(r + 1, &mut readfds, ptr::null_mut(), ptr::null_mut(), &mut tv) };
+    let rc = unsafe {
+        select(
+            r + 1,
+            &mut readfds,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut tv,
+        )
+    };
     assert_eq!(rc, 1, "select should detect 1 readable fd");
     assert!(unsafe { libc::FD_ISSET(r, &readfds) });
     unsafe {

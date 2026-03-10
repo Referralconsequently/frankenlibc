@@ -206,7 +206,10 @@ fn fcntl_setfl_nonblock() {
 fn fcntl_dupfd() {
     let fd = temp_fd();
     let new_fd = unsafe { fcntl(fd, libc::F_DUPFD, 100) };
-    assert!(new_fd >= 100, "F_DUPFD should return fd >= 100, got {new_fd}");
+    assert!(
+        new_fd >= 100,
+        "F_DUPFD should return fd >= 100, got {new_fd}"
+    );
     unsafe { close(new_fd) };
     unsafe { close(fd) };
 }
@@ -356,7 +359,11 @@ fn memfd_create_cloexec() {
     assert!(fd >= 0, "memfd_create with MFD_CLOEXEC should succeed");
 
     let flags = unsafe { fcntl(fd, libc::F_GETFD, 0) };
-    assert_ne!(flags & libc::FD_CLOEXEC, 0, "MFD_CLOEXEC should set FD_CLOEXEC");
+    assert_ne!(
+        flags & libc::FD_CLOEXEC,
+        0,
+        "MFD_CLOEXEC should set FD_CLOEXEC"
+    );
     unsafe { close(fd) };
 }
 
@@ -423,16 +430,7 @@ fn copy_file_range_basic() {
 
     let mut off_in: i64 = 0;
     let mut off_out: i64 = 0;
-    let n = unsafe {
-        copy_file_range(
-            in_fd,
-            &mut off_in,
-            out_fd,
-            &mut off_out,
-            content.len(),
-            0,
-        )
-    };
+    let n = unsafe { copy_file_range(in_fd, &mut off_in, out_fd, &mut off_out, content.len(), 0) };
     assert_eq!(n, content.len() as isize);
 
     unsafe { libc::lseek(out_fd, 0, libc::SEEK_SET) };
@@ -525,7 +523,11 @@ fn pipe2_nonblock() {
     assert_eq!(rc, 0);
 
     let flags = unsafe { fcntl(fds[0], libc::F_GETFL, 0) };
-    assert_ne!(flags & libc::O_NONBLOCK, 0, "read end should be non-blocking");
+    assert_ne!(
+        flags & libc::O_NONBLOCK,
+        0,
+        "read end should be non-blocking"
+    );
 
     // Non-blocking read on empty pipe should return EAGAIN
     let mut buf = [0u8; 1];

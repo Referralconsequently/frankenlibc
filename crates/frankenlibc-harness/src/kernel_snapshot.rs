@@ -5,6 +5,7 @@
 //! - stable ordering
 //! - seed + step count included for reproducibility
 
+use frankenlibc_membrane::runtime_math::RuntimeKernelSnapshot;
 use frankenlibc_membrane::{ApiFamily, RuntimeContext, RuntimeMathKernel, SafetyLevel};
 use serde::{Deserialize, Serialize};
 
@@ -42,7 +43,7 @@ impl SnapshotMode {
 }
 
 /// Deterministic snapshot fixture schema (v1).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RuntimeKernelSnapshotFixtureV1 {
     pub version: String,
     pub scenario: KernelSnapshotScenarioV1,
@@ -60,10 +61,10 @@ pub struct KernelSnapshotScenarioV1 {
     pub families: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModeSnapshotV1 {
     pub mode: String,
-    pub snapshot_lines: Vec<String>,
+    pub snapshot: RuntimeKernelSnapshot,
 }
 
 #[must_use]
@@ -99,14 +100,13 @@ fn capture_for_mode(seed: u64, steps: u32, mode: SafetyLevel) -> ModeSnapshotV1 
     // NOTE: `RuntimeKernelSnapshot` is intentionally large, and debug rendering may
     // require a larger-than-default stack in `libtest` threads. Capture the fixture
     // on a dedicated thread with an explicit stack size for determinism and safety.
-    let snapshot_lines = std::thread::Builder::new()
+    let snapshot = std::thread::Builder::new()
         .name(format!("kernel-snapshot-{:?}", mode))
         .stack_size(32 * 1024 * 1024)
         .spawn(move || {
             let kernel = RuntimeMathKernel::new();
             run_scenario(&kernel, seed, steps, mode);
-            let snap = kernel.snapshot(mode);
-            format!("{snap:#?}").lines().map(str::to_string).collect()
+            kernel.snapshot(mode)
         })
         .expect("spawn kernel snapshot capture")
         .join()
@@ -118,7 +118,7 @@ fn capture_for_mode(seed: u64, steps: u32, mode: SafetyLevel) -> ModeSnapshotV1 
             SafetyLevel::Hardened => String::from("hardened"),
             SafetyLevel::Off => String::from("off"),
         },
-        snapshot_lines,
+        snapshot,
     }
 }
 
@@ -191,11 +191,34 @@ fn api_family_name(family: ApiFamily) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn fixture_is_stable_for_same_seed_steps() {
         let a = build_kernel_snapshot_fixture(0xDEAD_BEEF, 128, SnapshotMode::Both);
         let b = build_kernel_snapshot_fixture(0xDEAD_BEEF, 128, SnapshotMode::Both);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn fixture_serializes_structured_snapshot_payload() {
+        let fixture = build_kernel_snapshot_fixture(0xDEAD_BEEF, 32, SnapshotMode::Strict);
+        let value = serde_json::to_value(&fixture).expect("fixture should serialize");
+        let strict = value
+            .get("strict")
+            .and_then(Value::as_object)
+            .expect("strict mode snapshot should exist");
+        let snapshot = strict
+            .get("snapshot")
+            .and_then(Value::as_object)
+            .expect("structured snapshot payload should serialize as an object");
+        assert!(
+            snapshot.contains_key("schema_version"),
+            "snapshot object should contain kernel fields"
+        );
+        assert!(
+            !strict.contains_key("snapshot_lines"),
+            "legacy debug-line payload should not be emitted anymore"
+        );
     }
 }

@@ -6,7 +6,7 @@
 
 #![allow(unsafe_code)]
 
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 
 unsafe extern "C" {
     fn htons(hostshort: u16) -> u16;

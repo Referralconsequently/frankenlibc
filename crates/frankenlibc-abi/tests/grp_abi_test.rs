@@ -138,15 +138,7 @@ fn getgrgid_r_zero() {
     let mut buf = vec![0u8; 1024];
     let mut result: *mut libc::group = std::ptr::null_mut();
 
-    let rc = unsafe {
-        getgrgid_r(
-            0,
-            &mut grp,
-            buf.as_mut_ptr().cast(),
-            buf.len(),
-            &mut result,
-        )
-    };
+    let rc = unsafe { getgrgid_r(0, &mut grp, buf.as_mut_ptr().cast(), buf.len(), &mut result) };
     assert_eq!(rc, 0, "getgrgid_r(0) should succeed");
     assert!(!result.is_null());
     let name = unsafe { CStr::from_ptr(grp.gr_name) };
@@ -207,19 +199,15 @@ fn getgrent_r_basic() {
     let mut buf = vec![0u8; 4096];
     let mut result: *mut libc::group = std::ptr::null_mut();
 
-    let rc = unsafe {
-        getgrent_r(
-            &mut grp,
-            buf.as_mut_ptr().cast(),
-            buf.len(),
-            &mut result,
-        )
-    };
+    let rc = unsafe { getgrent_r(&mut grp, buf.as_mut_ptr().cast(), buf.len(), &mut result) };
     assert_eq!(rc, 0, "getgrent_r should succeed");
     assert!(!result.is_null());
 
     let name = unsafe { CStr::from_ptr(grp.gr_name) };
-    assert!(!name.to_str().unwrap().is_empty(), "group name should not be empty");
+    assert!(
+        !name.to_str().unwrap().is_empty(),
+        "group name should not be empty"
+    );
 
     unsafe { endgrent() };
 }
@@ -234,9 +222,7 @@ fn getgrent_r_iterates_all() {
     let mut result: *mut libc::group = std::ptr::null_mut();
 
     loop {
-        let rc = unsafe {
-            getgrent_r(&mut grp, buf.as_mut_ptr().cast(), buf.len(), &mut result)
-        };
+        let rc = unsafe { getgrent_r(&mut grp, buf.as_mut_ptr().cast(), buf.len(), &mut result) };
         if rc != 0 || result.is_null() {
             break;
         }
@@ -245,7 +231,10 @@ fn getgrent_r_iterates_all() {
             break; // Safety limit
         }
     }
-    assert!(count >= 1, "should enumerate at least 1 group via getgrent_r");
+    assert!(
+        count >= 1,
+        "should enumerate at least 1 group via getgrent_r"
+    );
 
     unsafe { endgrent() };
 }
@@ -325,15 +314,7 @@ fn getgrgid_r_small_buffer() {
     let mut buf = vec![0u8; 1]; // Intentionally too small
     let mut result: *mut libc::group = std::ptr::null_mut();
 
-    let rc = unsafe {
-        getgrgid_r(
-            0,
-            &mut grp,
-            buf.as_mut_ptr().cast(),
-            buf.len(),
-            &mut result,
-        )
-    };
+    let rc = unsafe { getgrgid_r(0, &mut grp, buf.as_mut_ptr().cast(), buf.len(), &mut result) };
     assert_eq!(rc, libc::ERANGE, "tiny buffer should return ERANGE");
     assert!(result.is_null());
 }
@@ -466,5 +447,8 @@ fn group_iteration_count_consistent() {
     }
     unsafe { endgrent() };
 
-    assert_eq!(count1, count2, "two iterations should produce the same count");
+    assert_eq!(
+        count1, count2,
+        "two iterations should produce the same count"
+    );
 }

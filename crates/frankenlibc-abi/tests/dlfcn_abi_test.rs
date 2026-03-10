@@ -77,10 +77,16 @@ fn dlopen_nonexistent_library_returns_null() {
     let _guard = TEST_GUARD.lock().unwrap();
     let name = CString::new("libnonexistent_zzz_12345.so").unwrap();
     let handle = unsafe { dlopen(name.as_ptr(), libc::RTLD_NOW) };
-    assert!(handle.is_null(), "dlopen nonexistent library should return NULL");
+    assert!(
+        handle.is_null(),
+        "dlopen nonexistent library should return NULL"
+    );
 
     let err_ptr = unsafe { dlerror() };
-    assert!(!err_ptr.is_null(), "dlerror should be set after failed dlopen");
+    assert!(
+        !err_ptr.is_null(),
+        "dlerror should be set after failed dlopen"
+    );
 }
 
 #[test]
@@ -92,10 +98,7 @@ fn dlsym_finds_known_symbol() {
     let sym_name = CString::new("printf").unwrap();
     let sym = unsafe { dlsym(handle, sym_name.as_ptr()) };
     // printf should be found in the main program (via libc)
-    assert!(
-        !sym.is_null(),
-        "dlsym should find 'printf' in main handle"
-    );
+    assert!(!sym.is_null(), "dlsym should find 'printf' in main handle");
 
     unsafe { dlclose(handle) };
 }
@@ -129,7 +132,10 @@ fn dlerror_returns_null_when_no_error() {
     let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
     if !handle.is_null() {
         let err = unsafe { dlerror() };
-        assert!(err.is_null(), "dlerror should be NULL after successful dlopen");
+        assert!(
+            err.is_null(),
+            "dlerror should be NULL after successful dlopen"
+        );
         unsafe { dlclose(handle) };
     }
 }

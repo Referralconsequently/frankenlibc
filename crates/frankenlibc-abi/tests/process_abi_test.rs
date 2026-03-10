@@ -644,7 +644,14 @@ fn waitid_with_p_pid() {
     }
 
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
-    let rc = unsafe { waitid(libc::P_PID as c_int, pid as libc::id_t, &mut info, libc::WEXITED) };
+    let rc = unsafe {
+        waitid(
+            libc::P_PID as c_int,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED,
+        )
+    };
     assert_eq!(rc, 0, "waitid should succeed");
 }
 
@@ -927,7 +934,10 @@ fn file_actions_addclose_negative_fd() {
     unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) };
 
     let rc = unsafe { posix_spawn_file_actions_addclose(fa.as_mut_ptr().cast(), -1) };
-    assert!(rc == libc::EBADF || rc == libc::EINVAL, "negative fd should return EBADF or EINVAL, got {rc}");
+    assert!(
+        rc == libc::EBADF || rc == libc::EINVAL,
+        "negative fd should return EBADF or EINVAL, got {rc}"
+    );
 
     unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };
 }
@@ -938,10 +948,16 @@ fn file_actions_adddup2_negative_fd() {
     unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) };
 
     let rc = unsafe { posix_spawn_file_actions_adddup2(fa.as_mut_ptr().cast(), -1, 0) };
-    assert!(rc == libc::EBADF || rc == libc::EINVAL, "negative oldfd should return EBADF or EINVAL, got {rc}");
+    assert!(
+        rc == libc::EBADF || rc == libc::EINVAL,
+        "negative oldfd should return EBADF or EINVAL, got {rc}"
+    );
 
     let rc = unsafe { posix_spawn_file_actions_adddup2(fa.as_mut_ptr().cast(), 0, -1) };
-    assert!(rc == libc::EBADF || rc == libc::EINVAL, "negative newfd should return EBADF or EINVAL, got {rc}");
+    assert!(
+        rc == libc::EBADF || rc == libc::EINVAL,
+        "negative newfd should return EBADF or EINVAL, got {rc}"
+    );
 
     unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };
 }
@@ -970,7 +986,8 @@ fn file_actions_addchdir_np_null_path() {
     let mut fa = AlignedBuf::new();
     unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) };
 
-    let rc = unsafe { posix_spawn_file_actions_addchdir_np(fa.as_mut_ptr().cast(), std::ptr::null()) };
+    let rc =
+        unsafe { posix_spawn_file_actions_addchdir_np(fa.as_mut_ptr().cast(), std::ptr::null()) };
     assert_eq!(rc, libc::EINVAL);
 
     unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };

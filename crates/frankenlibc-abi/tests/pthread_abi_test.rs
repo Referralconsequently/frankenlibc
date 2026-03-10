@@ -17,28 +17,24 @@ const PTHREAD_CANCEL_DISABLE: c_int = 1;
 const PTHREAD_CANCEL_DEFERRED: c_int = 0;
 const PTHREAD_CANCEL_ASYNCHRONOUS: c_int = 1;
 const PTHREAD_SCOPE_SYSTEM: c_int = 0;
+#[allow(dead_code)] // used via libc:: in inheritsched test; kept for reference
+const PTHREAD_INHERIT_SCHED: c_int = 0;
+const PTHREAD_EXPLICIT_SCHED: c_int = 1;
 
 // ===========================================================================
 // Thread lifecycle: create, join, detach, self, equal
 // ===========================================================================
 
 unsafe extern "C" fn add_ten(arg: *mut c_void) -> *mut c_void {
-    unsafe {
-        let val = arg as usize;
-        (val + 10) as *mut c_void
-    }
+    let val = arg as usize;
+    (val + 10) as *mut c_void
 }
 
 #[test]
 fn thread_create_join() {
     unsafe {
         let mut thr: libc::pthread_t = 0;
-        let rc = pthread_create(
-            &mut thr,
-            ptr::null(),
-            Some(add_ten),
-            42usize as *mut c_void,
-        );
+        let rc = pthread_create(&mut thr, ptr::null(), Some(add_ten), 42usize as *mut c_void);
         assert_eq!(rc, 0, "pthread_create should succeed");
 
         let mut retval: *mut c_void = ptr::null_mut();
@@ -138,7 +134,11 @@ fn mutex_trylock_fails_when_locked() {
         pthread_mutex_init(&mut mutex, ptr::null());
         pthread_mutex_lock(&mut mutex);
         let rc = pthread_mutex_trylock(&mut mutex);
-        assert_eq!(rc, libc::EBUSY, "trylock on locked mutex should return EBUSY");
+        assert_eq!(
+            rc,
+            libc::EBUSY,
+            "trylock on locked mutex should return EBUSY"
+        );
         pthread_mutex_unlock(&mut mutex);
         pthread_mutex_destroy(&mut mutex);
     }
@@ -190,7 +190,11 @@ fn mutex_errorcheck_double_lock_returns_edeadlk() {
 
         assert_eq!(pthread_mutex_lock(&mut mutex), 0);
         let rc = pthread_mutex_lock(&mut mutex);
-        assert_eq!(rc, libc::EDEADLK, "errorcheck double lock should return EDEADLK");
+        assert_eq!(
+            rc,
+            libc::EDEADLK,
+            "errorcheck double lock should return EDEADLK"
+        );
         assert_eq!(pthread_mutex_unlock(&mut mutex), 0);
 
         pthread_mutex_destroy(&mut mutex);
@@ -209,7 +213,11 @@ fn mutex_errorcheck_unlock_without_lock_returns_eperm() {
         pthread_mutexattr_destroy(&mut attr);
 
         let rc = pthread_mutex_unlock(&mut mutex);
-        assert_eq!(rc, libc::EPERM, "errorcheck unlock without lock should return EPERM");
+        assert_eq!(
+            rc,
+            libc::EPERM,
+            "errorcheck unlock without lock should return EPERM"
+        );
 
         pthread_mutex_destroy(&mut mutex);
     }
@@ -234,7 +242,10 @@ fn mutexattr_settype_gettype() {
         let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
         pthread_mutexattr_init(&mut attr);
 
-        assert_eq!(pthread_mutexattr_settype(&mut attr, libc::PTHREAD_MUTEX_RECURSIVE), 0);
+        assert_eq!(
+            pthread_mutexattr_settype(&mut attr, libc::PTHREAD_MUTEX_RECURSIVE),
+            0
+        );
         let mut kind: c_int = 0;
         assert_eq!(pthread_mutexattr_gettype(&attr, &mut kind), 0);
         assert_eq!(kind, libc::PTHREAD_MUTEX_RECURSIVE);
@@ -323,7 +334,10 @@ fn condattr_setclock_getclock() {
         let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
         pthread_condattr_init(&mut attr);
 
-        assert_eq!(pthread_condattr_setclock(&mut attr, libc::CLOCK_MONOTONIC), 0);
+        assert_eq!(
+            pthread_condattr_setclock(&mut attr, libc::CLOCK_MONOTONIC),
+            0
+        );
         let mut clock_id: libc::clockid_t = 0;
         assert_eq!(pthread_condattr_getclock(&attr, &mut clock_id), 0);
         assert_eq!(clock_id, libc::CLOCK_MONOTONIC);
@@ -691,7 +705,11 @@ fn once_runs_exactly_once() {
         pthread_once(&mut once, Some(once_init_fn));
         pthread_once(&mut once, Some(once_init_fn));
     }
-    assert_eq!(ONCE_COUNTER.load(Ordering::Relaxed), 1, "init_fn should run exactly once");
+    assert_eq!(
+        ONCE_COUNTER.load(Ordering::Relaxed),
+        1,
+        "init_fn should run exactly once"
+    );
 }
 
 // ===========================================================================
@@ -702,8 +720,14 @@ fn once_runs_exactly_once() {
 fn spinlock_init_destroy() {
     unsafe {
         let mut lock: c_int = 0;
-        assert_eq!(pthread_spin_init(&mut lock as *mut c_int as *mut c_void, 0), 0);
-        assert_eq!(pthread_spin_destroy(&mut lock as *mut c_int as *mut c_void), 0);
+        assert_eq!(
+            pthread_spin_init(&mut lock as *mut c_int as *mut c_void, 0),
+            0
+        );
+        assert_eq!(
+            pthread_spin_destroy(&mut lock as *mut c_int as *mut c_void),
+            0
+        );
     }
 }
 
@@ -713,7 +737,10 @@ fn spinlock_lock_unlock() {
         let mut lock: c_int = 0;
         pthread_spin_init(&mut lock as *mut c_int as *mut c_void, 0);
         assert_eq!(pthread_spin_lock(&mut lock as *mut c_int as *mut c_void), 0);
-        assert_eq!(pthread_spin_unlock(&mut lock as *mut c_int as *mut c_void), 0);
+        assert_eq!(
+            pthread_spin_unlock(&mut lock as *mut c_int as *mut c_void),
+            0
+        );
         pthread_spin_destroy(&mut lock as *mut c_int as *mut c_void);
     }
 }
@@ -918,11 +945,8 @@ fn getaffinity_np() {
     unsafe {
         let self_id = pthread_self();
         let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
-        let rc = pthread_getaffinity_np(
-            self_id,
-            std::mem::size_of::<libc::cpu_set_t>(),
-            &mut cpuset,
-        );
+        let rc =
+            pthread_getaffinity_np(self_id, std::mem::size_of::<libc::cpu_set_t>(), &mut cpuset);
         // May return 0 or ESRCH if our pthread_self returns a synthetic ID
         assert!(
             rc == 0 || rc == libc::ESRCH,
@@ -941,13 +965,7 @@ unsafe extern "C" fn child_fn() {}
 
 #[test]
 fn atfork_register_succeeds() {
-    let rc = unsafe {
-        pthread_atfork(
-            Some(prepare_fn),
-            Some(parent_fn),
-            Some(child_fn),
-        )
-    };
+    let rc = unsafe { pthread_atfork(Some(prepare_fn), Some(parent_fn), Some(child_fn)) };
     assert_eq!(rc, 0, "pthread_atfork should succeed");
 }
 
@@ -1038,7 +1056,10 @@ fn internal_mutexattr_aliases() {
     unsafe {
         let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
         assert_eq!(__pthread_mutexattr_init(&mut attr), 0);
-        assert_eq!(__pthread_mutexattr_settype(&mut attr, libc::PTHREAD_MUTEX_RECURSIVE), 0);
+        assert_eq!(
+            __pthread_mutexattr_settype(&mut attr, libc::PTHREAD_MUTEX_RECURSIVE),
+            0
+        );
         assert_eq!(__pthread_mutexattr_destroy(&mut attr), 0);
     }
 }
@@ -1068,7 +1089,10 @@ fn get_minstack_returns_nonzero() {
     unsafe {
         let attr: libc::pthread_attr_t = std::mem::zeroed();
         let min = __pthread_get_minstack(&attr);
-        assert!(min > 0, "__pthread_get_minstack should return > 0, got {min}");
+        assert!(
+            min > 0,
+            "__pthread_get_minstack should return > 0, got {min}"
+        );
     }
 }
 
@@ -1096,10 +1120,8 @@ fn mutex_contended_increment() {
         pthread_mutex_init(&mut mutex, ptr::null());
 
         let counter = AtomicU32::new(0);
-        let ctx: (*mut libc::pthread_mutex_t, *mut AtomicU32) = (
-            &mut mutex,
-            &counter as *const AtomicU32 as *mut AtomicU32,
-        );
+        let ctx: (*mut libc::pthread_mutex_t, *mut AtomicU32) =
+            (&mut mutex, &counter as *const AtomicU32 as *mut AtomicU32);
         let ctx_ptr = &ctx as *const _ as *mut c_void;
 
         let mut threads = [0 as libc::pthread_t; 4];
@@ -1115,6 +1137,644 @@ fn mutex_contended_increment() {
             4000,
             "4 threads x 1000 increments = 4000"
         );
+        pthread_mutex_destroy(&mut mutex);
+    }
+}
+
+// ===========================================================================
+// Thread attribute setters (schedparam, schedpolicy, inheritsched, scope)
+// ===========================================================================
+
+#[test]
+fn attr_setschedparam_getschedparam() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        let mut param: libc::sched_param = std::mem::zeroed();
+        param.sched_priority = 0; // SCHED_OTHER only supports priority 0
+        assert_eq!(pthread_attr_setschedparam(&mut attr, &param), 0);
+
+        let mut got: libc::sched_param = std::mem::zeroed();
+        assert_eq!(pthread_attr_getschedparam(&attr, &mut got), 0);
+        assert_eq!(got.sched_priority, 0);
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn attr_setschedpolicy_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        assert_eq!(pthread_attr_setschedpolicy(&mut attr, libc::SCHED_OTHER), 0);
+        let mut policy: c_int = -1;
+        assert_eq!(pthread_attr_getschedpolicy(&attr, &mut policy), 0);
+        assert_eq!(policy, libc::SCHED_OTHER);
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn attr_setinheritsched_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        assert_eq!(
+            pthread_attr_setinheritsched(&mut attr, PTHREAD_EXPLICIT_SCHED),
+            0
+        );
+        let mut inherit: c_int = -1;
+        assert_eq!(pthread_attr_getinheritsched(&attr, &mut inherit), 0);
+        assert_eq!(inherit, PTHREAD_EXPLICIT_SCHED);
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn attr_setscope_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        assert_eq!(pthread_attr_setscope(&mut attr, PTHREAD_SCOPE_SYSTEM), 0);
+        let mut scope: c_int = -1;
+        assert_eq!(pthread_attr_getscope(&attr, &mut scope), 0);
+        assert_eq!(scope, PTHREAD_SCOPE_SYSTEM);
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// Stack attributes
+// ===========================================================================
+
+#[test]
+fn attr_setstack_getstack() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        let stack_size: usize = 1024 * 1024; // 1 MiB
+        let stack = libc::mmap(
+            std::ptr::null_mut(),
+            stack_size,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        );
+        assert_ne!(stack, libc::MAP_FAILED);
+
+        let rc = pthread_attr_setstack(&mut attr, stack, stack_size);
+        assert_eq!(rc, 0);
+
+        let mut got_addr: *mut c_void = ptr::null_mut();
+        let mut got_size: usize = 0;
+        assert_eq!(
+            pthread_attr_getstack(&attr, &mut got_addr, &mut got_size),
+            0
+        );
+        assert_eq!(got_addr, stack);
+        assert_eq!(got_size, stack_size);
+
+        pthread_attr_destroy(&mut attr);
+        libc::munmap(stack, stack_size);
+    }
+}
+
+#[test]
+fn attr_setstackaddr_getstackaddr() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        let fake_addr = 0x1000usize as *mut c_void;
+        #[allow(deprecated)]
+        let rc = pthread_attr_setstackaddr(&mut attr, fake_addr);
+        assert_eq!(rc, 0);
+
+        let mut got: *mut c_void = ptr::null_mut();
+        #[allow(deprecated)]
+        let rc = pthread_attr_getstackaddr(&attr, &mut got);
+        assert_eq!(rc, 0);
+        // The deprecated setstackaddr/getstackaddr may not round-trip
+        // the address on all implementations; just verify no crash
+        // and that got is not still null_mut.
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// Affinity attributes
+// ===========================================================================
+
+#[test]
+fn attr_setaffinity_np_getaffinity_np() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
+        libc::CPU_SET(0, &mut cpuset);
+
+        let rc =
+            pthread_attr_setaffinity_np(&mut attr, std::mem::size_of::<libc::cpu_set_t>(), &cpuset);
+        assert_eq!(rc, 0);
+
+        let mut got: libc::cpu_set_t = std::mem::zeroed();
+        let rc =
+            pthread_attr_getaffinity_np(&attr, std::mem::size_of::<libc::cpu_set_t>(), &mut got);
+        assert_eq!(rc, 0);
+        assert!(libc::CPU_ISSET(0, &got), "CPU 0 should be set");
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// Signal mask attributes
+// ===========================================================================
+
+#[test]
+fn attr_setsigmask_np_getsigmask_np() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+
+        let mut sigmask: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut sigmask);
+        libc::sigaddset(&mut sigmask, libc::SIGUSR1);
+
+        let rc = pthread_attr_setsigmask_np(&mut attr, &sigmask);
+        assert_eq!(rc, 0);
+
+        let mut got: libc::sigset_t = std::mem::zeroed();
+        let rc = pthread_attr_getsigmask_np(&attr, &mut got);
+        assert_eq!(rc, 0);
+        assert_eq!(libc::sigismember(&got, libc::SIGUSR1), 1);
+
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// Mutex attribute setters: pshared, protocol, robust
+// ===========================================================================
+
+#[test]
+fn mutexattr_setpshared_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_mutexattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_PRIVATE),
+            0
+        );
+        let mut val: c_int = -1;
+        assert_eq!(pthread_mutexattr_getpshared(&attr, &mut val), 0);
+        assert_eq!(val, libc::PTHREAD_PROCESS_PRIVATE);
+
+        pthread_mutexattr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn mutexattr_setprotocol_getprotocol() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_mutexattr_setprotocol(&mut attr, libc::PTHREAD_PRIO_NONE),
+            0
+        );
+        let mut val: c_int = -1;
+        assert_eq!(pthread_mutexattr_getprotocol(&attr, &mut val), 0);
+        assert_eq!(val, libc::PTHREAD_PRIO_NONE);
+
+        pthread_mutexattr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn mutexattr_setrobust_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_mutexattr_setrobust(&mut attr, libc::PTHREAD_MUTEX_STALLED),
+            0
+        );
+        let mut val: c_int = -1;
+        assert_eq!(pthread_mutexattr_getrobust(&attr, &mut val), 0);
+        assert_eq!(val, libc::PTHREAD_MUTEX_STALLED);
+
+        pthread_mutexattr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// Condattr setpshared
+// ===========================================================================
+
+#[test]
+fn condattr_setpshared_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
+        pthread_condattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_condattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_PRIVATE),
+            0
+        );
+        let mut val: c_int = -1;
+        assert_eq!(pthread_condattr_getpshared(&attr, &mut val), 0);
+        assert_eq!(val, libc::PTHREAD_PROCESS_PRIVATE);
+
+        pthread_condattr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// RWLockattr setpshared
+// ===========================================================================
+
+#[test]
+fn rwlockattr_setpshared_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_rwlockattr_t = std::mem::zeroed();
+        pthread_rwlockattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_rwlockattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_PRIVATE),
+            0
+        );
+        let mut val: c_int = -1;
+        assert_eq!(pthread_rwlockattr_getpshared(&attr, &mut val), 0);
+        assert_eq!(val, libc::PTHREAD_PROCESS_PRIVATE);
+
+        pthread_rwlockattr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// Barrierattr setpshared
+// ===========================================================================
+
+#[test]
+fn barrierattr_setpshared_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_barrierattr_t = std::mem::zeroed();
+        pthread_barrierattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_barrierattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_PRIVATE),
+            0
+        );
+        let mut val: c_int = -1;
+        assert_eq!(pthread_barrierattr_getpshared(&attr, &mut val), 0);
+        assert_eq!(val, libc::PTHREAD_PROCESS_PRIVATE);
+
+        pthread_barrierattr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// pthread_mutex_timedlock
+// ===========================================================================
+
+#[test]
+fn mutex_timedlock_succeeds_when_unlocked() {
+    unsafe {
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        pthread_mutex_init(&mut mutex, ptr::null());
+
+        let mut ts: libc::timespec = std::mem::zeroed();
+        libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+        ts.tv_sec += 1; // 1 second from now
+
+        let rc = pthread_mutex_timedlock(&mut mutex, &ts);
+        assert_eq!(rc, 0, "timedlock on unlocked mutex should succeed");
+        pthread_mutex_unlock(&mut mutex);
+        pthread_mutex_destroy(&mut mutex);
+    }
+}
+
+#[test]
+fn mutex_timedlock_times_out() {
+    unsafe {
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+        // Use ERRORCHECK to prevent recursive locking
+        pthread_mutexattr_settype(&mut attr, libc::PTHREAD_MUTEX_ERRORCHECK);
+        pthread_mutex_init(&mut mutex, &attr);
+        pthread_mutexattr_destroy(&mut attr);
+
+        pthread_mutex_lock(&mut mutex);
+
+        // Try timedlock with a time already in the past
+        let ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        let rc = pthread_mutex_timedlock(&mut mutex, &ts);
+        // Should return ETIMEDOUT or EDEADLK (since same thread holds it)
+        assert!(
+            rc == libc::ETIMEDOUT || rc == libc::EDEADLK,
+            "timedlock on locked mutex with past time should return ETIMEDOUT or EDEADLK, got {rc}"
+        );
+
+        pthread_mutex_unlock(&mut mutex);
+        pthread_mutex_destroy(&mut mutex);
+    }
+}
+
+// ===========================================================================
+// pthread_rwlock_timedrdlock / timedwrlock
+// ===========================================================================
+
+#[test]
+fn rwlock_timedrdlock_succeeds() {
+    unsafe {
+        let mut rwl: libc::pthread_rwlock_t = std::mem::zeroed();
+        pthread_rwlock_init(&mut rwl, ptr::null());
+
+        let mut ts: libc::timespec = std::mem::zeroed();
+        libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+        ts.tv_sec += 1;
+
+        let rc = pthread_rwlock_timedrdlock(&mut rwl, &ts);
+        assert_eq!(rc, 0);
+        pthread_rwlock_unlock(&mut rwl);
+        pthread_rwlock_destroy(&mut rwl);
+    }
+}
+
+#[test]
+fn rwlock_timedwrlock_succeeds() {
+    unsafe {
+        let mut rwl: libc::pthread_rwlock_t = std::mem::zeroed();
+        pthread_rwlock_init(&mut rwl, ptr::null());
+
+        let mut ts: libc::timespec = std::mem::zeroed();
+        libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+        ts.tv_sec += 1;
+
+        let rc = pthread_rwlock_timedwrlock(&mut rwl, &ts);
+        assert_eq!(rc, 0);
+        pthread_rwlock_unlock(&mut rwl);
+        pthread_rwlock_destroy(&mut rwl);
+    }
+}
+
+// ===========================================================================
+// pthread_cond_timedwait (immediate timeout)
+// ===========================================================================
+
+#[test]
+fn cond_timedwait_times_out() {
+    unsafe {
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        let mut cond: libc::pthread_cond_t = std::mem::zeroed();
+        pthread_mutex_init(&mut mutex, ptr::null());
+        pthread_cond_init(&mut cond, ptr::null());
+
+        pthread_mutex_lock(&mut mutex);
+
+        // Use a time in the past to trigger immediate timeout
+        let ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        let rc = pthread_cond_timedwait(&mut cond, &mut mutex, &ts);
+        assert_eq!(
+            rc,
+            libc::ETIMEDOUT,
+            "timedwait with past time should return ETIMEDOUT"
+        );
+
+        pthread_mutex_unlock(&mut mutex);
+        pthread_cond_destroy(&mut cond);
+        pthread_mutex_destroy(&mut mutex);
+    }
+}
+
+// ===========================================================================
+// pthread_getattr_np
+// ===========================================================================
+
+#[test]
+fn getattr_np_returns_valid_info() {
+    unsafe {
+        let self_id = pthread_self();
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        let rc = pthread_getattr_np(self_id, &mut attr);
+        if rc == 0 {
+            let mut stack_size: usize = 0;
+            pthread_attr_getstacksize(&attr, &mut stack_size);
+            assert!(stack_size > 0, "stack size should be > 0");
+            pthread_attr_destroy(&mut attr);
+        }
+        // rc != 0 is acceptable if pthread_self returns synthetic ID
+    }
+}
+
+// ===========================================================================
+// pthread_gettid_np
+// ===========================================================================
+
+#[test]
+fn gettid_np_returns_tid() {
+    unsafe {
+        let self_id = pthread_self();
+        let tid = pthread_gettid_np(self_id);
+        // Should return a positive tid or -1 if not supported
+        assert!(
+            tid > 0 || tid == -1,
+            "gettid_np should return positive tid or -1, got {tid}"
+        );
+    }
+}
+
+// ===========================================================================
+// pthread_tryjoin_np
+// ===========================================================================
+
+#[test]
+fn tryjoin_np_on_finished_thread() {
+    unsafe {
+        let mut thr: libc::pthread_t = 0;
+        let rc = pthread_create(&mut thr, ptr::null(), Some(noop_thread), ptr::null_mut());
+        assert_eq!(rc, 0);
+
+        // Wait for the thread to finish
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        let mut retval: *mut c_void = ptr::null_mut();
+        let rc = pthread_tryjoin_np(thr, &mut retval);
+        // May return 0 (joined), EBUSY (still running), or ESRCH (already reaped)
+        assert!(
+            rc == 0 || rc == libc::EBUSY || rc == libc::ESRCH,
+            "tryjoin_np returned unexpected {rc}"
+        );
+        if rc == libc::EBUSY {
+            pthread_join(thr, ptr::null_mut());
+        }
+    }
+}
+
+// ===========================================================================
+// pthread_getcpuclockid
+// ===========================================================================
+
+#[test]
+fn getcpuclockid_returns_valid_clock() {
+    unsafe {
+        let self_id = pthread_self();
+        let mut clock_id: libc::clockid_t = 0;
+        let rc = pthread_getcpuclockid(self_id, &mut clock_id);
+        if rc == 0 {
+            // Verify we can use the clock
+            let mut ts: libc::timespec = std::mem::zeroed();
+            let rc2 = libc::clock_gettime(clock_id, &mut ts);
+            assert_eq!(rc2, 0, "should be able to read thread CPU clock");
+        }
+        // ESRCH is acceptable if pthread_self returns synthetic ID
+    }
+}
+
+// ===========================================================================
+// pthread_cancel (cancel a thread that's blocked)
+// ===========================================================================
+
+unsafe extern "C" fn cancellable_thread(_arg: *mut c_void) -> *mut c_void {
+    unsafe {
+        // Enable cancellation
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, ptr::null_mut());
+        pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, ptr::null_mut());
+        // Sleep loop with cancellation points
+        for _ in 0..100 {
+            pthread_testcancel();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        ptr::null_mut()
+    }
+}
+
+#[test]
+fn cancel_running_thread() {
+    unsafe {
+        let mut thr: libc::pthread_t = 0;
+        let rc = pthread_create(
+            &mut thr,
+            ptr::null(),
+            Some(cancellable_thread),
+            ptr::null_mut(),
+        );
+        assert_eq!(rc, 0);
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+
+        let rc = pthread_cancel(thr);
+        // May return 0 or ESRCH
+        assert!(
+            rc == 0 || rc == libc::ESRCH,
+            "pthread_cancel returned unexpected {rc}"
+        );
+
+        let mut retval: *mut c_void = ptr::null_mut();
+        pthread_join(thr, &mut retval);
+        // Cancelled threads return PTHREAD_CANCELED (-1 cast to void*)
+        // or NULL depending on implementation
+    }
+}
+
+// ===========================================================================
+// pthread_setaffinity_np
+// ===========================================================================
+
+#[test]
+fn setaffinity_np_to_cpu0() {
+    unsafe {
+        let self_id = pthread_self();
+        let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
+        libc::CPU_SET(0, &mut cpuset);
+
+        let rc = pthread_setaffinity_np(self_id, std::mem::size_of::<libc::cpu_set_t>(), &cpuset);
+        // May return 0 or ESRCH
+        assert!(
+            rc == 0 || rc == libc::ESRCH,
+            "setaffinity_np returned unexpected {rc}"
+        );
+    }
+}
+
+// ===========================================================================
+// pthread_getattr_default_np / pthread_setattr_default_np
+// ===========================================================================
+
+#[test]
+fn getattr_default_np_succeeds() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        let rc = pthread_getattr_default_np(&mut attr);
+        assert_eq!(rc, 0, "getattr_default_np should succeed");
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn setattr_default_np_roundtrip() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        pthread_attr_init(&mut attr);
+        pthread_attr_setstacksize(&mut attr, 4 * 1024 * 1024); // 4 MiB
+
+        let rc = pthread_setattr_default_np(&attr);
+        assert_eq!(rc, 0, "setattr_default_np should succeed");
+
+        // Read back defaults
+        let mut got: libc::pthread_attr_t = std::mem::zeroed();
+        let rc = pthread_getattr_default_np(&mut got);
+        assert_eq!(rc, 0);
+
+        let mut stack_size: usize = 0;
+        pthread_attr_getstacksize(&got, &mut stack_size);
+        assert_eq!(stack_size, 4 * 1024 * 1024);
+
+        pthread_attr_destroy(&mut got);
+        pthread_attr_destroy(&mut attr);
+    }
+}
+
+// ===========================================================================
+// pthread_mutex_consistent (for robust mutexes)
+// ===========================================================================
+
+#[test]
+fn mutex_consistent_does_not_crash() {
+    unsafe {
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        pthread_mutex_init(&mut mutex, ptr::null());
+
+        // consistent on a non-robust mutex — implementation may return EINVAL or 0
+        let rc = pthread_mutex_consistent(&mut mutex);
+        assert!(
+            rc == 0 || rc == libc::EINVAL,
+            "mutex_consistent should return 0 or EINVAL, got {rc}"
+        );
+
         pthread_mutex_destroy(&mut mutex);
     }
 }

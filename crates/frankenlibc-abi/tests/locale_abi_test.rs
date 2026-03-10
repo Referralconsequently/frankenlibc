@@ -116,7 +116,11 @@ fn nl_langinfo_unknown_item() {
     let result = unsafe { nl_langinfo(99999) };
     assert!(!result.is_null());
     let val = unsafe { CStr::from_ptr(result) };
-    assert_eq!(val.to_bytes(), b"", "unknown items should return empty string");
+    assert_eq!(
+        val.to_bytes(),
+        b"",
+        "unknown items should return empty string"
+    );
 }
 
 // ---------------------------------------------------------------------------

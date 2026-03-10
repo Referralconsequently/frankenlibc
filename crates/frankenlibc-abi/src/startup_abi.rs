@@ -785,7 +785,6 @@ pub unsafe extern "C" fn __frankenlibc_startup_phase0(
 // ===========================================================================
 
 /// Thread-local at-exit destructor entry.
-#[allow(dead_code)] // fields read during thread-exit destructor invocation
 struct TlsAtExitEntry {
     dtor: unsafe extern "C" fn(*mut c_void),
     obj: *mut c_void,

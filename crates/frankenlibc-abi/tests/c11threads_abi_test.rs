@@ -152,7 +152,10 @@ fn test_mtx_timedlock_succeeds_when_available() {
         ts.tv_sec += 1; // 1 second from now
 
         let rc = mtx_timedlock(&mut mtx, &ts);
-        assert_eq!(rc, THRD_SUCCESS, "mtx_timedlock should succeed on available mutex");
+        assert_eq!(
+            rc, THRD_SUCCESS,
+            "mtx_timedlock should succeed on available mutex"
+        );
         assert_eq!(mtx_unlock(&mut mtx), THRD_SUCCESS);
         mtx_destroy(&mut mtx);
     }
@@ -248,7 +251,10 @@ fn test_cnd_timedwait_timeout() {
         assert_eq!(mtx_lock(&mut mtx), THRD_SUCCESS);
         let rc = cnd_timedwait(&mut cond, &mut mtx, &ts);
         // Should return thrd_timedout (2) or thrd_error
-        assert_ne!(rc, THRD_SUCCESS, "cnd_timedwait with past deadline should not succeed");
+        assert_ne!(
+            rc, THRD_SUCCESS,
+            "cnd_timedwait with past deadline should not succeed"
+        );
         assert_eq!(mtx_unlock(&mut mtx), THRD_SUCCESS);
 
         cnd_destroy(&mut cond);

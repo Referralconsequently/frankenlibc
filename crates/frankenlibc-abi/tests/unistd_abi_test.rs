@@ -16,10 +16,10 @@ use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::unistd_abi::{
     access, alarm, chdir, chmod, chown, close, creat, eaccess, euidaccess, faccessat, fchmod,
     fchown, fdatasync, flock, fstat, fsync, ftruncate, getcwd, getegid, geteuid, getgid,
-    gethostname, getpid, getppid, getuid, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd,
-    open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev,
-    read, readlink, rename, rmdir, semctl, semop, shmdt, stat, symlink, sysconf, truncate,
-    umask, uname, unlink, usleep, write,
+    gethostname, getpid, getppid, getuid, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv,
+    msgsnd, open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev,
+    read, readlink, rename, rmdir, semctl, semop, shmdt, stat, symlink, sysconf, truncate, umask,
+    uname, unlink, usleep, write,
 };
 
 // ---------------------------------------------------------------------------
@@ -1223,7 +1223,10 @@ fn flock_exclusive_and_unlock() {
 #[test]
 fn pipe_creates_connected_fds() {
     let mut fds = [0i32; 2];
-    assert_eq!(unsafe { frankenlibc_abi::io_abi::pipe(fds.as_mut_ptr()) }, 0);
+    assert_eq!(
+        unsafe { frankenlibc_abi::io_abi::pipe(fds.as_mut_ptr()) },
+        0
+    );
     assert!(fds[0] >= 0);
     assert!(fds[1] >= 0);
 
@@ -1274,8 +1277,7 @@ fn uname_fills_sysname() {
     let rc = unsafe { uname(buf.as_mut_ptr().cast()) };
     assert_eq!(rc, 0);
     // First field is sysname - should start with "Linux"
-    let sysname = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr().cast()) }
-        .to_string_lossy();
+    let sysname = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr().cast()) }.to_string_lossy();
     assert_eq!(&*sysname, "Linux");
 }
 

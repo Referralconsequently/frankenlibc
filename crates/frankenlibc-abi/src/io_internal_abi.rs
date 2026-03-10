@@ -1,16 +1,21 @@
 //! ABI layer for internal glibc `_IO_*` stdio symbols.
 //!
 //! These are internal glibc libio functions exported for binary compatibility.
-//! They manipulate opaque `FILE*` / `_IO_FILE*` internal state and must
-//! delegate to the host glibc via `dlsym(RTLD_NEXT, ...)`.
+//! Many still manipulate opaque `FILE*` / `_IO_FILE*` internals that we do not
+//! model yet, so they continue to delegate to the host glibc via
+//! `dlsym(RTLD_NEXT, ...)`.
 //!
-//! All 114 symbols are pure call-through (GlibcCallThrough).
+//! The common stdio-shaped entrypoints are migrated incrementally to native
+//! wrappers over [`crate::stdio_abi`], which lets us shrink call-through debt
+//! without pretending we already own the full libio object model.
 
 #![allow(non_snake_case, non_upper_case_globals)]
 
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicPtr, Ordering};
+
+use crate::stdio_abi;
 
 // ---------------------------------------------------------------------------
 // Helper macro: resolve a glibc symbol via RTLD_NEXT, cache in LazyLock
@@ -79,7 +84,7 @@ pub unsafe extern "C" fn _IO_wfile_jumps_get() -> *mut c_void {
 }
 
 // ===========================================================================
-// Function call-throughs (111 functions)
+// Function shims (mostly call-through today)
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -207,81 +212,49 @@ pub unsafe extern "C" fn _IO_doallocbuf(fp: *mut c_void) {
 /// `_IO_fclose` — internal fclose.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fclose(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_fclose", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fclose(fp) }
 }
 
 /// `_IO_fdopen` — internal fdopen.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fdopen(fd: c_int, mode: *const c_char) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(c_int, *const c_char) -> *mut c_void;
-    match io_resolve!(c"_IO_fdopen", Fn) {
-        Some(f) => unsafe { f(fd, mode) },
-        None => std::ptr::null_mut(),
-    }
+    unsafe { stdio_abi::fdopen(fd, mode) }
 }
 
 /// `_IO_fflush` — internal fflush.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fflush(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_fflush", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fflush(fp) }
 }
 
 /// `_IO_fgetpos` — internal fgetpos.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fgetpos(fp: *mut c_void, pos: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_fgetpos", Fn) {
-        Some(f) => unsafe { f(fp, pos) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fgetpos(fp, pos.cast::<libc::fpos_t>()) }
 }
 
 /// `_IO_fgetpos64` — internal fgetpos64.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fgetpos64(fp: *mut c_void, pos: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_fgetpos64", Fn) {
-        Some(f) => unsafe { f(fp, pos) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fgetpos64(fp, pos) }
 }
 
 /// `_IO_fgets` — internal fgets.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fgets(buf: *mut c_char, n: c_int, fp: *mut c_void) -> *mut c_char {
-    type Fn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_void) -> *mut c_char;
-    match io_resolve!(c"_IO_fgets", Fn) {
-        Some(f) => unsafe { f(buf, n, fp) },
-        None => std::ptr::null_mut(),
-    }
+    unsafe { stdio_abi::fgets(buf, n, fp) }
 }
 
 /// `_IO_fopen` — internal fopen.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fopen(filename: *const c_char, mode: *const c_char) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_void;
-    match io_resolve!(c"_IO_fopen", Fn) {
-        Some(f) => unsafe { f(filename, mode) },
-        None => std::ptr::null_mut(),
-    }
+    unsafe { stdio_abi::fopen(filename, mode) }
 }
 
 /// `_IO_fputs` — internal fputs.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fputs(s: *const c_char, fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*const c_char, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_fputs", Fn) {
-        Some(f) => unsafe { f(s, fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fputs(s, fp) }
 }
 
 /// `_IO_fread` — internal fread.
@@ -292,41 +265,25 @@ pub unsafe extern "C" fn _IO_fread(
     count: usize,
     fp: *mut c_void,
 ) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, usize, usize, *mut c_void) -> usize;
-    match io_resolve!(c"_IO_fread", Fn) {
-        Some(f) => unsafe { f(buf, size, count, fp) },
-        None => 0,
-    }
+    unsafe { stdio_abi::fread(buf, size, count, fp) }
 }
 
 /// `_IO_fsetpos` — internal fsetpos.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fsetpos(fp: *mut c_void, pos: *const c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_void) -> c_int;
-    match io_resolve!(c"_IO_fsetpos", Fn) {
-        Some(f) => unsafe { f(fp, pos) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fsetpos(fp, pos.cast::<libc::fpos_t>()) }
 }
 
 /// `_IO_fsetpos64` — internal fsetpos64.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fsetpos64(fp: *mut c_void, pos: *const c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_void) -> c_int;
-    match io_resolve!(c"_IO_fsetpos64", Fn) {
-        Some(f) => unsafe { f(fp, pos) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fsetpos64(fp, pos) }
 }
 
 /// `_IO_ftell` — internal ftell.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_ftell(fp: *mut c_void) -> i64 {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> i64;
-    match io_resolve!(c"_IO_ftell", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::ftell(fp) as i64 }
 }
 
 /// `_IO_fwrite` — internal fwrite.
@@ -337,11 +294,7 @@ pub unsafe extern "C" fn _IO_fwrite(
     count: usize,
     fp: *mut c_void,
 ) -> usize {
-    type Fn = unsafe extern "C" fn(*const c_void, usize, usize, *mut c_void) -> usize;
-    match io_resolve!(c"_IO_fwrite", Fn) {
-        Some(f) => unsafe { f(buf, size, count, fp) },
-        None => 0,
-    }
+    unsafe { stdio_abi::fwrite(buf, size, count, fp) }
 }
 
 // ---------------------------------------------------------------------------
@@ -578,49 +531,25 @@ pub unsafe extern "C" fn _IO_flush_all_linebuffered() {
 /// `_IO_fprintf` — internal fprintf (variadic, forwards to _IO_vfprintf).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_fprintf(fp: *mut c_void, fmt: *const c_char, mut args: ...) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_vfprintf", Fn) {
-        Some(f) => unsafe { f(fp, fmt, (&mut args) as *mut _ as *mut c_void) },
-        None => -1,
-    }
+    unsafe { stdio_abi::vfprintf(fp, fmt, (&mut args) as *mut _ as *mut c_void) }
 }
 
 /// `_IO_printf` — internal printf (variadic, forwards to _IO_vfprintf on stdout).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_printf(fmt: *const c_char, mut args: ...) -> c_int {
-    type VFn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_vfprintf", VFn) {
-        Some(f) => {
-            let stdout = unsafe { libc::dlsym(libc::RTLD_NEXT, c"stdout".as_ptr()) };
-            if stdout.is_null() {
-                return -1;
-            }
-            // stdout is a pointer-to-pointer: *FILE*
-            let fp = unsafe { *(stdout as *const *mut c_void) };
-            unsafe { f(fp, fmt, (&mut args) as *mut _ as *mut c_void) }
-        }
-        None => -1,
-    }
+    unsafe { stdio_abi::vprintf(fmt, (&mut args) as *mut _ as *mut c_void) }
 }
 
 /// `_IO_sprintf` — internal sprintf (variadic, forwards to _IO_vsprintf).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_sprintf(buf: *mut c_char, fmt: *const c_char, mut args: ...) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_char, *const c_char, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_vsprintf", Fn) {
-        Some(f) => unsafe { f(buf, fmt, (&mut args) as *mut _ as *mut c_void) },
-        None => -1,
-    }
+    unsafe { stdio_abi::vsprintf(buf, fmt, (&mut args) as *mut _ as *mut c_void) }
 }
 
 /// `_IO_sscanf` — internal sscanf (variadic, forwards to host vsscanf).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_sscanf(s: *const c_char, fmt: *const c_char, mut args: ...) -> c_int {
-    type Fn = unsafe extern "C" fn(*const c_char, *const c_char, *mut c_void) -> c_int;
-    match io_resolve!(c"vsscanf", Fn) {
-        Some(f) => unsafe { f(s, fmt, (&mut args) as *mut _ as *mut c_void) },
-        None => -1,
-    }
+    unsafe { stdio_abi::vsscanf(s, fmt, (&mut args) as *mut _ as *mut c_void) }
 }
 
 // ---------------------------------------------------------------------------

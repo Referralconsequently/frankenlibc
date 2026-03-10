@@ -10,10 +10,9 @@ use std::ptr;
 use std::sync::atomic::Ordering;
 
 use frankenlibc_abi::startup_abi::{
-    StartupFailureReason, StartupInvariantSnapshot, StartupPolicyDecision,
     __cxa_thread_atexit_impl, __frankenlibc_startup_phase0, __frankenlibc_startup_snapshot,
-    __progname, program_invocation_name, program_invocation_short_name,
-    startup_policy_snapshot_for_tests,
+    __progname, StartupFailureReason, StartupInvariantSnapshot, StartupPolicyDecision,
+    program_invocation_name, program_invocation_short_name, startup_policy_snapshot_for_tests,
 };
 
 // ---------------------------------------------------------------------------
@@ -60,7 +59,11 @@ impl StartupFixture {
 }
 
 // A minimal main function for testing.
-unsafe extern "C" fn test_main(_argc: c_int, _argv: *mut *mut c_char, _envp: *mut *mut c_char) -> c_int {
+unsafe extern "C" fn test_main(
+    _argc: c_int,
+    _argv: *mut *mut c_char,
+    _envp: *mut *mut c_char,
+) -> c_int {
     42
 }
 
@@ -175,7 +178,10 @@ fn startup_snapshot_returns_invariants() {
     };
     let rc = unsafe { __frankenlibc_startup_snapshot(&mut snap) };
     assert_eq!(rc, 0, "snapshot should succeed");
-    assert!(snap.argc > 0 || snap.argv_count > 0, "should have captured some invariants");
+    assert!(
+        snap.argc > 0 || snap.argv_count > 0,
+        "should have captured some invariants"
+    );
 }
 
 #[test]
@@ -230,7 +236,10 @@ fn phase0_sets_program_name_globals() {
     assert!(!name_ptr.is_null(), "program_invocation_name should be set");
 
     let short_ptr = program_invocation_short_name.load(Ordering::Acquire);
-    assert!(!short_ptr.is_null(), "program_invocation_short_name should be set");
+    assert!(
+        !short_ptr.is_null(),
+        "program_invocation_short_name should be set"
+    );
 
     let progname_ptr = __progname.load(Ordering::Acquire);
     assert!(!progname_ptr.is_null(), "__progname should be set");

@@ -79,7 +79,10 @@ fn getpwnam_not_found() {
     with_passwd_file(FIXTURE, || {
         let name = CString::new("nonexistent").unwrap();
         let pw = unsafe { getpwnam(name.as_ptr()) };
-        assert!(pw.is_null(), "getpwnam for nonexistent user should return null");
+        assert!(
+            pw.is_null(),
+            "getpwnam for nonexistent user should return null"
+        );
     });
 }
 
@@ -187,7 +190,15 @@ fn getpwnam_r_buffer_too_small() {
 
 #[test]
 fn getpwnam_r_null_args_returns_einval() {
-    let rc = unsafe { getpwnam_r(ptr::null(), ptr::null_mut(), ptr::null_mut(), 0, ptr::null_mut()) };
+    let rc = unsafe {
+        getpwnam_r(
+            ptr::null(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+        )
+    };
     assert_eq!(rc, libc::EINVAL);
 }
 
@@ -257,7 +268,11 @@ fn setpwent_rewinds_cursor() {
         let pw = unsafe { getpwent() };
         assert!(!pw.is_null());
         let name = unsafe { CStr::from_ptr((*pw).pw_name) };
-        assert_eq!(name.to_bytes(), b"root", "setpwent should rewind to first entry");
+        assert_eq!(
+            name.to_bytes(),
+            b"root",
+            "setpwent should rewind to first entry"
+        );
 
         unsafe { endpwent() };
     });

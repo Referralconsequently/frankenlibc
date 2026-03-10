@@ -12,15 +12,103 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use frankenlibc_abi::io_internal_abi::{
+    _IO_fclose, _IO_fdopen, _IO_fflush, _IO_fgetpos, _IO_fgetpos64, _IO_fgets, _IO_fopen,
+    _IO_fprintf, _IO_fputs, _IO_fread, _IO_fsetpos, _IO_fsetpos64, _IO_ftell, _IO_fwrite,
+    _IO_printf, _IO_sprintf, _IO_sscanf,
+};
 use frankenlibc_abi::stdio_abi::{
-    asprintf, clearerr, clearerr_unlocked, dprintf, fclose, fdopen, feof, feof_unlocked, ferror,
-    ferror_unlocked, fflush, fflush_unlocked, fgetc, fgetc_unlocked, fgetpos, fgetpos64, fgets,
-    fgets_unlocked, fileno, fileno_unlocked, flockfile, fmemopen, fopen, fopen64, fopencookie,
-    fprintf, fputc, fputc_unlocked, fputs, fputs_unlocked, fread, fread_unlocked, freopen, fseek,
-    fseeko, fseeko64, fsetpos, fsetpos64, ftell, ftello, ftello64, ftrylockfile, funlockfile,
-    fwrite, fwrite_unlocked, getc, getc_unlocked, getdelim, getline, getw, mktemp, perror, pclose,
-    popen, printf, putc, putc_unlocked, putw, remove as stdio_remove, rewind, setbuf, setbuffer,
-    setlinebuf, setvbuf, snprintf, sprintf, sscanf, tmpfile, tmpfile64, tmpnam, ungetc,
+    __isoc99_fscanf,
+    __isoc99_sscanf,
+    _IO_feof,
+    _IO_ferror,
+    _IO_flockfile,
+    _IO_ftrylockfile,
+    _IO_funlockfile,
+    _IO_getc,
+    _IO_padn,
+    _IO_putc,
+    _IO_puts,
+    _IO_seekoff,
+    _IO_seekpos,
+    _IO_sgetn,
+    asprintf,
+    clearerr,
+    clearerr_unlocked,
+    dprintf,
+    fclose,
+    fdopen,
+    feof,
+    feof_unlocked,
+    ferror,
+    ferror_unlocked,
+    fflush,
+    fflush_unlocked,
+    fgetc,
+    fgetc_unlocked,
+    fgetpos,
+    fgetpos64,
+    fgets,
+    fgets_unlocked,
+    fileno,
+    fileno_unlocked,
+    flockfile,
+    fmemopen,
+    fopen,
+    fopen64,
+    fopencookie,
+    fprintf,
+    fputc,
+    fputc_unlocked,
+    fputs,
+    fputs_unlocked,
+    fread,
+    fread_unlocked,
+    freopen,
+    freopen64,
+    fseek,
+    fseeko,
+    fseeko64,
+    fsetpos,
+    fsetpos64,
+    ftell,
+    ftello,
+    ftello64,
+    ftrylockfile,
+    funlockfile,
+    fwrite,
+    fwrite_unlocked,
+    getc,
+    getc_unlocked,
+    getdelim,
+    getline,
+    getw,
+    mktemp,
+    // Newly tested:
+    open_memstream,
+    pclose,
+    perror,
+    popen,
+    printf,
+    putc,
+    putc_unlocked,
+    putchar,
+    putchar_unlocked,
+    puts,
+    putw,
+    remove as stdio_remove,
+    rewind,
+    setbuf,
+    setbuffer,
+    setlinebuf,
+    setvbuf,
+    snprintf,
+    sprintf,
+    sscanf,
+    tmpfile,
+    tmpfile64,
+    tmpnam,
+    ungetc,
 };
 
 const IOFBF: i32 = 0;
@@ -409,7 +497,10 @@ fn fopencookie_fwrite_handles_partial_writes_without_data_loss() {
     // SAFETY: cookie ownership remains with this test.
     let state = unsafe { Box::from_raw(cookie) };
     assert_eq!(state.data, payload);
-    assert!(state.write_calls > 1, "short-write path should require retries");
+    assert!(
+        state.write_calls > 1,
+        "short-write path should require retries"
+    );
 }
 
 #[test]
@@ -422,7 +513,10 @@ fn mixed_buffered_and_unbuffered_same_fd_completes_without_deadlock() {
     let stream = unsafe { fopen(path_c.as_ptr(), c"w+".as_ptr()) };
     assert!(!stream.is_null());
     // SAFETY: stream is valid and setvbuf pre-I/O configuration is valid.
-    assert_eq!(unsafe { setvbuf(stream, std::ptr::null_mut(), IOFBF, 4096) }, 0);
+    assert_eq!(
+        unsafe { setvbuf(stream, std::ptr::null_mut(), IOFBF, 4096) },
+        0
+    );
 
     // SAFETY: stream is valid.
     let fd = unsafe { fileno(stream) };
@@ -465,7 +559,9 @@ fn mixed_buffered_and_unbuffered_same_fd_completes_without_deadlock() {
     assert!(first.is_ok(), "first writer did not finish in time");
     assert!(second.is_ok(), "second writer did not finish in time");
 
-    writer_stream.join().expect("stream writer thread should join");
+    writer_stream
+        .join()
+        .expect("stream writer thread should join");
     writer_fd.join().expect("fd writer thread should join");
 
     // SAFETY: stream is valid and open.
@@ -1327,7 +1423,14 @@ fn sscanf_parses_integers_and_strings() {
     let mut buf = [0_i8; 32];
 
     // SAFETY: format matches arguments.
-    let n = unsafe { sscanf(input.as_ptr(), c"%d %s".as_ptr(), &mut num, buf.as_mut_ptr()) };
+    let n = unsafe {
+        sscanf(
+            input.as_ptr(),
+            c"%d %s".as_ptr(),
+            &mut num,
+            buf.as_mut_ptr(),
+        )
+    };
     assert_eq!(n, 2);
     assert_eq!(num, 42);
     let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
@@ -1365,7 +1468,10 @@ fn mktemp_generates_unique_name() {
     let name = unsafe { CStr::from_ptr(ptr) };
     let name_str = name.to_string_lossy();
     // The X's should have been replaced
-    assert!(!name_str.contains("XXXXXX"), "template should be filled: {name_str}");
+    assert!(
+        !name_str.contains("XXXXXX"),
+        "template should be filled: {name_str}"
+    );
     assert!(name_str.starts_with("/tmp/frankenlibc_"));
 }
 
@@ -1381,7 +1487,10 @@ fn mktemp_consecutive_calls_produce_different_names() {
 
     let n1 = unsafe { CStr::from_ptr(p1) };
     let n2 = unsafe { CStr::from_ptr(p2) };
-    assert_ne!(n1, n2, "consecutive mktemp calls should produce different names");
+    assert_ne!(
+        n1, n2,
+        "consecutive mktemp calls should produce different names"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1580,7 +1689,13 @@ fn vsnprintf_truncates_correctly() {
     // Use snprintf as the test vehicle (vsnprintf is called internally)
     let fmt = c"%d-%s";
     let n = unsafe {
-        snprintf(buf.as_mut_ptr(), buf.len(), fmt.as_ptr(), 42i32, c"hello".as_ptr())
+        snprintf(
+            buf.as_mut_ptr(),
+            buf.len(),
+            fmt.as_ptr(),
+            42i32,
+            c"hello".as_ptr(),
+        )
     };
     assert!(n > 0);
     let result = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_bytes();
@@ -1599,4 +1714,533 @@ fn fmemopen_write_creates_stream() {
     if !stream.is_null() {
         assert_eq!(unsafe { fclose(stream) }, 0);
     }
+}
+
+// ===========================================================================
+// open_memstream
+// ===========================================================================
+
+#[test]
+fn open_memstream_returns_stream_or_null() {
+    let mut ptr: *mut c_char = std::ptr::null_mut();
+    let mut size: usize = 0;
+    let stream = unsafe { open_memstream(&mut ptr, &mut size) };
+    // open_memstream may not be fully functional without LD_PRELOAD
+    if stream.is_null() {
+        return;
+    }
+    // Just close it — don't free ptr as it may be managed internally
+    unsafe { fclose(stream) };
+}
+
+// ===========================================================================
+// puts / putchar / putchar_unlocked — test via file stream (fdopen)
+// ===========================================================================
+
+#[test]
+fn puts_calls_without_crash() {
+    // We can't easily capture stdout in the interposition layer,
+    // so just verify puts doesn't crash and returns a non-negative value
+    let rc = unsafe { puts(c"".as_ptr()) };
+    // puts returns non-negative on success or EOF on error
+    assert!(rc >= 0 || rc == libc::EOF, "puts returned unexpected {rc}");
+}
+
+#[test]
+fn putchar_returns_char_or_eof() {
+    // putchar writes to stdout; verify it returns the character or EOF
+    let rc = unsafe { putchar(b'A' as c_int) };
+    assert!(
+        rc == b'A' as c_int || rc == libc::EOF,
+        "putchar should return the char or EOF, got {rc}"
+    );
+}
+
+#[test]
+fn putchar_unlocked_returns_char_or_eof() {
+    let rc = unsafe { putchar_unlocked(b'B' as c_int) };
+    assert!(
+        rc == b'B' as c_int || rc == libc::EOF,
+        "putchar_unlocked should return the char or EOF, got {rc}"
+    );
+}
+
+// ===========================================================================
+// freopen64
+// ===========================================================================
+
+#[test]
+fn freopen64_reopens_file() {
+    let p = temp_path("freopen64");
+    let pc = path_cstring(&p);
+
+    // Create a file with known content
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+    unsafe { fputs(c"original".as_ptr(), f) };
+    unsafe { fclose(f) };
+
+    // Open for writing, then reopen for reading
+    let f = unsafe { fopen(pc.as_ptr(), c"r".as_ptr()) };
+    assert!(!f.is_null());
+    let f2 = unsafe { freopen64(pc.as_ptr(), c"r".as_ptr(), f) };
+    if !f2.is_null() {
+        let mut buf = [0u8; 32];
+        let n = unsafe { fread(buf.as_mut_ptr().cast(), 1, buf.len(), f2) };
+        // The file should have "original" (8 bytes)
+        assert!(n > 0, "freopen64 should allow reading, got {n} bytes");
+        unsafe { fclose(f2) };
+    } else {
+        // freopen64 returned null, original stream is closed by freopen semantics
+    }
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// __isoc99_sscanf / __isoc99_fscanf
+// ===========================================================================
+
+#[test]
+fn isoc99_sscanf_basic() {
+    let input = c"42 hello";
+    let mut val: c_int = 0;
+    let mut buf = [0u8; 32];
+    let n = unsafe {
+        __isoc99_sscanf(
+            input.as_ptr(),
+            c"%d %31s".as_ptr(),
+            &mut val as *mut c_int,
+            buf.as_mut_ptr(),
+        )
+    };
+    assert_eq!(n, 2);
+    assert_eq!(val, 42);
+    let s = unsafe { CStr::from_ptr(buf.as_ptr().cast()) };
+    assert_eq!(s.to_str().unwrap(), "hello");
+}
+
+#[test]
+fn isoc99_fscanf_from_file() {
+    let p = temp_path("isoc99_fscanf");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+    unsafe { fputs(c"99 bottles".as_ptr(), f) };
+    unsafe { fclose(f) };
+
+    let f = unsafe { fopen(pc.as_ptr(), c"r".as_ptr()) };
+    assert!(!f.is_null());
+    let mut val: c_int = 0;
+    let n = unsafe { __isoc99_fscanf(f, c"%d".as_ptr(), &mut val as *mut c_int) };
+    assert_eq!(n, 1);
+    assert_eq!(val, 99);
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// _IO_putc / _IO_getc
+// ===========================================================================
+
+#[test]
+fn io_putc_getc_roundtrip() {
+    let p = temp_path("io_putc_getc");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w+".as_ptr()) };
+    assert!(!f.is_null());
+
+    let rc = unsafe { _IO_putc(b'X' as c_int, f) };
+    assert_eq!(rc, b'X' as c_int);
+
+    unsafe { rewind(f) };
+
+    let ch = unsafe { _IO_getc(f) };
+    assert_eq!(ch, b'X' as c_int);
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// _IO_feof / _IO_ferror
+// ===========================================================================
+
+#[test]
+fn io_feof_at_end() {
+    let p = temp_path("io_feof");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w+".as_ptr()) };
+    assert!(!f.is_null());
+    unsafe { _IO_putc(b'A' as c_int, f) };
+    unsafe { rewind(f) };
+
+    assert_eq!(unsafe { _IO_feof(f) }, 0, "not at EOF yet");
+    unsafe { _IO_getc(f) }; // read the 'A'
+    unsafe { _IO_getc(f) }; // trigger EOF
+    assert_ne!(unsafe { _IO_feof(f) }, 0, "should be at EOF");
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+#[test]
+fn io_ferror_on_good_stream() {
+    let p = temp_path("io_ferror");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+    assert_eq!(unsafe { _IO_ferror(f) }, 0, "no error on fresh stream");
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// _IO_flockfile / _IO_funlockfile / _IO_ftrylockfile
+// ===========================================================================
+
+#[test]
+fn io_flockfile_funlockfile_basic() {
+    let p = temp_path("io_flock");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+
+    // Should not deadlock: lock then unlock
+    unsafe { _IO_flockfile(f) };
+    unsafe { _IO_funlockfile(f) };
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+#[test]
+fn io_ftrylockfile_succeeds_when_unlocked() {
+    let p = temp_path("io_ftrylock");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+
+    let rc = unsafe { _IO_ftrylockfile(f) };
+    assert_eq!(rc, 0, "ftrylockfile on unlocked stream should return 0");
+    unsafe { _IO_funlockfile(f) };
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// _IO_puts (writes to stdout like puts)
+// ===========================================================================
+
+#[test]
+fn io_puts_does_not_crash() {
+    // _IO_puts writes to stdout; just verify it doesn't crash
+    let rc = unsafe { _IO_puts(c"io_puts_ok".as_ptr()) };
+    assert!(
+        rc >= 0 || rc == libc::EOF,
+        "_IO_puts returned unexpected {rc}"
+    );
+}
+
+// ===========================================================================
+// _IO_padn (write padding characters)
+// ===========================================================================
+
+#[test]
+fn io_padn_writes_padding() {
+    let p = temp_path("io_padn");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+
+    let n = unsafe { _IO_padn(f, b' ' as c_int, 5) };
+    // Should write 5 space characters (or return error if not supported)
+    if n >= 0 {
+        assert_eq!(n, 5, "_IO_padn should write 5 bytes");
+    }
+
+    unsafe { fclose(f) };
+
+    if n >= 0 {
+        let content = fs::read_to_string(&p).unwrap();
+        assert_eq!(content, "     ", "should have 5 spaces");
+    }
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// _IO_sgetn (read n bytes from stream)
+// ===========================================================================
+
+#[test]
+fn io_sgetn_reads_bytes() {
+    let p = temp_path("io_sgetn");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w".as_ptr()) };
+    assert!(!f.is_null());
+    unsafe { fputs(c"abcdefgh".as_ptr(), f) };
+    unsafe { fclose(f) };
+
+    let f = unsafe { fopen(pc.as_ptr(), c"r".as_ptr()) };
+    assert!(!f.is_null());
+
+    let mut buf = [0u8; 8];
+    let n = unsafe { _IO_sgetn(f, buf.as_mut_ptr().cast(), 4) };
+    assert_eq!(n, 4, "_IO_sgetn should read 4 bytes");
+    assert_eq!(&buf[..4], b"abcd");
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+// ===========================================================================
+// _IO_seekoff / _IO_seekpos
+// ===========================================================================
+
+#[test]
+fn io_seekoff_resets_position() {
+    let p = temp_path("io_seekoff");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w+".as_ptr()) };
+    assert!(!f.is_null());
+    unsafe { fputs(c"seektest".as_ptr(), f) };
+
+    // Seek to beginning using _IO_seekoff (offset=0, whence=SEEK_SET=0)
+    let pos = unsafe { _IO_seekoff(f, 0, 0, 0) };
+    // pos should be 0 (beginning of file)
+    if pos >= 0 {
+        assert_eq!(pos, 0);
+        let ch = unsafe { fgetc(f) };
+        assert_eq!(ch, b's' as c_int);
+    }
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+#[test]
+fn io_seekpos_to_beginning() {
+    let p = temp_path("io_seekpos");
+    let pc = path_cstring(&p);
+
+    let f = unsafe { fopen(pc.as_ptr(), c"w+".as_ptr()) };
+    assert!(!f.is_null());
+    unsafe { fputs(c"postest".as_ptr(), f) };
+
+    let pos = unsafe { _IO_seekpos(f, 0, 0) };
+    if pos >= 0 {
+        assert_eq!(pos, 0);
+        let ch = unsafe { fgetc(f) };
+        assert_eq!(ch, b'p' as c_int);
+    }
+
+    unsafe { fclose(f) };
+    let _ = fs::remove_file(&p);
+}
+
+#[test]
+fn io_internal_fopen_fputs_fflush_fgets_fclose_round_trip() {
+    let path = temp_path("io_internal_fopen");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let stream = unsafe { _IO_fopen(path_c.as_ptr(), c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+
+    assert_eq!(unsafe { _IO_fputs(c"alpha\nbeta\n".as_ptr(), stream) }, 0);
+    assert_eq!(unsafe { _IO_fflush(stream) }, 0);
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    let mut buf = [0 as c_char; 16];
+    let out = unsafe { _IO_fgets(buf.as_mut_ptr(), buf.len() as c_int, stream) };
+    assert_eq!(out, buf.as_mut_ptr());
+    let rendered = unsafe { CStr::from_ptr(buf.as_ptr()) };
+    assert_eq!(rendered.to_bytes(), b"alpha\n");
+
+    assert_eq!(unsafe { _IO_fclose(stream) }, 0);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn io_internal_fdopen_fwrite_and_fread_round_trip() {
+    let path = temp_path("io_internal_fdopen");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let fd = unsafe {
+        libc::open(
+            path_c.as_ptr(),
+            libc::O_CREAT | libc::O_TRUNC | libc::O_RDWR,
+            0o600,
+        )
+    };
+    assert!(fd >= 0);
+
+    let stream = unsafe { _IO_fdopen(fd, c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+
+    let payload = b"io-internal-data";
+    let wrote = unsafe { _IO_fwrite(payload.as_ptr().cast(), 1, payload.len(), stream) };
+    assert_eq!(wrote, payload.len());
+    assert_eq!(unsafe { _IO_fflush(stream) }, 0);
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    let mut buf = [0u8; 16];
+    let read = unsafe { _IO_fread(buf.as_mut_ptr().cast(), 1, payload.len(), stream) };
+    assert_eq!(read, payload.len());
+    assert_eq!(&buf[..payload.len()], payload);
+
+    assert_eq!(unsafe { _IO_fclose(stream) }, 0);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn io_internal_fgetpos_variants_restore_position() {
+    let path = temp_path("io_internal_fpos");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let stream = unsafe { _IO_fopen(path_c.as_ptr(), c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+    assert_eq!(unsafe { _IO_fputs(c"ABCDE".as_ptr(), stream) }, 0);
+    assert_eq!(unsafe { _IO_fflush(stream) }, 0);
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    assert_eq!(unsafe { fgetc(stream) }, b'A' as c_int);
+    let mut pos: libc::fpos_t = unsafe { std::mem::zeroed() };
+    assert_eq!(
+        unsafe { _IO_fgetpos(stream, (&mut pos as *mut libc::fpos_t).cast()) },
+        0
+    );
+    assert_eq!(unsafe { fgetc(stream) }, b'B' as c_int);
+    assert_eq!(
+        unsafe { _IO_fsetpos(stream, (&pos as *const libc::fpos_t).cast()) },
+        0
+    );
+    assert_eq!(unsafe { _IO_ftell(stream) }, 1);
+    assert_eq!(unsafe { fgetc(stream) }, b'B' as c_int);
+
+    let mut pos64 = 0_i64;
+    assert_eq!(
+        unsafe { _IO_fgetpos64(stream, (&mut pos64 as *mut i64).cast()) },
+        0
+    );
+    assert_eq!(unsafe { fgetc(stream) }, b'C' as c_int);
+    assert_eq!(
+        unsafe { _IO_fsetpos64(stream, (&pos64 as *const i64).cast()) },
+        0
+    );
+    assert_eq!(unsafe { _IO_ftell(stream) }, pos64);
+    assert_eq!(unsafe { fgetc(stream) }, b'C' as c_int);
+
+    assert_eq!(unsafe { _IO_fclose(stream) }, 0);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn io_internal_fprintf_and_sprintf_use_native_formatting() {
+    let path = temp_path("io_internal_fprintf");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let stream = unsafe { _IO_fopen(path_c.as_ptr(), c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+
+    let written = unsafe { _IO_fprintf(stream, c"v=%d:%s".as_ptr(), 7_i32, c"ok".as_ptr()) };
+    assert_eq!(written, 6);
+    assert_eq!(unsafe { _IO_fflush(stream) }, 0);
+    assert_eq!(unsafe { fseek(stream, 0, libc::SEEK_SET) }, 0);
+
+    let mut file_buf = [0 as c_char; 16];
+    let out = unsafe { _IO_fgets(file_buf.as_mut_ptr(), file_buf.len() as c_int, stream) };
+    assert_eq!(out, file_buf.as_mut_ptr());
+    let file_rendered = unsafe { CStr::from_ptr(file_buf.as_ptr()) };
+    assert_eq!(file_rendered.to_bytes(), b"v=7:ok");
+
+    let mut mem_buf = [0 as c_char; 32];
+    let rendered = unsafe {
+        _IO_sprintf(
+            mem_buf.as_mut_ptr(),
+            c"%d-%s".as_ptr(),
+            42_i32,
+            c"wave".as_ptr(),
+        )
+    };
+    assert_eq!(rendered, 7);
+    let mem_rendered = unsafe { CStr::from_ptr(mem_buf.as_ptr()) };
+    assert_eq!(mem_rendered.to_bytes(), b"42-wave");
+
+    assert_eq!(unsafe { _IO_fclose(stream) }, 0);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn io_internal_printf_and_sscanf_use_native_stdio_paths() {
+    let _guard = STDOUT_REDIRECT_LOCK
+        .lock()
+        .expect("stdout redirect lock should not be poisoned");
+
+    let path = temp_path("io_internal_printf");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let out_fd = unsafe {
+        libc::open(
+            path_c.as_ptr(),
+            libc::O_CREAT | libc::O_TRUNC | libc::O_WRONLY,
+            0o600,
+        )
+    };
+    assert!(out_fd >= 0);
+
+    let saved_stdout = unsafe { libc::dup(libc::STDOUT_FILENO) };
+    assert!(saved_stdout >= 0);
+    assert_eq!(
+        unsafe { libc::dup2(out_fd, libc::STDOUT_FILENO) },
+        libc::STDOUT_FILENO
+    );
+
+    let written = unsafe { _IO_printf(c"io-%d\n".as_ptr(), 9_i32) };
+    assert_eq!(written, 5);
+
+    unsafe {
+        libc::dup2(saved_stdout, libc::STDOUT_FILENO);
+        libc::close(saved_stdout);
+        libc::close(out_fd);
+    }
+
+    let bytes = fs::read(&path).expect("redirected _IO_printf output file should exist");
+    assert!(
+        bytes
+            .windows(b"io-9\n".len())
+            .any(|window| window == b"io-9\n"),
+        "redirected stdout should contain _IO_printf payload; got bytes={bytes:?}"
+    );
+
+    let input = c"11 parsed";
+    let mut value = 0_i32;
+    let mut word = [0 as c_char; 16];
+    let parsed = unsafe {
+        _IO_sscanf(
+            input.as_ptr(),
+            c"%d %15s".as_ptr(),
+            &mut value,
+            word.as_mut_ptr(),
+        )
+    };
+    assert_eq!(parsed, 2);
+    assert_eq!(value, 11);
+    let parsed_word = unsafe { CStr::from_ptr(word.as_ptr()) };
+    assert_eq!(parsed_word.to_bytes(), b"parsed");
+
+    let _ = fs::remove_file(path);
 }

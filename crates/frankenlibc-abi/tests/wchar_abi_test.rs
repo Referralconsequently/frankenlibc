@@ -2,7 +2,7 @@
 
 //! Integration tests for `<wchar.h>` ABI entrypoints.
 
-use std::ffi::{c_char, c_int, c_void, CStr};
+use std::ffi::{CStr, c_char, c_int, c_void};
 
 use frankenlibc_abi::wchar_abi::*;
 
@@ -386,7 +386,13 @@ fn wcsncasecmp_compares_up_to_n() {
 fn wcslcpy_copies_and_returns_src_len() {
     let src = wstr(b"hello");
     let mut dst = [0u32; 4];
-    let n = unsafe { wcslcpy(dst.as_mut_ptr() as *mut libc::wchar_t, src.as_ptr() as *const libc::wchar_t, 4) };
+    let n = unsafe {
+        wcslcpy(
+            dst.as_mut_ptr() as *mut libc::wchar_t,
+            src.as_ptr() as *const libc::wchar_t,
+            4,
+        )
+    };
     assert_eq!(n, 5); // Length of src
     // Should truncate to "hel\0"
     assert_eq!(dst[0], b'h' as u32);
@@ -401,7 +407,13 @@ fn wcslcat_appends_and_returns_total_len() {
     buf[0] = b'h' as u32;
     buf[1] = b'i' as u32;
     buf[2] = 0;
-    let n = unsafe { wcslcat(buf.as_mut_ptr() as *mut libc::wchar_t, suffix.as_ptr() as *const libc::wchar_t, 10) };
+    let n = unsafe {
+        wcslcat(
+            buf.as_mut_ptr() as *mut libc::wchar_t,
+            suffix.as_ptr() as *const libc::wchar_t,
+            10,
+        )
+    };
     assert_eq!(n, 7); // 2 + 5
     assert_eq!(unsafe { wcslen(buf.as_ptr()) }, 7);
 }
@@ -535,7 +547,7 @@ fn iswxdigit_identifies_hex_digits() {
 fn wcwidth_reports_display_width() {
     assert_eq!(unsafe { wcwidth(b'A' as u32) }, 1);
     assert_eq!(unsafe { wcwidth(0x754c) }, 2); // CJK char '界'
-    assert_eq!(unsafe { wcwidth(0) }, 0);       // NUL
+    assert_eq!(unsafe { wcwidth(0) }, 0); // NUL
 }
 
 // ── wctype / iswctype ───────────────────────────────────────────────────────
@@ -719,10 +731,7 @@ fn mbsinit_returns_nonzero_for_null() {
 #[test]
 fn mbsinit_returns_nonzero_for_initial_state() {
     let state = [0u8; 64]; // Zero-initialized mbstate_t
-    assert_ne!(
-        unsafe { mbsinit(state.as_ptr().cast()) },
-        0
-    );
+    assert_ne!(unsafe { mbsinit(state.as_ptr().cast()) }, 0);
 }
 
 #[test]
@@ -835,7 +844,14 @@ fn swprintf_formats_integer() {
     let mut buf = [0u32; 32];
     // Format: "%d"
     let fmt = [b'%' as u32, b'd' as u32, 0];
-    let n = unsafe { swprintf(buf.as_mut_ptr() as *mut libc::wchar_t, 32, fmt.as_ptr() as *const libc::wchar_t, 42i32) };
+    let n = unsafe {
+        swprintf(
+            buf.as_mut_ptr() as *mut libc::wchar_t,
+            32,
+            fmt.as_ptr() as *const libc::wchar_t,
+            42i32,
+        )
+    };
     assert!(n > 0);
     let rendered: Vec<u8> = buf[..n as usize].iter().map(|&c| c as u8).collect();
     assert_eq!(rendered, b"42");
@@ -846,7 +862,14 @@ fn swprintf_formats_string() {
     let mut buf = [0u32; 32];
     // Format: "%s" (narrow string)
     let fmt = [b'%' as u32, b's' as u32, 0];
-    let n = unsafe { swprintf(buf.as_mut_ptr() as *mut libc::wchar_t, 32, fmt.as_ptr() as *const libc::wchar_t, c"hi".as_ptr()) };
+    let n = unsafe {
+        swprintf(
+            buf.as_mut_ptr() as *mut libc::wchar_t,
+            32,
+            fmt.as_ptr() as *const libc::wchar_t,
+            c"hi".as_ptr(),
+        )
+    };
     assert!(n > 0);
     let rendered: Vec<u8> = buf[..n as usize].iter().map(|&c| c as u8).collect();
     assert_eq!(rendered, b"hi");
@@ -856,7 +879,13 @@ fn swprintf_formats_string() {
 fn swscanf_parses_integer() {
     let input = wstr(b"42 hello");
     let mut val: c_int = 0;
-    let n = unsafe { swscanf(input.as_ptr() as *const libc::wchar_t, wstr(b"%d").as_ptr() as *const libc::wchar_t, &mut val as *mut c_int) };
+    let n = unsafe {
+        swscanf(
+            input.as_ptr() as *const libc::wchar_t,
+            wstr(b"%d").as_ptr() as *const libc::wchar_t,
+            &mut val as *mut c_int,
+        )
+    };
     assert_eq!(n, 1);
     assert_eq!(val, 42);
 }

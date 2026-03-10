@@ -337,18 +337,12 @@ fn strcasecmp_ignores_case() {
         unsafe { strcasecmp(c"Hello".as_ptr(), c"hello".as_ptr()) },
         0
     );
-    assert_eq!(
-        unsafe { strcasecmp(c"ABC".as_ptr(), c"abc".as_ptr()) },
-        0
-    );
+    assert_eq!(unsafe { strcasecmp(c"ABC".as_ptr(), c"abc".as_ptr()) }, 0);
 }
 
 #[test]
 fn strcasecmp_detects_difference() {
-    assert_ne!(
-        unsafe { strcasecmp(c"abc".as_ptr(), c"abd".as_ptr()) },
-        0
-    );
+    assert_ne!(unsafe { strcasecmp(c"abc".as_ptr(), c"abd".as_ptr()) }, 0);
 }
 
 #[test]
@@ -414,31 +408,19 @@ fn strtok_r_tokenizes_string() {
     let mut buf = *b"hello,world,test\0";
     let mut saveptr: *mut c_char = std::ptr::null_mut();
 
-    let tok1 = unsafe {
-        strtok_r(
-            buf.as_mut_ptr().cast(),
-            c",".as_ptr(),
-            &mut saveptr,
-        )
-    };
+    let tok1 = unsafe { strtok_r(buf.as_mut_ptr().cast(), c",".as_ptr(), &mut saveptr) };
     assert!(!tok1.is_null());
     assert_eq!(unsafe { CStr::from_ptr(tok1) }.to_bytes(), b"hello");
 
-    let tok2 = unsafe {
-        strtok_r(std::ptr::null_mut(), c",".as_ptr(), &mut saveptr)
-    };
+    let tok2 = unsafe { strtok_r(std::ptr::null_mut(), c",".as_ptr(), &mut saveptr) };
     assert!(!tok2.is_null());
     assert_eq!(unsafe { CStr::from_ptr(tok2) }.to_bytes(), b"world");
 
-    let tok3 = unsafe {
-        strtok_r(std::ptr::null_mut(), c",".as_ptr(), &mut saveptr)
-    };
+    let tok3 = unsafe { strtok_r(std::ptr::null_mut(), c",".as_ptr(), &mut saveptr) };
     assert!(!tok3.is_null());
     assert_eq!(unsafe { CStr::from_ptr(tok3) }.to_bytes(), b"test");
 
-    let tok4 = unsafe {
-        strtok_r(std::ptr::null_mut(), c",".as_ptr(), &mut saveptr)
-    };
+    let tok4 = unsafe { strtok_r(std::ptr::null_mut(), c",".as_ptr(), &mut saveptr) };
     assert!(tok4.is_null());
 }
 
@@ -627,10 +609,7 @@ fn strverscmp_numeric_ordering() {
 #[test]
 fn strverscmp_plain_strings() {
     assert!(unsafe { strverscmp(c"abc".as_ptr(), c"abd".as_ptr()) } < 0);
-    assert_eq!(
-        unsafe { strverscmp(c"abc".as_ptr(), c"abc".as_ptr()) },
-        0
-    );
+    assert_eq!(unsafe { strverscmp(c"abc".as_ptr(), c"abc".as_ptr()) }, 0);
 }
 
 // ===========================================================================
@@ -663,10 +642,7 @@ fn strsignal_returns_message() {
 
 #[test]
 fn strcoll_equal_strings() {
-    assert_eq!(
-        unsafe { strcoll(c"hello".as_ptr(), c"hello".as_ptr()) },
-        0
-    );
+    assert_eq!(unsafe { strcoll(c"hello".as_ptr(), c"hello".as_ptr()) }, 0);
 }
 
 #[test]
@@ -723,12 +699,18 @@ fn rawmemchr_finds_byte() {
 
 #[test]
 fn fnmatch_simple_star() {
-    assert_eq!(unsafe { fnmatch(c"*.txt".as_ptr(), c"hello.txt".as_ptr(), 0) }, 0);
+    assert_eq!(
+        unsafe { fnmatch(c"*.txt".as_ptr(), c"hello.txt".as_ptr(), 0) },
+        0
+    );
 }
 
 #[test]
 fn fnmatch_star_no_match() {
-    assert_ne!(unsafe { fnmatch(c"*.txt".as_ptr(), c"hello.rs".as_ptr(), 0) }, 0);
+    assert_ne!(
+        unsafe { fnmatch(c"*.txt".as_ptr(), c"hello.rs".as_ptr(), 0) },
+        0
+    );
 }
 
 #[test]
@@ -761,19 +743,34 @@ fn fnmatch_negated_bracket() {
 
 #[test]
 fn fnmatch_pathname_flag() {
-    assert_eq!(unsafe { fnmatch(c"*.c".as_ptr(), c"src/main.c".as_ptr(), 0) }, 0);
-    assert_ne!(unsafe { fnmatch(c"*.c".as_ptr(), c"src/main.c".as_ptr(), 2) }, 0);
+    assert_eq!(
+        unsafe { fnmatch(c"*.c".as_ptr(), c"src/main.c".as_ptr(), 0) },
+        0
+    );
+    assert_ne!(
+        unsafe { fnmatch(c"*.c".as_ptr(), c"src/main.c".as_ptr(), 2) },
+        0
+    );
 }
 
 #[test]
 fn fnmatch_casefold() {
-    assert_ne!(unsafe { fnmatch(c"hello".as_ptr(), c"HELLO".as_ptr(), 0) }, 0);
-    assert_eq!(unsafe { fnmatch(c"hello".as_ptr(), c"HELLO".as_ptr(), 16) }, 0);
+    assert_ne!(
+        unsafe { fnmatch(c"hello".as_ptr(), c"HELLO".as_ptr(), 0) },
+        0
+    );
+    assert_eq!(
+        unsafe { fnmatch(c"hello".as_ptr(), c"HELLO".as_ptr(), 16) },
+        0
+    );
 }
 
 #[test]
 fn fnmatch_exact_match() {
-    assert_eq!(unsafe { fnmatch(c"hello".as_ptr(), c"hello".as_ptr(), 0) }, 0);
+    assert_eq!(
+        unsafe { fnmatch(c"hello".as_ptr(), c"hello".as_ptr(), 0) },
+        0
+    );
 }
 
 #[test]

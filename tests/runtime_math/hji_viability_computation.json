@@ -1,0 +1,181 @@
+{
+  "schema_version": "v1",
+  "model": "discrete_hji_risk_latency_adverse",
+  "grid_resolution": 4,
+  "state_count": 64,
+  "gamma": 0.95,
+  "configured_iterations": 200,
+  "converged_iteration": 2,
+  "safe_kernel_volume": 48,
+  "non_viable_volume": 16,
+  "winning_policy_histogram": {
+    "relax": 16,
+    "hold": 0,
+    "tighten": 16,
+    "emergency": 16
+  },
+  "convergence": [
+    {
+      "iteration": 1,
+      "max_delta": 37.999999999999986,
+      "kernel_volume": 48
+    },
+    {
+      "iteration": 2,
+      "max_delta": 0.0,
+      "kernel_volume": 48
+    }
+  ],
+  "boundary_witnesses": [
+    {
+      "state": [3, 0, 0],
+      "value": -18.0,
+      "controller_witnesses": [
+        {
+          "controller": "relax",
+          "disturbance": "benign",
+          "successor_state": [3, 0, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "hold",
+          "disturbance": "benign",
+          "successor_state": [3, 0, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "tighten",
+          "disturbance": "burst",
+          "successor_state": [3, 1, 1],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "emergency",
+          "disturbance": "sustained",
+          "successor_state": [3, 2, 2],
+          "successor_value": -20.0
+        }
+      ]
+    },
+    {
+      "state": [3, 0, 1],
+      "value": -18.0,
+      "controller_witnesses": [
+        {
+          "controller": "relax",
+          "disturbance": "benign",
+          "successor_state": [3, 0, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "hold",
+          "disturbance": "benign",
+          "successor_state": [3, 0, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "tighten",
+          "disturbance": "burst",
+          "successor_state": [3, 1, 2],
+          "successor_value": -20.0
+        },
+        {
+          "controller": "emergency",
+          "disturbance": "sustained",
+          "successor_state": [3, 2, 3],
+          "successor_value": -20.0
+        }
+      ]
+    },
+    {
+      "state": [3, 1, 0],
+      "value": -18.0,
+      "controller_witnesses": [
+        {
+          "controller": "relax",
+          "disturbance": "benign",
+          "successor_state": [3, 0, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "hold",
+          "disturbance": "benign",
+          "successor_state": [3, 1, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "tighten",
+          "disturbance": "burst",
+          "successor_state": [3, 2, 1],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "emergency",
+          "disturbance": "sustained",
+          "successor_state": [3, 3, 2],
+          "successor_value": -20.0
+        }
+      ]
+    },
+    {
+      "state": [3, 1, 1],
+      "value": -18.0,
+      "controller_witnesses": [
+        {
+          "controller": "relax",
+          "disturbance": "benign",
+          "successor_state": [3, 0, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "hold",
+          "disturbance": "benign",
+          "successor_state": [3, 1, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "tighten",
+          "disturbance": "burst",
+          "successor_state": [3, 2, 2],
+          "successor_value": -20.0
+        },
+        {
+          "controller": "emergency",
+          "disturbance": "sustained",
+          "successor_state": [3, 3, 3],
+          "successor_value": -20.0
+        }
+      ]
+    },
+    {
+      "state": [3, 2, 0],
+      "value": -18.0,
+      "controller_witnesses": [
+        {
+          "controller": "relax",
+          "disturbance": "benign",
+          "successor_state": [3, 1, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "hold",
+          "disturbance": "benign",
+          "successor_state": [3, 2, 0],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "tighten",
+          "disturbance": "burst",
+          "successor_state": [3, 3, 1],
+          "successor_value": -18.0
+        },
+        {
+          "controller": "emergency",
+          "disturbance": "sustained",
+          "successor_state": [3, 3, 2],
+          "successor_value": -20.0
+        }
+      ]
+    }
+  ]
+}

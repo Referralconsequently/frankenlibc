@@ -16221,32 +16221,32 @@
     },
     {
       "symbol": "_IO_fclose",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fdopen",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fflush",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fgetpos",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fgetpos64",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fgets",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16356,22 +16356,22 @@
     },
     {
       "symbol": "_IO_fopen",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fprintf",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fputs",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fread",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16386,22 +16386,22 @@
     },
     {
       "symbol": "_IO_fsetpos",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fsetpos64",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_ftell",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_fwrite",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16501,7 +16501,7 @@
     },
     {
       "symbol": "_IO_printf",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16546,7 +16546,7 @@
     },
     {
       "symbol": "_IO_sprintf",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16561,7 +16561,7 @@
     },
     {
       "symbol": "_IO_sscanf",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -20936,7 +20936,7 @@
     },
     {
       "symbol": "__fseeko64",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -20945,7 +20945,7 @@
     },
     {
       "symbol": "__ftello64",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21269,7 +21269,7 @@
     },
     {
       "symbol": "__resolv_context_get_override",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21278,7 +21278,7 @@
     },
     {
       "symbol": "__resolv_context_freeres",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21287,7 +21287,7 @@
     },
     {
       "symbol": "__resolv_context_get",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21296,7 +21296,7 @@
     },
     {
       "symbol": "__resolv_context_get_preinit",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,
@@ -21305,7 +21305,7 @@
     },
     {
       "symbol": "__resolv_context_put",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
       "strict_semantics": true,

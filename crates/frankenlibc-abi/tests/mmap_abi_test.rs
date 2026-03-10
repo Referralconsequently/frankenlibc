@@ -7,7 +7,9 @@
 use std::ffi::c_void;
 use std::ptr;
 
-use frankenlibc_abi::mmap_abi::{madvise, mlock2, mlockall, mmap, mprotect, msync, munlockall, munmap};
+use frankenlibc_abi::mmap_abi::{
+    madvise, mlock2, mlockall, mmap, mprotect, msync, munlockall, munmap,
+};
 
 // ---------------------------------------------------------------------------
 // mmap / munmap basics
@@ -72,7 +74,10 @@ fn mmap_large_anonymous() {
 
     // Verify the memory is zero-initialized (MAP_ANONYMOUS guarantee)
     let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-    assert!(slice.iter().all(|&b| b == 0), "anonymous mmap should be zero-filled");
+    assert!(
+        slice.iter().all(|&b| b == 0),
+        "anonymous mmap should be zero-filled"
+    );
 
     let rc = unsafe { munmap(ptr, len) };
     assert_eq!(rc, 0);
@@ -385,7 +390,10 @@ fn multiple_mappings_independent() {
     };
     assert_ne!(ptr1, libc::MAP_FAILED);
     assert_ne!(ptr2, libc::MAP_FAILED);
-    assert_ne!(ptr1, ptr2, "two anonymous mappings should be at different addresses");
+    assert_ne!(
+        ptr1, ptr2,
+        "two anonymous mappings should be at different addresses"
+    );
 
     unsafe {
         *(ptr1 as *mut u8) = 1;

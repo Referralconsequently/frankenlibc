@@ -6261,28 +6261,16 @@ pub unsafe extern "C" fn __fstat64(fd: c_int, buf: *mut c_void) -> c_int {
     unsafe { libc::syscall(libc::SYS_fstat, fd, buf) as c_int }
 }
 
-/// `__fseeko64` — internal fseeko64 (delegates to host).
+/// `__fseeko64` — internal fseeko64 alias routed through native stdio.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __fseeko64(stream: *mut c_void, offset: i64, whence: c_int) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void, i64, c_int) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"fseeko64".as_ptr()) };
-    if sym.is_null() {
-        return -1;
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(stream, offset, whence) }
+    unsafe { crate::stdio_abi::fseeko64(stream, offset, whence) }
 }
 
-/// `__ftello64` — internal ftello64 (delegates to host).
+/// `__ftello64` — internal ftello64 alias routed through native stdio.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __ftello64(stream: *mut c_void) -> i64 {
-    type F = unsafe extern "C" fn(*mut c_void) -> i64;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"ftello64".as_ptr()) };
-    if sym.is_null() {
-        return -1;
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(stream) }
+    unsafe { crate::stdio_abi::ftello64(stream) }
 }
 
 /// `__getrlimit` — internal getrlimit alias.
@@ -6746,15 +6734,30 @@ pub unsafe extern "C" fn __gconv(
     written: *mut SizeT,
 ) -> c_int {
     type F = unsafe extern "C" fn(
-        *mut c_void, *mut c_void, *mut *const c_void, *const c_void,
-        *mut *mut c_void, *mut c_void, *mut SizeT,
+        *mut c_void,
+        *mut c_void,
+        *mut *const c_void,
+        *const c_void,
+        *mut *mut c_void,
+        *mut c_void,
+        *mut SizeT,
     ) -> c_int;
     let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv".as_ptr()) };
     if sym.is_null() {
         return -1; // GCONV_NOCONV
     }
     let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(step, step_data, inbuf, inbufend, outbufstart, outbufend, written) }
+    unsafe {
+        f(
+            step,
+            step_data,
+            inbuf,
+            inbufend,
+            outbufstart,
+            outbufend,
+            written,
+        )
+    }
 }
 
 /// `__gconv_close` — close a gconv conversion descriptor. GLIBC_PRIVATE.
@@ -6799,61 +6802,156 @@ pub unsafe extern "C" fn __gconv_transliterate(
 // Resolver context internals — GLIBC_PRIVATE
 // ---------------------------------------------------------------------------
 
+#[repr(C)]
+struct NativeResolvContext {
+    resp: *mut c_void,
+    conf: *mut c_void,
+    __refcount: SizeT,
+    __from_res: bool,
+    __next: *mut NativeResolvContext,
+}
+
+std::thread_local! {
+    static RESOLV_CONTEXT_HEAD: std::cell::Cell<*mut NativeResolvContext> =
+        const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+unsafe fn alloc_native_resolv_context(
+    resp: *mut c_void,
+    from_res: bool,
+    next: *mut NativeResolvContext,
+) -> *mut NativeResolvContext {
+    let raw = unsafe { libc::malloc(std::mem::size_of::<NativeResolvContext>()) }
+        .cast::<NativeResolvContext>();
+    if raw.is_null() {
+        unsafe { *crate::errno_abi::__errno_location() = libc::ENOMEM };
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        raw.write(NativeResolvContext {
+            resp,
+            conf: std::ptr::null_mut(),
+            __refcount: 1,
+            __from_res: from_res,
+            __next: next,
+        });
+    }
+    raw
+}
+
 /// `__resolv_context_get` — get resolver context.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __resolv_context_get() -> *mut c_void {
-    type F = unsafe extern "C" fn() -> *mut c_void;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_get".as_ptr()) };
-    if sym.is_null() {
-        return std::ptr::null_mut();
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f() }
+    RESOLV_CONTEXT_HEAD.with(|head| {
+        let current = head.get();
+        if !current.is_null() && unsafe { (*current).__from_res } {
+            unsafe {
+                (*current).__refcount += 1;
+            }
+            return current.cast::<c_void>();
+        }
+
+        let resp = unsafe { __res_state() };
+        let ctx = unsafe { alloc_native_resolv_context(resp, true, current) };
+        if !ctx.is_null() {
+            head.set(ctx);
+        }
+        ctx.cast::<c_void>()
+    })
 }
 
 /// `__resolv_context_get_override` — get resolver context with override.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __resolv_context_get_override(statp: *mut c_void) -> *mut c_void {
-    type F = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_get_override".as_ptr()) };
-    if sym.is_null() {
+    if statp.is_null() {
+        unsafe { *crate::errno_abi::__errno_location() = libc::EINVAL };
         return std::ptr::null_mut();
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(statp) }
+
+    RESOLV_CONTEXT_HEAD.with(|head| {
+        let ctx = unsafe { alloc_native_resolv_context(statp, false, head.get()) };
+        if !ctx.is_null() {
+            head.set(ctx);
+        }
+        ctx.cast::<c_void>()
+    })
 }
 
 /// `__resolv_context_get_preinit` — get resolver pre-init context.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __resolv_context_get_preinit() -> *mut c_void {
-    type F = unsafe extern "C" fn() -> *mut c_void;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_get_preinit".as_ptr()) };
-    if sym.is_null() {
-        return std::ptr::null_mut();
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f() }
+    unsafe { __resolv_context_get() }
 }
 
 /// `__resolv_context_put` — release resolver context.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __resolv_context_put(ctx: *mut c_void) {
-    type F = unsafe extern "C" fn(*mut c_void);
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_put".as_ptr()) };
-    if !sym.is_null() {
-        let f: F = unsafe { std::mem::transmute(sym) };
-        unsafe { f(ctx) };
+    if ctx.is_null() {
+        return;
+    }
+
+    let saved_errno = unsafe { *crate::errno_abi::__errno_location() };
+    let saved_h_errno = unsafe { *crate::resolv_abi::__h_errno_location() };
+    let target = ctx.cast::<NativeResolvContext>();
+
+    RESOLV_CONTEXT_HEAD.with(|head| {
+        let mut prev = std::ptr::null_mut::<NativeResolvContext>();
+        let mut current = head.get();
+        while !current.is_null() {
+            if current == target {
+                let should_free = unsafe {
+                    if (*current).__from_res && (*current).__refcount > 1 {
+                        (*current).__refcount -= 1;
+                        false
+                    } else {
+                        true
+                    }
+                };
+
+                if should_free {
+                    let next = unsafe { (*current).__next };
+                    if prev.is_null() {
+                        head.set(next);
+                    } else {
+                        unsafe {
+                            (*prev).__next = next;
+                        }
+                    }
+                    unsafe { libc::free(current.cast()) };
+                }
+                break;
+            }
+
+            prev = current;
+            current = unsafe { (*current).__next };
+        }
+    });
+
+    unsafe {
+        *crate::errno_abi::__errno_location() = saved_errno;
+        *crate::resolv_abi::__h_errno_location() = saved_h_errno;
     }
 }
 
 /// `__resolv_context_freeres` — free resolver context resources. GLIBC_PRIVATE.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __resolv_context_freeres() {
-    type F = unsafe extern "C" fn();
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__resolv_context_freeres".as_ptr()) };
-    if !sym.is_null() {
-        let f: F = unsafe { std::mem::transmute(sym) };
-        unsafe { f() };
+    let saved_errno = unsafe { *crate::errno_abi::__errno_location() };
+    let saved_h_errno = unsafe { *crate::resolv_abi::__h_errno_location() };
+
+    RESOLV_CONTEXT_HEAD.with(|head| {
+        let mut current = head.replace(std::ptr::null_mut());
+        while !current.is_null() {
+            let next = unsafe { (*current).__next };
+            unsafe { libc::free(current.cast()) };
+            current = next;
+        }
+    });
+
+    unsafe {
+        *crate::errno_abi::__errno_location() = saved_errno;
+        *crate::resolv_abi::__h_errno_location() = saved_h_errno;
     }
 }
 
@@ -7862,7 +7960,11 @@ pub unsafe extern "C" fn __copy_grp(
         if offset + name_len > buflen {
             return libc::ERANGE;
         }
-        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_name as *const c_void, name_len);
+        libc::memcpy(
+            buf.add(offset) as *mut c_void,
+            (*s).gr_name as *const c_void,
+            name_len,
+        );
         (*dst).gr_name = buf.add(offset);
         offset += name_len;
 
@@ -7871,7 +7973,11 @@ pub unsafe extern "C" fn __copy_grp(
         if offset + passwd_len > buflen {
             return libc::ERANGE;
         }
-        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_passwd as *const c_void, passwd_len);
+        libc::memcpy(
+            buf.add(offset) as *mut c_void,
+            (*s).gr_passwd as *const c_void,
+            passwd_len,
+        );
         (*dst).gr_passwd = buf.add(offset);
         offset += passwd_len;
 
@@ -7902,7 +8008,11 @@ pub unsafe extern "C" fn __copy_grp(
             if offset + mlen > buflen {
                 return libc::ERANGE;
             }
-            libc::memcpy(buf.add(offset) as *mut c_void, member as *const c_void, mlen);
+            libc::memcpy(
+                buf.add(offset) as *mut c_void,
+                member as *const c_void,
+                mlen,
+            );
             *mem_array.add(i) = buf.add(offset);
             offset += mlen;
         }
@@ -7972,7 +8082,11 @@ pub unsafe extern "C" fn __merge_grp(
         if offset + name_len > buflen {
             return libc::ERANGE;
         }
-        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_name as *const c_void, name_len);
+        libc::memcpy(
+            buf.add(offset) as *mut c_void,
+            (*s).gr_name as *const c_void,
+            name_len,
+        );
         (*dst).gr_name = buf.add(offset);
         offset += name_len;
 
@@ -7981,7 +8095,11 @@ pub unsafe extern "C" fn __merge_grp(
         if offset + passwd_len > buflen {
             return libc::ERANGE;
         }
-        libc::memcpy(buf.add(offset) as *mut c_void, (*s).gr_passwd as *const c_void, passwd_len);
+        libc::memcpy(
+            buf.add(offset) as *mut c_void,
+            (*s).gr_passwd as *const c_void,
+            passwd_len,
+        );
         (*dst).gr_passwd = buf.add(offset);
         offset += passwd_len;
 
@@ -8005,7 +8123,11 @@ pub unsafe extern "C" fn __merge_grp(
             if offset + mlen > buflen {
                 return libc::ERANGE;
             }
-            libc::memcpy(buf.add(offset) as *mut c_void, member as *const c_void, mlen);
+            libc::memcpy(
+                buf.add(offset) as *mut c_void,
+                member as *const c_void,
+                mlen,
+            );
             *mem_array.add(idx) = buf.add(offset);
             offset += mlen;
             idx += 1;
@@ -8026,7 +8148,11 @@ pub unsafe extern "C" fn __merge_grp(
                 if offset + mlen > buflen {
                     return libc::ERANGE;
                 }
-                libc::memcpy(buf.add(offset) as *mut c_void, src_mem as *const c_void, mlen);
+                libc::memcpy(
+                    buf.add(offset) as *mut c_void,
+                    src_mem as *const c_void,
+                    mlen,
+                );
                 *mem_array.add(idx) = buf.add(offset);
                 offset += mlen;
                 idx += 1;

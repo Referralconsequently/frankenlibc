@@ -161,14 +161,37 @@
     {
       "id": "PO-10",
       "statement": "HJI Viability Theorem: runtime remains in computed viability kernel under adversary model.",
-      "status": "planned",
-      "owner": "bd-w2c3.6.2",
+      "status": "in_progress",
+      "owner": "bd-249m.6",
       "artifact_schema": "proof_obligation_record.v1",
-      "verification_command": "bash scripts/check_runtime_math_manifest.sh",
-      "scope": {"modes": ["hardened"]},
-      "evidence_artifacts": ["tests/runtime_math/runtime_math_linkage.v1.json"],
-      "gates": ["scripts/check_runtime_math_manifest.sh"],
-      "join_keys": ["gate=runtime_math_manifest", "module=hji_reachability"],
+      "verification_command": "bash scripts/check_runtime_math_hji_viability_proofs.sh",
+      "scope": {"modes": ["hardened"], "model": "discrete_hji_risk_latency_adverse"},
+      "evidence_artifacts": [
+        "tests/runtime_math/hji_viability_computation.json",
+        "tests/runtime_math/viability_convergence.svg",
+        "docs/proofs/hji_viability_kernel.md",
+        "tests/conformance/proof_traceability_check.json"
+      ],
+      "gates": [
+        "scripts/check_runtime_math_hji_viability_proofs.sh",
+        "scripts/check_proof_binder.sh"
+      ],
+      "join_keys": [
+        "gate=runtime_math_hji_viability_proofs",
+        "gate=proof_binder",
+        "module=hji_reachability",
+        "bead=bd-249m.6"
+      ],
+      "source_refs": [
+        "crates/frankenlibc-membrane/src/hji_reachability.rs:169",
+        "crates/frankenlibc-membrane/src/hji_reachability.rs:398",
+        "crates/frankenlibc-membrane/src/runtime_math/mod.rs:2471",
+        "crates/frankenlibc-membrane/src/runtime_math/mod.rs:4224",
+        "crates/frankenlibc-membrane/src/runtime_math/mod.rs:5391",
+        "crates/frankenlibc-harness/src/runtime_math_hji_viability_proofs.rs:62",
+        "scripts/check_runtime_math_hji_viability_proofs.sh:1",
+        "docs/proofs/hji_viability_kernel.md:1"
+      ],
       "category": "controller_safety"
     },
     {

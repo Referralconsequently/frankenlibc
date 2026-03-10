@@ -24,27 +24,37 @@ unsafe fn close_fd(fd: c_int) {
 #[test]
 fn socket_tcp_creates_valid_fd() {
     let fd = unsafe { socket_abi::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
-    assert!(fd >= 0, "socket(AF_INET, SOCK_STREAM) should return valid fd, got {fd}");
+    assert!(
+        fd >= 0,
+        "socket(AF_INET, SOCK_STREAM) should return valid fd, got {fd}"
+    );
     unsafe { close_fd(fd) };
 }
 
 #[test]
 fn socket_udp_creates_valid_fd() {
     let fd = unsafe { socket_abi::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-    assert!(fd >= 0, "socket(AF_INET, SOCK_DGRAM) should return valid fd, got {fd}");
+    assert!(
+        fd >= 0,
+        "socket(AF_INET, SOCK_DGRAM) should return valid fd, got {fd}"
+    );
     unsafe { close_fd(fd) };
 }
 
 #[test]
 fn socket_unix_stream() {
     let fd = unsafe { socket_abi::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
-    assert!(fd >= 0, "socket(AF_UNIX, SOCK_STREAM) should return valid fd");
+    assert!(
+        fd >= 0,
+        "socket(AF_UNIX, SOCK_STREAM) should return valid fd"
+    );
     unsafe { close_fd(fd) };
 }
 
 #[test]
 fn socket_cloexec_flag() {
-    let fd = unsafe { socket_abi::socket(libc::AF_INET, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
+    let fd =
+        unsafe { socket_abi::socket(libc::AF_INET, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
     assert!(fd >= 0, "SOCK_CLOEXEC should not prevent creation");
     unsafe { close_fd(fd) };
 }
@@ -127,9 +137,8 @@ fn listen_after_bind() {
 #[test]
 fn socketpair_unix_stream() {
     let mut sv = [0 as c_int; 2];
-    let rc = unsafe {
-        socket_abi::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr())
-    };
+    let rc =
+        unsafe { socket_abi::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr()) };
     assert_eq!(rc, 0, "socketpair(AF_UNIX, SOCK_STREAM) should succeed");
     assert!(sv[0] >= 0);
     assert!(sv[1] >= 0);
@@ -143,23 +152,19 @@ fn socketpair_unix_stream() {
 #[test]
 fn socketpair_send_recv() {
     let mut sv = [0 as c_int; 2];
-    let rc = unsafe {
-        socket_abi::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr())
-    };
+    let rc =
+        unsafe { socket_abi::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr()) };
     assert_eq!(rc, 0);
 
     // Send data through one end
     let msg = b"hello";
-    let sent = unsafe {
-        socket_abi::send(sv[0], msg.as_ptr() as *const c_void, msg.len(), 0)
-    };
+    let sent = unsafe { socket_abi::send(sv[0], msg.as_ptr() as *const c_void, msg.len(), 0) };
     assert_eq!(sent, msg.len() as isize, "send should write all bytes");
 
     // Receive on the other end
     let mut buf = [0u8; 16];
-    let received = unsafe {
-        socket_abi::recv(sv[1], buf.as_mut_ptr() as *mut c_void, buf.len(), 0)
-    };
+    let received =
+        unsafe { socket_abi::recv(sv[1], buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };
     assert_eq!(received, msg.len() as isize, "recv should read all bytes");
     assert_eq!(&buf[..msg.len()], msg);
 
@@ -217,9 +222,8 @@ fn shutdown_invalid_fd_sets_ebadf_errno() {
 #[test]
 fn shutdown_socketpair() {
     let mut sv = [0 as c_int; 2];
-    let rc = unsafe {
-        socket_abi::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr())
-    };
+    let rc =
+        unsafe { socket_abi::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr()) };
     assert_eq!(rc, 0);
 
     let rc = unsafe { socket_abi::shutdown(sv[0], libc::SHUT_RDWR) };
@@ -417,9 +421,7 @@ fn sendto_recvfrom_udp_loopback() {
 
 #[test]
 fn accept4_invalid_fd_returns_neg1() {
-    let rc = unsafe {
-        socket_abi::accept4(-1, std::ptr::null_mut(), std::ptr::null_mut(), 0)
-    };
+    let rc = unsafe { socket_abi::accept4(-1, std::ptr::null_mut(), std::ptr::null_mut(), 0) };
     assert_eq!(rc, -1);
 }
 
@@ -484,7 +486,10 @@ fn connect_accept_tcp_loopback() {
             &mut peer_len,
         )
     };
-    assert!(accepted >= 0, "accept should return valid fd, got {accepted}");
+    assert!(
+        accepted >= 0,
+        "accept should return valid fd, got {accepted}"
+    );
 
     // Verify we can exchange data
     let msg = b"ping";
@@ -492,9 +497,8 @@ fn connect_accept_tcp_loopback() {
     assert_eq!(sent, msg.len() as isize);
 
     let mut buf = [0u8; 16];
-    let received = unsafe {
-        socket_abi::recv(accepted, buf.as_mut_ptr() as *mut c_void, buf.len(), 0)
-    };
+    let received =
+        unsafe { socket_abi::recv(accepted, buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };
     assert_eq!(received, msg.len() as isize);
     assert_eq!(&buf[..msg.len()], msg);
 

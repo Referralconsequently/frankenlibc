@@ -6,14 +6,16 @@ use frankenlibc_abi::glibc_internal_abi::{
     __asprintf,
     __call_tls_dtors,
     __copy_grp,
-    __idna_from_dns_encoding,
-    __idna_to_dns_encoding,
-    __inet6_scopeid_pton,
-    __inet_aton_exact,
-    __inet_pton_length,
     __file_change_detection_for_path,
     __file_change_detection_for_stat,
     __file_is_unchanged,
+    __fseeko64,
+    __ftello64,
+    __idna_from_dns_encoding,
+    __idna_to_dns_encoding,
+    __inet_aton_exact,
+    __inet_pton_length,
+    __inet6_scopeid_pton,
     __merge_grp,
     __mktemp,
     __ns_name_compress,
@@ -38,6 +40,11 @@ use frankenlibc_abi::glibc_internal_abi::{
     __res_mkquery,
     __res_send,
     __res_state,
+    __resolv_context_freeres,
+    __resolv_context_get,
+    __resolv_context_get_override,
+    __resolv_context_get_preinit,
+    __resolv_context_put,
     __shm_get_name,
     __strtof128_internal,
     __twalk_r,
@@ -108,7 +115,7 @@ use frankenlibc_abi::glibc_internal_abi::{
     xprt_register,
     xprt_unregister,
 };
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::ptr;
 
 // ===========================================================================
@@ -1837,6 +1844,104 @@ fn mktemp_rejects_short_template() {
     assert_eq!(unsafe { *result } as u8, 0);
 }
 
+#[test]
+fn internal_stdio_aliases_follow_native_seek_and_tell_contracts() {
+    let stream = unsafe { frankenlibc_abi::stdio_abi::tmpfile() };
+    assert!(!stream.is_null());
+
+    let data = b"0123456789";
+    let written =
+        unsafe { frankenlibc_abi::stdio_abi::fwrite(data.as_ptr().cast(), 1, data.len(), stream) };
+    assert_eq!(written, data.len());
+
+    assert_eq!(unsafe { __fseeko64(stream, 7, libc::SEEK_SET) }, 0);
+    assert_eq!(unsafe { __ftello64(stream) }, 7);
+
+    assert_eq!(
+        unsafe { __fseeko64(std::ptr::null_mut(), 0, libc::SEEK_SET) },
+        -1
+    );
+    assert_eq!(unsafe { __ftello64(std::ptr::null_mut()) }, -1);
+
+    assert_eq!(unsafe { frankenlibc_abi::stdio_abi::fclose(stream) }, 0);
+}
+
+#[test]
+fn resolv_context_native_shim_reuses_tls_context_and_preserves_errno() {
+    let ctx1 = unsafe { __resolv_context_get() };
+    assert!(!ctx1.is_null());
+
+    let ctx2 = unsafe { __resolv_context_get() };
+    assert_eq!(ctx1, ctx2);
+
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::EINTR };
+    unsafe { *frankenlibc_abi::resolv_abi::__h_errno_location() = 17 };
+    unsafe { __resolv_context_put(ctx2) };
+    assert_eq!(
+        unsafe { *frankenlibc_abi::errno_abi::__errno_location() },
+        libc::EINTR
+    );
+    assert_eq!(
+        unsafe { *frankenlibc_abi::resolv_abi::__h_errno_location() },
+        17
+    );
+
+    let ctx3 = unsafe { __resolv_context_get_preinit() };
+    assert_eq!(ctx1, ctx3);
+
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::EAGAIN };
+    unsafe { *frankenlibc_abi::resolv_abi::__h_errno_location() = 23 };
+    unsafe { __resolv_context_put(ctx3) };
+    assert_eq!(
+        unsafe { *frankenlibc_abi::errno_abi::__errno_location() },
+        libc::EAGAIN
+    );
+    assert_eq!(
+        unsafe { *frankenlibc_abi::resolv_abi::__h_errno_location() },
+        23
+    );
+
+    unsafe { __resolv_context_put(ctx1) };
+}
+
+#[test]
+fn resolv_context_override_and_freeres_follow_local_contract() {
+    let base = unsafe { __resolv_context_get() };
+    assert!(!base.is_null());
+
+    let mut override_state = [0u8; 640];
+    let override_ctx = unsafe { __resolv_context_get_override(override_state.as_mut_ptr().cast()) };
+    assert!(!override_ctx.is_null());
+    assert_ne!(base, override_ctx);
+
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::ERANGE };
+    unsafe { *frankenlibc_abi::resolv_abi::__h_errno_location() = 29 };
+    unsafe { __resolv_context_freeres() };
+    assert_eq!(
+        unsafe { *frankenlibc_abi::errno_abi::__errno_location() },
+        libc::ERANGE
+    );
+    assert_eq!(
+        unsafe { *frankenlibc_abi::resolv_abi::__h_errno_location() },
+        29
+    );
+
+    let fresh = unsafe { __resolv_context_get() };
+    assert!(!fresh.is_null());
+    unsafe { __resolv_context_put(fresh) };
+}
+
+#[test]
+fn resolv_context_override_rejects_null_state() {
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = 0 };
+    let ctx = unsafe { __resolv_context_get_override(std::ptr::null_mut()) };
+    assert!(ctx.is_null());
+    assert_eq!(
+        unsafe { *frankenlibc_abi::errno_abi::__errno_location() },
+        libc::EINVAL
+    );
+}
+
 // ===========================================================================
 // Session 19: __shm_get_name (native)
 // ===========================================================================
@@ -2009,7 +2114,10 @@ fn copy_grp_copies_all_fields() {
         assert_eq!(CStr::from_ptr(dest.gr_name).to_str().unwrap(), "testgrp");
         assert_eq!(CStr::from_ptr(dest.gr_passwd).to_str().unwrap(), "x");
         assert!(!dest.gr_mem.is_null());
-        assert_eq!(CStr::from_ptr(*dest.gr_mem.add(0)).to_str().unwrap(), "alice");
+        assert_eq!(
+            CStr::from_ptr(*dest.gr_mem.add(0)).to_str().unwrap(),
+            "alice"
+        );
         assert_eq!(CStr::from_ptr(*dest.gr_mem.add(1)).to_str().unwrap(), "bob");
         assert!((*dest.gr_mem.add(2)).is_null());
     }
@@ -2050,10 +2158,7 @@ fn merge_grp_adds_new_members() {
     let charlie = CString::new("charlie").unwrap();
 
     // dest has alice
-    let mut dest_members: [*mut c_char; 2] = [
-        alice.as_ptr() as *mut c_char,
-        std::ptr::null_mut(),
-    ];
+    let mut dest_members: [*mut c_char; 2] = [alice.as_ptr() as *mut c_char, std::ptr::null_mut()];
     let mut dest = libc::group {
         gr_name: name.as_ptr() as *mut c_char,
         gr_passwd: passwd.as_ptr() as *mut c_char,
@@ -2094,7 +2199,12 @@ fn merge_grp_adds_new_members() {
     unsafe {
         let mut i = 0;
         while !(*dest.gr_mem.add(i)).is_null() {
-            merged.push(CStr::from_ptr(*dest.gr_mem.add(i)).to_str().unwrap().to_string());
+            merged.push(
+                CStr::from_ptr(*dest.gr_mem.add(i))
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            );
             i += 1;
         }
     }

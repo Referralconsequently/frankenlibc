@@ -105,6 +105,7 @@ use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 
 use crate::check_oracle::{CheckContext, CheckOracle, CheckStage};
 use crate::config::SafetyLevel;
@@ -425,7 +426,7 @@ pub trait RuntimeKernelFramework {
 pub const RUNTIME_KERNEL_SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 
 /// Runtime state snapshot useful for tests/telemetry export.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeKernelSnapshot {
     /// Snapshot schema version (see `RUNTIME_KERNEL_SNAPSHOT_SCHEMA_VERSION`).
     pub schema_version: u32,
@@ -5384,6 +5385,36 @@ mod tests {
         let snap = kernel.snapshot(mode);
         assert!(snap.decisions <= 2);
         assert!(snap.full_validation_trigger_ppm > 0);
+    }
+
+    #[test]
+    fn hji_snapshot_fields_respond_to_adverse_signal_feedback() {
+        let kernel = RuntimeMathKernel::new();
+        let mode = SafetyLevel::Hardened;
+        kernel
+            .cached_probe_mask
+            .store(u64::from(Probe::Hji.bit()), Ordering::Relaxed);
+
+        let before = kernel.snapshot(mode);
+        for _ in 0..128 {
+            kernel.observe_validation_result(
+                mode,
+                ApiFamily::Signal,
+                ValidationProfile::Full,
+                100_000,
+                true,
+            );
+        }
+
+        let after = kernel.snapshot(mode);
+        assert!(
+            after.hji_safety_value <= before.hji_safety_value,
+            "HJI safety value should not improve under sustained adverse signal feedback"
+        );
+        assert!(
+            after.hji_breached || after.hji_safety_value < before.hji_safety_value,
+            "adverse signal feedback should change HJI snapshot state"
+        );
     }
 
     #[test]

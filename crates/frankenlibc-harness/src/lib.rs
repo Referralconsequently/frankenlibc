@@ -26,6 +26,7 @@ pub mod report;
 pub mod runner;
 pub mod runtime_math_determinism_proofs;
 pub mod runtime_math_divergence_bounds;
+pub mod runtime_math_hji_viability_proofs;
 pub mod runtime_math_linkage_proofs;
 pub mod setjmp_contract;
 pub mod snapshot_diff;

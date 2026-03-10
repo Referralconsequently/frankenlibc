@@ -188,9 +188,8 @@ fn getaddrinfo_numeric_ipv4_resolves() {
     let service = CString::new("80").unwrap();
     let mut res: *mut libc::addrinfo = ptr::null_mut();
 
-    let rc = unsafe {
-        resolv_abi::getaddrinfo(node.as_ptr(), service.as_ptr(), ptr::null(), &mut res)
-    };
+    let rc =
+        unsafe { resolv_abi::getaddrinfo(node.as_ptr(), service.as_ptr(), ptr::null(), &mut res) };
     assert_eq!(rc, 0, "getaddrinfo should succeed for numeric IPv4");
     assert!(!res.is_null());
 
@@ -212,9 +211,7 @@ fn getaddrinfo_numeric_ipv6_resolves() {
     hints.ai_family = libc::AF_INET6;
     let mut res: *mut libc::addrinfo = ptr::null_mut();
 
-    let rc = unsafe {
-        resolv_abi::getaddrinfo(node.as_ptr(), service.as_ptr(), &hints, &mut res)
-    };
+    let rc = unsafe { resolv_abi::getaddrinfo(node.as_ptr(), service.as_ptr(), &hints, &mut res) };
     assert_eq!(rc, 0, "getaddrinfo should succeed for numeric IPv6");
     assert!(!res.is_null());
 
@@ -229,10 +226,12 @@ fn getaddrinfo_null_node_returns_unspecified() {
     let service = CString::new("8080").unwrap();
     let mut res: *mut libc::addrinfo = ptr::null_mut();
 
-    let rc = unsafe {
-        resolv_abi::getaddrinfo(ptr::null(), service.as_ptr(), ptr::null(), &mut res)
-    };
-    assert_eq!(rc, 0, "getaddrinfo(NULL node) should return unspecified address");
+    let rc =
+        unsafe { resolv_abi::getaddrinfo(ptr::null(), service.as_ptr(), ptr::null(), &mut res) };
+    assert_eq!(
+        rc, 0,
+        "getaddrinfo(NULL node) should return unspecified address"
+    );
     assert!(!res.is_null());
 
     unsafe { resolv_abi::freeaddrinfo(res) };
@@ -243,9 +242,7 @@ fn getaddrinfo_null_service_uses_port_zero() {
     let node = CString::new("127.0.0.1").unwrap();
     let mut res: *mut libc::addrinfo = ptr::null_mut();
 
-    let rc = unsafe {
-        resolv_abi::getaddrinfo(node.as_ptr(), ptr::null(), ptr::null(), &mut res)
-    };
+    let rc = unsafe { resolv_abi::getaddrinfo(node.as_ptr(), ptr::null(), ptr::null(), &mut res) };
     assert_eq!(rc, 0);
     assert!(!res.is_null());
 
@@ -270,9 +267,7 @@ fn getaddrinfo_nonexistent_host_returns_eai_noname() {
     let node = CString::new("nonexistent.invalid.test").unwrap();
     let mut res: *mut libc::addrinfo = ptr::null_mut();
 
-    let rc = unsafe {
-        resolv_abi::getaddrinfo(node.as_ptr(), ptr::null(), ptr::null(), &mut res)
-    };
+    let rc = unsafe { resolv_abi::getaddrinfo(node.as_ptr(), ptr::null(), ptr::null(), &mut res) };
     assert_eq!(rc, libc::EAI_NONAME);
     assert!(res.is_null());
 }
@@ -314,12 +309,10 @@ fn getnameinfo_ipv4_formats_numeric() {
     };
     assert_eq!(rc, 0, "getnameinfo should succeed for IPv4");
 
-    let host_str = unsafe { CStr::from_ptr(host.as_ptr().cast::<c_char>()) }
-        .to_string_lossy();
+    let host_str = unsafe { CStr::from_ptr(host.as_ptr().cast::<c_char>()) }.to_string_lossy();
     assert_eq!(host_str, "192.168.1.1");
 
-    let serv_str = unsafe { CStr::from_ptr(serv.as_ptr().cast::<c_char>()) }
-        .to_string_lossy();
+    let serv_str = unsafe { CStr::from_ptr(serv.as_ptr().cast::<c_char>()) }.to_string_lossy();
     assert_eq!(serv_str, "80");
 }
 
@@ -351,12 +344,10 @@ fn getnameinfo_ipv6_formats_numeric() {
     };
     assert_eq!(rc, 0, "getnameinfo should succeed for IPv6");
 
-    let host_str = unsafe { CStr::from_ptr(host.as_ptr().cast::<c_char>()) }
-        .to_string_lossy();
+    let host_str = unsafe { CStr::from_ptr(host.as_ptr().cast::<c_char>()) }.to_string_lossy();
     assert_eq!(host_str, "::1");
 
-    let serv_str = unsafe { CStr::from_ptr(serv.as_ptr().cast::<c_char>()) }
-        .to_string_lossy();
+    let serv_str = unsafe { CStr::from_ptr(serv.as_ptr().cast::<c_char>()) }.to_string_lossy();
     assert_eq!(serv_str, "443");
 }
 
@@ -405,13 +396,8 @@ fn getnameinfo_unsupported_family_returns_eai_family() {
 #[test]
 fn gethostbyaddr_localhost_may_resolve() {
     let addr: [u8; 4] = [127, 0, 0, 1];
-    let ptr = unsafe {
-        resolv_abi::gethostbyaddr(
-            addr.as_ptr().cast::<c_void>(),
-            4,
-            libc::AF_INET,
-        )
-    };
+    let ptr =
+        unsafe { resolv_abi::gethostbyaddr(addr.as_ptr().cast::<c_void>(), 4, libc::AF_INET) };
     // /etc/hosts usually has 127.0.0.1 -> localhost
     // But we don't fail the test if it doesn't
     if !ptr.is_null() {
@@ -423,9 +409,7 @@ fn gethostbyaddr_localhost_may_resolve() {
 
 #[test]
 fn gethostbyaddr_null_returns_null() {
-    let ptr = unsafe {
-        resolv_abi::gethostbyaddr(ptr::null(), 4, libc::AF_INET)
-    };
+    let ptr = unsafe { resolv_abi::gethostbyaddr(ptr::null(), 4, libc::AF_INET) };
     assert!(ptr.is_null());
 }
 
@@ -463,9 +447,7 @@ fn gethostbyaddr_short_len_returns_null() {
 fn getservbyname_ssh_resolves() {
     let name = CString::new("ssh").unwrap();
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyname(name.as_ptr(), proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyname(name.as_ptr(), proto.as_ptr()) };
     // /etc/services should have ssh/tcp = 22
     if !ptr.is_null() {
         let servent = unsafe { &*(ptr as *const libc::servent) };
@@ -478,9 +460,7 @@ fn getservbyname_ssh_resolves() {
 fn getservbyname_http_resolves() {
     let name = CString::new("http").unwrap();
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyname(name.as_ptr(), proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyname(name.as_ptr(), proto.as_ptr()) };
     if !ptr.is_null() {
         let servent = unsafe { &*(ptr as *const libc::servent) };
         assert_eq!(u16::from_be(servent.s_port as u16), 80);
@@ -490,9 +470,7 @@ fn getservbyname_http_resolves() {
 #[test]
 fn getservbyname_null_name_returns_null() {
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyname(ptr::null(), proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyname(ptr::null(), proto.as_ptr()) };
     assert!(ptr.is_null());
 }
 
@@ -500,18 +478,14 @@ fn getservbyname_null_name_returns_null() {
 fn getservbyname_nonexistent_returns_null() {
     let name = CString::new("nonexistent_service_zzz").unwrap();
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyname(name.as_ptr(), proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyname(name.as_ptr(), proto.as_ptr()) };
     assert!(ptr.is_null());
 }
 
 #[test]
 fn getservbyname_null_proto_resolves() {
     let name = CString::new("ssh").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyname(name.as_ptr(), ptr::null())
-    };
+    let ptr = unsafe { resolv_abi::getservbyname(name.as_ptr(), ptr::null()) };
     // Should still find ssh without protocol filter
     if !ptr.is_null() {
         let servent = unsafe { &*(ptr as *const libc::servent) };
@@ -527,9 +501,7 @@ fn getservbyname_null_proto_resolves() {
 fn getservbyport_22_resolves_ssh() {
     let port_net = (22u16).to_be() as c_int;
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyport(port_net, proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyport(port_net, proto.as_ptr()) };
     if !ptr.is_null() {
         let servent = unsafe { &*(ptr as *const libc::servent) };
         let name = unsafe { CStr::from_ptr(servent.s_name) }.to_string_lossy();
@@ -541,9 +513,7 @@ fn getservbyport_22_resolves_ssh() {
 fn getservbyport_80_resolves_http() {
     let port_net = (80u16).to_be() as c_int;
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyport(port_net, proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyport(port_net, proto.as_ptr()) };
     if !ptr.is_null() {
         let servent = unsafe { &*(ptr as *const libc::servent) };
         let name = unsafe { CStr::from_ptr(servent.s_name) }.to_string_lossy();
@@ -555,9 +525,7 @@ fn getservbyport_80_resolves_http() {
 fn getservbyport_nonexistent_returns_null() {
     let port_net = (59999u16).to_be() as c_int;
     let proto = CString::new("tcp").unwrap();
-    let ptr = unsafe {
-        resolv_abi::getservbyport(port_net, proto.as_ptr())
-    };
+    let ptr = unsafe { resolv_abi::getservbyport(port_net, proto.as_ptr()) };
     assert!(ptr.is_null());
 }
 

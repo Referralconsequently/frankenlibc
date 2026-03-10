@@ -3,9 +3,9 @@
 //! Integration tests for malloc introspection ABI entrypoints.
 
 use frankenlibc_abi::malloc_abi::{
-    aligned_alloc, calloc, cfree, free, mallinfo, mallinfo2, malloc, malloc_info, malloc_stats,
-    malloc_trim, malloc_usable_size, mallopt, memalign, posix_memalign, pvalloc, realloc, valloc,
-    __libc_freeres,
+    __libc_freeres, aligned_alloc, calloc, cfree, free, mallinfo, mallinfo2, malloc, malloc_info,
+    malloc_stats, malloc_trim, malloc_usable_size, mallopt, memalign, posix_memalign, pvalloc,
+    realloc, valloc,
 };
 use std::ffi::c_void;
 use std::ptr;
@@ -111,7 +111,11 @@ fn test_realloc_grow() {
     // Original data should be preserved
     let slice = unsafe { std::slice::from_raw_parts(p2 as *const u8, 64) };
     for (i, &byte) in slice.iter().enumerate() {
-        assert_eq!(byte, (i as u8).wrapping_add(0xA0), "data should be preserved after realloc");
+        assert_eq!(
+            byte,
+            (i as u8).wrapping_add(0xA0),
+            "data should be preserved after realloc"
+        );
     }
     unsafe { free(p2) };
 }
@@ -169,7 +173,11 @@ fn test_posix_memalign_bad_alignment() {
     let mut p: *mut c_void = ptr::null_mut();
     // Alignment must be power of 2 and multiple of sizeof(void*)
     let rc = unsafe { posix_memalign(&mut p, 3, 64) }; // 3 is not power of 2
-    assert_eq!(rc, libc::EINVAL, "non-power-of-2 alignment should return EINVAL");
+    assert_eq!(
+        rc,
+        libc::EINVAL,
+        "non-power-of-2 alignment should return EINVAL"
+    );
 }
 
 #[test]

@@ -113,9 +113,15 @@ fn iconv_ascii_to_utf16le() {
         let rc = iconv(cd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
         assert_eq!(rc, 0);
         assert_eq!(in_left, 0, "all input should be consumed");
-        assert_eq!(out_left, 10, "5 chars * 2 bytes = 10 bytes written, 10 remaining");
+        assert_eq!(
+            out_left, 10,
+            "5 chars * 2 bytes = 10 bytes written, 10 remaining"
+        );
         // H=0x48, e=0x65, l=0x6C, l=0x6C, o=0x6F in UTF-16LE
-        assert_eq!(&output[..10], &[0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00]);
+        assert_eq!(
+            &output[..10],
+            &[0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00]
+        );
 
         assert_eq!(iconv_close(cd), 0);
     }
@@ -197,7 +203,10 @@ fn iconv_utf8_to_utf32() {
         assert_eq!(in_left, 0);
         // UTF-32 includes a 4-byte BOM + 4 bytes per char = 4 + 2*4 = 12
         let written = 16 - out_left;
-        assert!(written >= 8, "should write at least 8 bytes for 2 chars (got {written})");
+        assert!(
+            written >= 8,
+            "should write at least 8 bytes for 2 chars (got {written})"
+        );
 
         assert_eq!(iconv_close(cd), 0);
     }
@@ -244,7 +253,13 @@ fn iconv_null_inbuf_resets_shift_state() {
         assert_ne!(cd, iconv_error_handle());
 
         // Reset: pass null inbuf
-        let rc = iconv(cd, ptr::null_mut(), ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
+        let rc = iconv(
+            cd,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
         assert_eq!(rc, 0, "reset should succeed with 0");
 
         assert_eq!(iconv_close(cd), 0);
@@ -266,7 +281,13 @@ fn iconv_invalid_handle_returns_error() {
         let mut out_ptr = output.as_mut_ptr().cast::<c_char>();
         let mut out_left = output.len();
 
-        let rc = iconv(fake_cd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
+        let rc = iconv(
+            fake_cd,
+            &mut in_ptr,
+            &mut in_left,
+            &mut out_ptr,
+            &mut out_left,
+        );
         assert_eq!(rc, ICONV_ERROR);
     }
 }
@@ -340,7 +361,13 @@ fn iconv_roundtrip_utf8_utf16le_utf8() {
         let mut out_ptr = mid.as_mut_ptr().cast::<c_char>();
         let mut out_left = mid.len();
 
-        let rc = iconv(cd_fwd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
+        let rc = iconv(
+            cd_fwd,
+            &mut in_ptr,
+            &mut in_left,
+            &mut out_ptr,
+            &mut out_left,
+        );
         assert_eq!(rc, 0);
         let mid_len = 32 - out_left;
         assert_eq!(iconv_close(cd_fwd), 0);

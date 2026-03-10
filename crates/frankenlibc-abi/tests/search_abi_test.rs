@@ -567,7 +567,10 @@ fn tree_delete_nonexistent() {
     unsafe { tsearch(10usize as *const c_void, &mut root, int_compare) };
 
     let result = unsafe { tdelete(99usize as *const c_void, &mut root, int_compare) };
-    assert!(result.is_null(), "tdelete on nonexistent key should return null");
+    assert!(
+        result.is_null(),
+        "tdelete on nonexistent key should return null"
+    );
 
     unsafe { tdelete(10usize as *const c_void, &mut root, int_compare) };
 }
@@ -582,7 +585,10 @@ fn tree_single_element_delete() {
 
     // Tree should now be empty
     let found = unsafe { tfind(77usize as *const c_void, &root as *const _, int_compare) };
-    assert!(found.is_null(), "tree should be empty after deleting only element");
+    assert!(
+        found.is_null(),
+        "tree should be empty after deleting only element"
+    );
 }
 
 #[test]
@@ -618,7 +624,10 @@ fn tfind_empty_tree() {
 fn tdelete_from_empty_tree() {
     let mut root: *mut c_void = std::ptr::null_mut();
     let result = unsafe { tdelete(55usize as *const c_void, &mut root, int_compare) };
-    assert!(result.is_null(), "tdelete from empty tree should return null");
+    assert!(
+        result.is_null(),
+        "tdelete from empty tree should return null"
+    );
 }
 
 // ===========================================================================

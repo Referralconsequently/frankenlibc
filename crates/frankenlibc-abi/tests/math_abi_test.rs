@@ -238,7 +238,10 @@ fn log_domain_and_pole() {
     let neg = unsafe { log(-1.0) };
     assert!(neg.is_nan(), "log(-1) should be NaN");
     let zero = unsafe { log(0.0) };
-    assert!(zero.is_infinite() && zero.is_sign_negative(), "log(0) should be -Inf");
+    assert!(
+        zero.is_infinite() && zero.is_sign_negative(),
+        "log(0) should be -Inf"
+    );
 }
 
 #[test]
@@ -851,7 +854,7 @@ fn remquof_basic() {
 
 #[test]
 fn sincosf_consistency() {
-    use frankenlibc_abi::math_abi::{cosf, sinf, sincosf};
+    use frankenlibc_abi::math_abi::{cosf, sincosf, sinf};
     let x: f32 = 1.234;
     let mut s: f32 = 0.0;
     let mut c: f32 = 0.0;
@@ -1034,15 +1037,24 @@ fn negative_zero_propagation() {
 
     // floor(-0) = -0
     let got = unsafe { floor(-0.0_f64) };
-    assert!(got == 0.0 && got.is_sign_negative(), "floor(-0) should be -0");
+    assert!(
+        got == 0.0 && got.is_sign_negative(),
+        "floor(-0) should be -0"
+    );
 
     // ceil(-0) = -0
     let got = unsafe { ceil(-0.0_f64) };
-    assert!(got == 0.0 && got.is_sign_negative(), "ceil(-0) should be -0");
+    assert!(
+        got == 0.0 && got.is_sign_negative(),
+        "ceil(-0) should be -0"
+    );
 
     // trunc(-0) = -0
     let got = unsafe { trunc(-0.0_f64) };
-    assert!(got == 0.0 && got.is_sign_negative(), "trunc(-0) should be -0");
+    assert!(
+        got == 0.0 && got.is_sign_negative(),
+        "trunc(-0) should be -0"
+    );
 }
 
 // ---------------------------------------------------------------------------

@@ -56,6 +56,11 @@ if [[ "${FRANKENLIBC_EXTENDED_GATES:-0}" == "1" ]]; then
     echo "PASS"
     echo ""
 
+    echo "--- runtime_math HJI viability proofs ---"
+    scripts/check_runtime_math_hji_viability_proofs.sh
+    echo "PASS"
+    echo ""
+
     echo "--- runtime_math determinism + invariant proofs (decide+observe) ---"
     scripts/check_runtime_math_determinism_proofs.sh
     echo "PASS"

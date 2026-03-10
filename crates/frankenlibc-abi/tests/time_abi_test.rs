@@ -139,7 +139,10 @@ fn timegm_roundtrips_with_gmtime() {
     unsafe { time_abi::gmtime_r(&now, &mut tm) };
 
     let reconstructed = unsafe { time_abi::timegm(&mut tm) };
-    assert_eq!(now, reconstructed, "timegm(gmtime(t)) should roundtrip exactly");
+    assert_eq!(
+        now, reconstructed,
+        "timegm(gmtime(t)) should roundtrip exactly"
+    );
 }
 
 #[test]
@@ -240,8 +243,14 @@ fn asctime_r_formats_epoch() {
     assert!(!result.is_null());
     let s = unsafe { std::ffi::CStr::from_ptr(result) };
     let text = s.to_str().unwrap();
-    assert!(text.contains("1970"), "asctime_r should show 1970, got: {text}");
-    assert!(text.contains("Jan"), "asctime_r should show Jan, got: {text}");
+    assert!(
+        text.contains("1970"),
+        "asctime_r should show 1970, got: {text}"
+    );
+    assert!(
+        text.contains("Jan"),
+        "asctime_r should show Jan, got: {text}"
+    );
 }
 
 #[test]
@@ -515,6 +524,9 @@ fn timespec_get_time_utc() {
 fn timespec_getres_time_utc() {
     let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
     let rc = unsafe { time_abi::timespec_getres(&mut ts, 1) };
-    assert_eq!(rc, 1, "timespec_getres with TIME_UTC should return TIME_UTC");
+    assert_eq!(
+        rc, 1,
+        "timespec_getres with TIME_UTC should return TIME_UTC"
+    );
     assert!(ts.tv_nsec >= 0);
 }

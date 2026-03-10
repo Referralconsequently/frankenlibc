@@ -204,24 +204,21 @@ fn isoc23_wcstoumax_hex() {
 #[test]
 fn isoc23_wcstol_l_decimal() {
     let ws: Vec<WcharT> = vec![b'3' as WcharT, b'3' as WcharT, 0];
-    let val =
-        unsafe { __isoc23_wcstol_l(wchar_slice(&ws), ptr::null_mut(), 10, ptr::null_mut()) };
+    let val = unsafe { __isoc23_wcstol_l(wchar_slice(&ws), ptr::null_mut(), 10, ptr::null_mut()) };
     assert_eq!(val, 33);
 }
 
 #[test]
 fn isoc23_wcstoul_l_basic() {
     let ws: Vec<WcharT> = vec![b'1' as WcharT, b'0' as WcharT, 0];
-    let val =
-        unsafe { __isoc23_wcstoul_l(wchar_slice(&ws), ptr::null_mut(), 10, ptr::null_mut()) };
+    let val = unsafe { __isoc23_wcstoul_l(wchar_slice(&ws), ptr::null_mut(), 10, ptr::null_mut()) };
     assert_eq!(val, 10);
 }
 
 #[test]
 fn isoc23_wcstoll_l_basic() {
     let ws: Vec<WcharT> = vec![b'8' as WcharT, b'8' as WcharT, 0];
-    let val =
-        unsafe { __isoc23_wcstoll_l(wchar_slice(&ws), ptr::null_mut(), 10, ptr::null_mut()) };
+    let val = unsafe { __isoc23_wcstoll_l(wchar_slice(&ws), ptr::null_mut(), 10, ptr::null_mut()) };
     assert_eq!(val, 88i64);
 }
 
@@ -242,13 +239,7 @@ fn isoc23_sscanf_parses_integer() {
     let s = b"42\0";
     let fmt = b"%d\0";
     let mut val: c_int = 0;
-    let rc = unsafe {
-        __isoc23_sscanf(
-            c_ptr(s),
-            c_ptr(fmt),
-            &mut val as *mut c_int,
-        )
-    };
+    let rc = unsafe { __isoc23_sscanf(c_ptr(s), c_ptr(fmt), &mut val as *mut c_int) };
     assert_eq!(rc, 1);
     assert_eq!(val, 42);
 }

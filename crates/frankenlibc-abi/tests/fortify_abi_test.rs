@@ -5,7 +5,7 @@
 //! Tests cover safe pass-through paths where buffer sizes are sufficient.
 //! The abort paths (__chk_fail) cannot be tested in-process since they call abort().
 
-use std::ffi::{c_char, c_int, c_long, CString};
+use std::ffi::{CString, c_char, c_int, c_long};
 
 // Re-export fortified functions from the ABI crate.
 use frankenlibc_abi::fortify_abi::*;
@@ -94,13 +94,7 @@ fn explicit_bzero_chk_partial() {
 fn strcpy_chk_safe() {
     let src = CString::new("hello").unwrap();
     let mut dest = [0u8; 16];
-    let ret = unsafe {
-        __strcpy_chk(
-            dest.as_mut_ptr().cast(),
-            src.as_ptr(),
-            16,
-        )
-    };
+    let ret = unsafe { __strcpy_chk(dest.as_mut_ptr().cast(), src.as_ptr(), 16) };
     assert_eq!(ret, dest.as_mut_ptr().cast::<c_char>());
     assert_eq!(&dest[..6], b"hello\0");
 }
@@ -300,9 +294,9 @@ fn vsnprintf_chk_safe() {
     let ret = unsafe {
         __snprintf_chk(
             buf.as_mut_ptr().cast(),
-            64,      // maxlen
-            0,       // flag
-            64,      // buflen
+            64, // maxlen
+            0,  // flag
+            64, // buflen
             fmt.as_ptr(),
             42i32,
         )
@@ -338,9 +332,9 @@ fn snprintf_chk_truncates() {
     let ret = unsafe {
         __snprintf_chk(
             buf.as_mut_ptr().cast(),
-            8,  // maxlen
-            0,  // flag
-            8,  // buflen
+            8, // maxlen
+            0, // flag
+            8, // buflen
             fmt.as_ptr(),
         )
     };
@@ -377,7 +371,13 @@ fn read_chk_safe() {
 fn pread_chk_safe() {
     // Create a temp file
     let path = CString::new("/tmp/fortify_pread_test").unwrap();
-    let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_TRUNC, 0o644) };
+    let fd = unsafe {
+        libc::open(
+            path.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_TRUNC,
+            0o644,
+        )
+    };
     assert!(fd >= 0);
 
     let data = b"ABCDEFGH";
@@ -397,7 +397,13 @@ fn pread_chk_safe() {
 #[test]
 fn pread64_chk_safe() {
     let path = CString::new("/tmp/fortify_pread64_test").unwrap();
-    let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_TRUNC, 0o644) };
+    let fd = unsafe {
+        libc::open(
+            path.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_TRUNC,
+            0o644,
+        )
+    };
     assert!(fd >= 0);
 
     let data = b"0123456789";
@@ -451,7 +457,13 @@ fn readlinkat_chk_safe() {
     let path = CString::new("/proc/self/exe").unwrap();
     let mut buf = [0u8; 4096];
     let n = unsafe {
-        __readlinkat_chk(libc::AT_FDCWD, path.as_ptr(), buf.as_mut_ptr().cast(), 4096, 4096)
+        __readlinkat_chk(
+            libc::AT_FDCWD,
+            path.as_ptr(),
+            buf.as_mut_ptr().cast(),
+            4096,
+            4096,
+        )
     };
     assert!(n > 0, "readlinkat /proc/self/exe should succeed");
 }
@@ -598,8 +610,8 @@ fn poll_chk_safe() {
     let ret = unsafe {
         __poll_chk(
             (&mut pfd as *mut libc::pollfd).cast(),
-            1,       // nfds
-            0,       // timeout=0 (instant)
+            1, // nfds
+            0, // timeout=0 (instant)
             fdslen,
         )
     };
@@ -652,9 +664,7 @@ fn ppoll_chk_safe() {
 fn mbstowcs_chk_safe() {
     let src = CString::new("abc").unwrap();
     let mut dest = [0i32; 8];
-    let n = unsafe {
-        __mbstowcs_chk(dest.as_mut_ptr(), src.as_ptr(), 8, 8 * 4)
-    };
+    let n = unsafe { __mbstowcs_chk(dest.as_mut_ptr(), src.as_ptr(), 8, 8 * 4) };
     assert_eq!(n, 3);
     assert_eq!(dest[0], b'a' as i32);
     assert_eq!(dest[1], b'b' as i32);
@@ -665,9 +675,7 @@ fn mbstowcs_chk_safe() {
 fn wcstombs_chk_safe() {
     let src: [WcharT; 4] = [b'x' as i32, b'y' as i32, b'z' as i32, 0];
     let mut dest = [0u8; 16];
-    let n = unsafe {
-        __wcstombs_chk(dest.as_mut_ptr().cast(), src.as_ptr(), 16, 16)
-    };
+    let n = unsafe { __wcstombs_chk(dest.as_mut_ptr().cast(), src.as_ptr(), 16, 16) };
     assert_eq!(n, 3);
     assert_eq!(&dest[..3], b"xyz");
 }
@@ -726,7 +734,15 @@ fn sprintf_chk_integer_formats() {
     let mut buf = [0u8; 128];
     let fmt = CString::new("%d + %d = %d").unwrap();
     let ret = unsafe {
-        __sprintf_chk(buf.as_mut_ptr().cast(), 0, 128, fmt.as_ptr(), 3i32, 4i32, 7i32)
+        __sprintf_chk(
+            buf.as_mut_ptr().cast(),
+            0,
+            128,
+            fmt.as_ptr(),
+            3i32,
+            4i32,
+            7i32,
+        )
     };
     assert!(ret > 0);
     let s = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr().cast()) };
@@ -738,9 +754,7 @@ fn snprintf_chk_zero_maxlen() {
     let mut buf = [0xFFu8; 8];
     let fmt = CString::new("anything").unwrap();
     // maxlen=0 means just measure
-    let ret = unsafe {
-        __snprintf_chk(buf.as_mut_ptr().cast(), 0, 0, 8, fmt.as_ptr())
-    };
+    let ret = unsafe { __snprintf_chk(buf.as_mut_ptr().cast(), 0, 0, 8, fmt.as_ptr()) };
     assert_eq!(ret, 8); // "anything" is 8 chars
     // Buffer should be untouched
     assert_eq!(buf[0], 0xFF);
@@ -1004,8 +1018,8 @@ fn mbsnrtowcs_chk_basic() {
         __mbsnrtowcs_chk(
             dest.as_mut_ptr(),
             &mut src_ptr,
-            3,  // nms (max source bytes)
-            8,  // len (max wchar_t to write)
+            3, // nms (max source bytes)
+            8, // len (max wchar_t to write)
             std::ptr::null_mut(),
             8 * 4, // destlen in bytes
         )
@@ -1050,9 +1064,9 @@ fn swprintf_chk_basic() {
     let ret = unsafe {
         __swprintf_chk(
             dest.as_mut_ptr(),
-            32,       // maxlen in wchar_t
-            0,        // flag
-            32 * 4,   // destlen in bytes
+            32,     // maxlen in wchar_t
+            0,      // flag
+            32 * 4, // destlen in bytes
             fmt.as_ptr(),
             99i32,
         )
