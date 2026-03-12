@@ -26,7 +26,7 @@
 //! - TSM policy tables (updated via config reload, queried per validation)
 //! - Safety level + feature flags
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -39,6 +39,9 @@ pub struct SeqLock<T: Clone + Send + Sync> {
     version: AtomicU64,
     /// The current data, wrapped in Arc for cheap reader cloning.
     data: Mutex<Arc<T>>,
+    /// Writer serialization lock. Held for the entire write-guard lifetime
+    /// so that concurrent writers are fully serialized (no lost updates).
+    writer_lock: Mutex<()>,
     /// Number of writers currently waiting to acquire the lock.
     /// Used for starvation diagnostics, not for blocking.
     pending_writers: AtomicU64,
@@ -101,6 +104,8 @@ pub struct SeqLockWriteGuard<'a, T: Clone + Send + Sync> {
     data: T,
     /// Whether any mutation was applied.
     modified: bool,
+    /// Held for the entire guard lifetime to serialize writers.
+    _writer_guard: MutexGuard<'a, ()>,
 }
 
 impl<T: Clone + Send + Sync> SeqLock<T> {
@@ -110,6 +115,7 @@ impl<T: Clone + Send + Sync> SeqLock<T> {
         Self {
             version: AtomicU64::new(1),
             data: Mutex::new(Arc::new(initial)),
+            writer_lock: Mutex::new(()),
             pending_writers: AtomicU64::new(0),
             diag: SeqLockDiagCounters::default(),
         }
@@ -160,10 +166,11 @@ impl<T: Clone + Send + Sync> SeqLock<T> {
     pub fn write(&self) -> SeqLockWriteGuard<'_, T> {
         self.pending_writers.fetch_add(1, Ordering::Relaxed);
 
-        // Check if we'll contend.
-        let data_guard = self.data.lock();
-        let current = (**data_guard).clone();
-        drop(data_guard);
+        // Acquire the writer lock first — this serializes all writers.
+        let writer_guard = self.writer_lock.lock();
+
+        // Now safely clone the current data while holding the writer lock.
+        let current = (**self.data.lock()).clone();
 
         self.pending_writers.fetch_sub(1, Ordering::Relaxed);
 
@@ -171,6 +178,7 @@ impl<T: Clone + Send + Sync> SeqLock<T> {
             lock: self,
             data: current,
             modified: false,
+            _writer_guard: writer_guard,
         }
     }
 
@@ -240,10 +248,6 @@ impl<T: Clone + Send + Sync> SeqLock<T> {
         self.diag.writes.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record a contention event.
-    fn record_contention(&self) {
-        self.diag.contention_events.fetch_add(1, Ordering::Relaxed);
-    }
 }
 
 impl<'a, T: Clone + Send + Sync> SeqLockWriteGuard<'a, T> {
@@ -727,7 +731,7 @@ mod tests {
     #[test]
     fn reader_read_if_changed_under_contention() {
         let sl = StdArc::new(SeqLock::new(0u64));
-        let barrier = StdArc::new(Barrier::new(3));
+        let barrier = StdArc::new(Barrier::new(2));
 
         let sl_r = StdArc::clone(&sl);
         let bar_r = StdArc::clone(&barrier);

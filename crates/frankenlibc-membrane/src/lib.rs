@@ -32,6 +32,7 @@ pub mod bloom;
 pub mod check_oracle;
 pub mod config;
 pub mod decision_contract;
+pub mod ebr;
 pub mod fingerprint;
 pub mod flat_combining;
 pub mod galois;
