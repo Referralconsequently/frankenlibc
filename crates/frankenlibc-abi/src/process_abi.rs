@@ -333,8 +333,16 @@ pub unsafe extern "C" fn waitid(
         return -1;
     }
 
-    let rc =
-        unsafe { libc::syscall(libc::SYS_waitid as c_long, idtype, id, infop, options) as c_int };
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_waitid as c_long,
+            idtype,
+            id,
+            infop,
+            options,
+            std::ptr::null_mut::<c_void>(), // rusage (5th arg)
+        ) as c_int
+    };
     let adverse = rc < 0;
     if adverse {
         unsafe { set_abi_errno(last_host_errno(libc::ECHILD)) };

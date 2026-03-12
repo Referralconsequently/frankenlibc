@@ -11,9 +11,14 @@
 
 use std::ffi::{CString, c_char, c_int};
 use std::os::unix::fs::symlink;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::process_abi::*;
+
+/// Serializes tests that fork+wait with pid=-1 (wait, wait3) to prevent
+/// them from reaping children belonging to other concurrent tests.
+static FORK_WAIT_ANY_LOCK: Mutex<()> = Mutex::new(());
 
 // ===========================================================================
 // posix_spawnattr lifecycle: init / destroy
@@ -571,6 +576,7 @@ fn fork_child_gets_zero_pid() {
 
 #[test]
 fn wait_returns_child_status() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
     let pid = unsafe { fork() };
     assert!(pid >= 0);
 
@@ -615,6 +621,7 @@ fn wait4_captures_rusage() {
 
 #[test]
 fn wait3_captures_rusage() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
     let pid = unsafe { fork() };
     assert!(pid >= 0);
 
