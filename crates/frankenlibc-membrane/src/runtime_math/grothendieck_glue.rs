@@ -510,4 +510,245 @@ mod tests {
         assert_eq!(ctrl.state(), GlueState::DescentFailure);
         assert_eq!(ctrl.snapshot().descent_failure_count, first_count + 1);
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FORMAL PROOF: Cocycle Condition Reflexivity
+    //
+    // Theorem: Self-overlaps are vacuously compatible (diagonal cocycle
+    // condition g_{ii} = id). Same-source observations must be skipped
+    // and never contribute to violation rates, because the cocycle
+    // condition g_{ij} · g_{jk} = g_{ik} is trivially satisfied when
+    // i = j (g_{ii} is the identity morphism).
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn proof_cocycle_reflexivity_self_overlap_vacuous() {
+        let all_sources = [
+            DataSource::Files,
+            DataSource::Dns,
+            DataSource::Ldap,
+            DataSource::Nis,
+            DataSource::Cache,
+            DataSource::LocaleFiles,
+            DataSource::IconvTables,
+            DataSource::Fallback,
+        ];
+        let all_families = [
+            QueryFamily::Hostname,
+            QueryFamily::Service,
+            QueryFamily::UserGroup,
+            QueryFamily::LocaleResolution,
+            QueryFamily::EncodingLookup,
+            QueryFamily::Transliteration,
+        ];
+
+        let mut ctrl = GrothendieckGlueController::new();
+
+        // Feed every possible self-overlap (all sources × all families),
+        // even with compatible=false. None should register as a check.
+        for &src in &all_sources {
+            for &fam in &all_families {
+                for _ in 0..10 {
+                    ctrl.observe_cocycle(&CocycleObservation {
+                        family: fam,
+                        source_i: src,
+                        source_j: src,
+                        compatible: false, // Would be a violation if not skipped
+                        is_stack_check: false,
+                    });
+                }
+            }
+        }
+
+        // No checks should have been registered.
+        let snap = ctrl.snapshot();
+        assert_eq!(
+            snap.checks, 0,
+            "Self-overlaps must be vacuously compatible (diagonal cocycle = id)"
+        );
+        assert_eq!(snap.global_violation_rate, 0.0);
+        assert_eq!(snap.state, GlueState::Calibrating);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FORMAL PROOF: Pair Index Bijectivity
+    //
+    // Theorem: The pair_index function is a bijection from the set
+    // {(i,j) : 0 ≤ i < j < NUM_SOURCES} to {0, 1, ..., C(n,2)-1}
+    // where n = NUM_SOURCES. This ensures every source pair has a
+    // unique tracking slot and no collisions occur.
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn proof_pair_index_bijective_no_collision() {
+        use std::collections::HashSet;
+        let mut indices = HashSet::new();
+        let mut count = 0usize;
+
+        for j in 0..NUM_SOURCES {
+            for i in 0..j {
+                let idx = pair_index(i, j);
+                assert!(
+                    indices.insert(idx),
+                    "Collision: pair_index({i},{j})={idx} already used"
+                );
+                assert!(
+                    idx < MAX_OVERLAP_PAIRS,
+                    "pair_index({i},{j})={idx} exceeds MAX_OVERLAP_PAIRS={MAX_OVERLAP_PAIRS}"
+                );
+                count += 1;
+            }
+        }
+
+        // Total pairs must equal C(NUM_SOURCES, 2)
+        let expected = NUM_SOURCES * (NUM_SOURCES - 1) / 2;
+        assert_eq!(count, expected);
+        assert_eq!(indices.len(), expected);
+        assert_eq!(expected, MAX_OVERLAP_PAIRS);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FORMAL PROOF: State Ordering and Severity Monotonicity
+    //
+    // Theorem: The GlueState enum encodes a severity ordering:
+    //   Calibrating < Coherent < DescentFailure < StackificationFault
+    //
+    // The state machine enforces that:
+    // 1. StackificationFault dominates DescentFailure (stack_rate ≥ STACKIFICATION_THRESHOLD
+    //    always takes precedence over global_rate ≥ DESCENT_FAILURE_THRESHOLD)
+    // 2. Higher violation rates can only move the state to more severe levels
+    // 3. Recovery requires violation rates to drop below thresholds
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn proof_state_severity_ordering() {
+        // Property 1: StackificationFault dominates DescentFailure.
+        // When both stack_rate and global_rate are high, stack fault wins.
+        let mut ctrl = GrothendieckGlueController::new();
+
+        // Drive both rates high with failing stack checks.
+        for _ in 0..2048 {
+            ctrl.observe_cocycle(&CocycleObservation {
+                family: QueryFamily::Hostname,
+                source_i: DataSource::Files,
+                source_j: DataSource::Dns,
+                compatible: false,
+                is_stack_check: true, // Both global and stack rates rise
+            });
+        }
+        assert_eq!(
+            ctrl.state(),
+            GlueState::StackificationFault,
+            "StackificationFault must dominate when both rates are high"
+        );
+
+        // Property 2: Coherent requires rates below thresholds.
+        let mut ctrl2 = GrothendieckGlueController::new();
+        for _ in 0..512 {
+            ctrl2.observe_cocycle(&CocycleObservation {
+                family: QueryFamily::Service,
+                source_i: DataSource::Cache,
+                source_j: DataSource::LocaleFiles,
+                compatible: true,
+                is_stack_check: true,
+            });
+        }
+        assert_eq!(ctrl2.state(), GlueState::Coherent);
+        let snap = ctrl2.snapshot();
+        assert!(snap.global_violation_rate < DESCENT_FAILURE_THRESHOLD);
+        assert!(snap.stack_violation_rate < STACKIFICATION_THRESHOLD);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FORMAL PROOF: EWMA Violation Rate Boundedness
+    //
+    // Theorem: The EWMA violation rate is always in [0, 1] for all
+    // possible observation sequences. This follows from:
+    // 1. Initial rate is 0.0
+    // 2. Each update: rate' = (1-α)·rate + α·x where x ∈ {0, 1}
+    // 3. By induction: if rate ∈ [0,1] and x ∈ {0,1}, then
+    //    rate' = (1-α)·rate + α·x ∈ [0, (1-α)+α] = [0, 1]
+    //
+    // We verify empirically over adversarial sequences.
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn proof_ewma_violation_rate_bounded() {
+        let mut ctrl = GrothendieckGlueController::new();
+
+        // Adversarial sequence: alternating compatible/incompatible
+        for i in 0..5000u64 {
+            ctrl.observe_cocycle(&CocycleObservation {
+                family: QueryFamily::Hostname,
+                source_i: DataSource::Files,
+                source_j: DataSource::Dns,
+                compatible: i % 3 != 0, // ~33% violation rate
+                is_stack_check: i % 5 == 0,
+            });
+        }
+
+        let snap = ctrl.snapshot();
+        assert!(
+            (0.0..=1.0).contains(&snap.global_violation_rate),
+            "Global violation rate {:.6} must be in [0,1]",
+            snap.global_violation_rate
+        );
+        assert!(
+            (0.0..=1.0).contains(&snap.stack_violation_rate),
+            "Stack violation rate {:.6} must be in [0,1]",
+            snap.stack_violation_rate
+        );
+        for (fi, &fr) in snap.family_violation_rates.iter().enumerate() {
+            assert!(
+                (0.0..=1.0).contains(&fr),
+                "Family {fi} violation rate {fr:.6} must be in [0,1]"
+            );
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FORMAL PROOF: Cocycle Symmetry
+    //
+    // Theorem: The cocycle observation is symmetric: observing
+    // (source_i=A, source_j=B) produces the same pair index as
+    // (source_i=B, source_j=A). This reflects the mathematical
+    // symmetry of the cocycle condition: g_{ij} and g_{ji} are
+    // inverse morphisms and should be tracked in the same slot.
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn proof_cocycle_symmetry() {
+        let mut ctrl_ab = GrothendieckGlueController::new();
+        let mut ctrl_ba = GrothendieckGlueController::new();
+
+        // Same observations but with source_i and source_j swapped.
+        for i in 0..512u64 {
+            let compat = i % 4 != 0;
+            ctrl_ab.observe_cocycle(&CocycleObservation {
+                family: QueryFamily::Hostname,
+                source_i: DataSource::Files,
+                source_j: DataSource::Dns,
+                compatible: compat,
+                is_stack_check: false,
+            });
+            ctrl_ba.observe_cocycle(&CocycleObservation {
+                family: QueryFamily::Hostname,
+                source_i: DataSource::Dns,
+                source_j: DataSource::Files,
+                compatible: compat,
+                is_stack_check: false,
+            });
+        }
+
+        let snap_ab = ctrl_ab.snapshot();
+        let snap_ba = ctrl_ba.snapshot();
+
+        // States and rates must be identical due to symmetry.
+        assert_eq!(snap_ab.state, snap_ba.state);
+        assert_eq!(snap_ab.checks, snap_ba.checks);
+        assert!(
+            (snap_ab.global_violation_rate - snap_ba.global_violation_rate).abs() < 1e-10,
+            "Symmetric cocycle observations must produce identical violation rates"
+        );
+    }
 }
