@@ -566,6 +566,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_state_severity_total_order() {
         // Verify threshold ordering.
         assert!(VIOLATION_THRESHOLD > 0.0);

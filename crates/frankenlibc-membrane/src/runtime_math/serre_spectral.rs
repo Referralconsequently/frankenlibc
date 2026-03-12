@@ -737,6 +737,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_threshold_partition_complete() {
         // Verify strict ordering.
         assert!(

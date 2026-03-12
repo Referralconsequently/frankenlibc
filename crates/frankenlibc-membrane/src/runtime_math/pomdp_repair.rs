@@ -680,6 +680,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_cpomdp_safety_feasibility() {
         // Property 1: Deny is always available (action index 3 exists).
         assert!(NUM_ACTIONS >= 4, "Must have at least 4 actions including Deny");

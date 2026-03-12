@@ -656,6 +656,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_state_ordering_total() {
         // Verify the thresholds form a strict increasing sequence.
         assert!(

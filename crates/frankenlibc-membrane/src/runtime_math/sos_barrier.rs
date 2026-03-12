@@ -2441,6 +2441,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_cholesky_stability_fragmentation() {
         assert!(
             FRAGMENTATION_CHOLESKY_MIN_PIVOT > 1e-10,
@@ -2460,6 +2461,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_cholesky_stability_thread_safety() {
         assert!(
             THREAD_SAFETY_CHOLESKY_MIN_PIVOT > 1e-10,
@@ -2479,6 +2481,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn proof_cholesky_stability_size_class() {
         assert!(
             SIZE_CLASS_CHOLESKY_MIN_PIVOT > 1e-10,
@@ -2659,6 +2662,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn proof_gram_matrix_symmetry() {
         for i in 0..FRAGMENTATION_CERT_DIM {
             for j in 0..FRAGMENTATION_CERT_DIM {

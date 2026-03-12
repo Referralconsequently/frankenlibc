@@ -509,6 +509,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     /// Expand upper-triangular packed Gram to full symmetric matrix.
+    #[allow(clippy::needless_range_loop)]
     fn expand_gram(gram_upper: &[f64], d: usize) -> Vec<Vec<f64>> {
         let mut m = vec![vec![0.0; d]; d];
         let mut idx = 0;
@@ -537,6 +538,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn proof_tail_risk_gram_structure() {
         let m = expand_gram(&TAIL_RISK_GRAM, 4);
         // All diagonal entries must be positive
@@ -571,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn proof_structural_gram_structure() {
         let m = expand_gram(&STRUCTURAL_GRAM, 3);
         for i in 0..3 {
@@ -590,6 +593,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn proof_compat_gram_structure() {
         let m = expand_gram(&COMPAT_GRAM, 4);
         for i in 0..4 {

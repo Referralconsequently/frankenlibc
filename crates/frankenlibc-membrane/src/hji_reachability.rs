@@ -944,6 +944,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn proof_unsafe_set_completeness() {
         let v = solve_hji();
         for s in 0..STATES {
@@ -1059,7 +1060,7 @@ mod tests {
             }
         }
         // All STATES indices are covered
-        let mut covered = vec![false; STATES];
+        let mut covered = [false; STATES];
         for r in 0..GRID {
             for l in 0..GRID {
                 for a in 0..GRID {

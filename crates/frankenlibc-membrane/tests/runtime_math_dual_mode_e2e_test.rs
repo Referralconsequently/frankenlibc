@@ -785,7 +785,7 @@ fn e2e_snapshot_serialization_contains_all_core_fields() {
     let _ = kernel.decide(SafetyLevel::Hardened, ctx);
 
     let snap = kernel.snapshot(SafetyLevel::Hardened);
-    let json = serde_json::to_value(&snap).expect("snapshot must serialize to JSON");
+    let json = serde_json::to_value(snap).expect("snapshot must serialize to JSON");
     let obj = json.as_object().expect("snapshot must be a JSON object");
 
     // Verify presence of critical fields that golden snapshot diffing depends on.
@@ -839,9 +839,9 @@ fn e2e_snapshot_golden_replay_field_stability() {
         k2.observe_validation_result(SafetyLevel::Hardened, ctx.family, d2.profile, 35, adv2);
     }
 
-    let snap1 = serde_json::to_value(&k1.snapshot(SafetyLevel::Hardened))
+    let snap1 = serde_json::to_value(k1.snapshot(SafetyLevel::Hardened))
         .expect("snap1 serializes");
-    let snap2 = serde_json::to_value(&k2.snapshot(SafetyLevel::Hardened))
+    let snap2 = serde_json::to_value(k2.snapshot(SafetyLevel::Hardened))
         .expect("snap2 serializes");
 
     assert_eq!(

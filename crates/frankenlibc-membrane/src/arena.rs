@@ -809,8 +809,8 @@ mod tests {
         let stack_var: u64 = 42;
         let foreign_ptrs: &[*mut u8] = &[
             std::ptr::addr_of!(stack_var) as *mut u8,
-            0x1 as *mut u8,
-            0xDEAD_BEEF as *mut u8,
+            std::ptr::without_provenance_mut::<u8>(0x1),
+            std::ptr::without_provenance_mut::<u8>(0xDEAD_BEEF),
             std::ptr::null_mut(),
         ];
 
