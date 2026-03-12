@@ -27,6 +27,7 @@ compile_error!(
     "frankenlibc-membrane requires the `runtime-math-production` feature (runtime math kernel is mandatory)."
 );
 
+pub mod alien_cs_metrics;
 pub mod arena;
 pub mod bloom;
 pub mod check_oracle;
