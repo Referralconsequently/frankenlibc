@@ -728,7 +728,7 @@ const MEMORY_MODEL_SOURCES: &[MemoryModelSource] = &[
     MemoryModelSource {
         relative_path: "src/config.rs",
         domain: "tsm",
-        expected_sites: 10,
+        expected_sites: 15,
         stop_at_cfg_test: false,
     },
     MemoryModelSource {
