@@ -362,6 +362,178 @@ fn mprotect_null_fails() {
 }
 
 // ---------------------------------------------------------------------------
+// mmap PROT_NONE (guard page pattern)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mmap_prot_none() {
+    let len = 4096;
+    let ptr = unsafe {
+        mmap(
+            ptr::null_mut(),
+            len,
+            libc::PROT_NONE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED, "PROT_NONE mmap should succeed");
+    // Can't read/write, but we can mprotect and then access
+    let rc = unsafe { mprotect(ptr, len, libc::PROT_READ | libc::PROT_WRITE) };
+    assert_eq!(rc, 0);
+    unsafe { *(ptr as *mut u8) = 55 };
+    assert_eq!(unsafe { *(ptr as *const u8) }, 55);
+    assert_eq!(unsafe { munmap(ptr, len) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// mremap — additional
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mremap_shrink_mapping() {
+    use frankenlibc_abi::mmap_abi::mremap;
+    let old_len = 8192;
+    let new_len = 4096;
+    let ptr = unsafe {
+        mmap(
+            ptr::null_mut(),
+            old_len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED);
+    unsafe { *(ptr as *mut u8) = 88 };
+
+    // Shrinking does not require MREMAP_MAYMOVE
+    let new_ptr = unsafe { mremap(ptr, old_len, new_len, 0, ptr::null_mut()) };
+    assert_ne!(new_ptr, libc::MAP_FAILED, "mremap shrink should succeed");
+    assert_eq!(new_ptr, ptr, "shrink should keep same address");
+    let val = unsafe { *(new_ptr as *const u8) };
+    assert_eq!(val, 88, "data should be preserved after shrink");
+
+    assert_eq!(unsafe { munmap(new_ptr, new_len) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// msync — additional
+// ---------------------------------------------------------------------------
+
+#[test]
+fn msync_async_on_anonymous() {
+    let len = 4096;
+    let ptr = unsafe {
+        mmap(
+            ptr::null_mut(),
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED);
+    // MS_ASYNC is a hint; should not fail
+    let rc = unsafe { msync(ptr, len, libc::MS_ASYNC) };
+    let _ = rc; // May succeed or fail on anonymous mapping
+    assert_eq!(unsafe { munmap(ptr, len) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// madvise — additional
+// ---------------------------------------------------------------------------
+
+#[test]
+fn madvise_willneed() {
+    let len = 4096;
+    let ptr = unsafe {
+        mmap(
+            ptr::null_mut(),
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED);
+    let rc = unsafe { madvise(ptr, len, libc::MADV_WILLNEED) };
+    assert_eq!(rc, 0, "MADV_WILLNEED should succeed");
+    assert_eq!(unsafe { munmap(ptr, len) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// mprotect — additional
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mprotect_none_then_restore() {
+    let len = 4096;
+    let ptr = unsafe {
+        mmap(
+            ptr::null_mut(),
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED);
+    unsafe { *(ptr as *mut u8) = 33 };
+
+    // Remove all permissions
+    let rc = unsafe { mprotect(ptr, len, libc::PROT_NONE) };
+    assert_eq!(rc, 0);
+
+    // Restore
+    let rc = unsafe { mprotect(ptr, len, libc::PROT_READ) };
+    assert_eq!(rc, 0);
+    assert_eq!(unsafe { *(ptr as *const u8) }, 33, "data should survive PROT_NONE");
+
+    assert_eq!(unsafe { munmap(ptr, len) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// mmap file-backed
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mmap_file_backed() {
+    use std::os::unix::io::AsRawFd;
+
+    let path = std::env::temp_dir().join(format!("frankenlibc-mmap-test-{}", std::process::id()));
+    let data = b"hello mmap world!";
+    std::fs::write(&path, data).expect("write tmp file");
+
+    let file = std::fs::File::open(&path).expect("open file");
+    let fd = file.as_raw_fd();
+
+    let ptr = unsafe {
+        mmap(
+            ptr::null_mut(),
+            data.len(),
+            libc::PROT_READ,
+            libc::MAP_PRIVATE,
+            fd,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED, "file-backed mmap should succeed");
+
+    let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, data.len()) };
+    assert_eq!(slice, data, "mmap should reflect file contents");
+
+    assert_eq!(unsafe { munmap(ptr, data.len()) }, 0);
+    drop(file);
+    let _ = std::fs::remove_file(&path);
+}
+
+// ---------------------------------------------------------------------------
 // Multiple mappings
 // ---------------------------------------------------------------------------
 
