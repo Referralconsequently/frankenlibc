@@ -566,3 +566,138 @@ fn dup3_same_fd_fails() {
     assert_eq!(rc, -1, "dup3 with same old and new fd should fail (EINVAL)");
     unsafe { close(fd) };
 }
+
+// ---------------------------------------------------------------------------
+// pwrite then pread at same offset — idempotent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pwrite_pread_multiple_offsets() {
+    let fd = temp_memfd(b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    // Write at offsets 0, 4, 8, 12
+    for i in 0..4u8 {
+        let data = [b'A' + i; 4];
+        let n = unsafe { pwrite(fd, data.as_ptr().cast(), 4, (i as i64) * 4) };
+        assert_eq!(n, 4);
+    }
+    // Read back entire 16 bytes
+    let mut buf = [0u8; 16];
+    let n = unsafe { pread(fd, buf.as_mut_ptr().cast(), 16, 0) };
+    assert_eq!(n, 16);
+    assert_eq!(&buf[0..4], b"AAAA");
+    assert_eq!(&buf[4..8], b"BBBB");
+    assert_eq!(&buf[8..12], b"CCCC");
+    assert_eq!(&buf[12..16], b"DDDD");
+    unsafe { close(fd) };
+}
+
+// ---------------------------------------------------------------------------
+// readv with zero-length iovec
+// ---------------------------------------------------------------------------
+
+#[test]
+fn readv_single_iovec() {
+    let (rfd, wfd) = temp_pipe();
+    let data = b"readv1";
+    unsafe { libc::write(wfd, data.as_ptr().cast(), data.len()) };
+
+    let mut buf = [0u8; 16];
+    let iov = libc::iovec {
+        iov_base: buf.as_mut_ptr().cast(),
+        iov_len: buf.len(),
+    };
+    let n = unsafe { readv(rfd, &iov, 1) };
+    assert_eq!(n, data.len() as isize);
+    assert_eq!(&buf[..data.len()], data);
+
+    unsafe { close(rfd) };
+    unsafe { close(wfd) };
+}
+
+// ---------------------------------------------------------------------------
+// fcntl F_DUPFD_CLOEXEC
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fcntl_dupfd_cloexec() {
+    let fd = temp_fd();
+    let new_fd = unsafe { fcntl(fd, libc::F_DUPFD_CLOEXEC, 50) };
+    assert!(new_fd >= 50, "F_DUPFD_CLOEXEC should return fd >= 50");
+
+    let flags = unsafe { fcntl(new_fd, libc::F_GETFD, 0) };
+    assert_ne!(
+        flags & libc::FD_CLOEXEC,
+        0,
+        "F_DUPFD_CLOEXEC should set FD_CLOEXEC"
+    );
+
+    unsafe { close(new_fd) };
+    unsafe { close(fd) };
+}
+
+// ---------------------------------------------------------------------------
+// sendfile with null offset
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sendfile_null_offset() {
+    let content = b"sendfile no offset";
+    let in_fd = temp_memfd(content);
+    let out_fd = temp_memfd(b"");
+
+    let n = unsafe { sendfile(out_fd, in_fd, std::ptr::null_mut(), content.len()) };
+    assert_eq!(n, content.len() as isize);
+
+    unsafe { libc::lseek(out_fd, 0, libc::SEEK_SET) };
+    let mut buf = [0u8; 32];
+    let read_n = unsafe { libc::read(out_fd, buf.as_mut_ptr().cast(), buf.len()) };
+    assert_eq!(read_n, content.len() as isize);
+    assert_eq!(&buf[..content.len()], content);
+
+    unsafe { close(in_fd) };
+    unsafe { close(out_fd) };
+}
+
+// ---------------------------------------------------------------------------
+// pipe2 with combined flags
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pipe2_cloexec_and_nonblock() {
+    let mut fds = [0 as c_int; 2];
+    let rc = unsafe { pipe2(&mut fds as *mut c_int, libc::O_CLOEXEC | libc::O_NONBLOCK) };
+    assert_eq!(rc, 0);
+
+    let fd_flags = unsafe { fcntl(fds[0], libc::F_GETFD, 0) };
+    assert_ne!(fd_flags & libc::FD_CLOEXEC, 0);
+
+    let fl_flags = unsafe { fcntl(fds[0], libc::F_GETFL, 0) };
+    assert_ne!(fl_flags & libc::O_NONBLOCK, 0);
+
+    unsafe { close(fds[0]) };
+    unsafe { close(fds[1]) };
+}
+
+// ---------------------------------------------------------------------------
+// copy_file_range — partial copy
+// ---------------------------------------------------------------------------
+
+#[test]
+fn copy_file_range_partial() {
+    let content = b"ABCDEFGHIJ";
+    let in_fd = temp_memfd(content);
+    let out_fd = temp_memfd(b"");
+
+    let mut off_in: i64 = 3; // start at 'D'
+    let mut off_out: i64 = 0;
+    let n = unsafe { copy_file_range(in_fd, &mut off_in, out_fd, &mut off_out, 5, 0) };
+    assert_eq!(n, 5);
+
+    unsafe { libc::lseek(out_fd, 0, libc::SEEK_SET) };
+    let mut buf = [0u8; 5];
+    unsafe { libc::read(out_fd, buf.as_mut_ptr().cast(), 5) };
+    assert_eq!(&buf, b"DEFGH");
+
+    unsafe { close(in_fd) };
+    unsafe { close(out_fd) };
+}
