@@ -147,3 +147,85 @@ fn test_warn_concurrent() {
         h.join().unwrap();
     }
 }
+
+// ---------------------------------------------------------------------------
+// vwarn/vwarnx with non-null fmt strings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_vwarn_with_message() {
+    let msg = b"vwarn test\0";
+    unsafe { vwarn(msg.as_ptr() as *const c_char, std::ptr::null_mut()) };
+}
+
+#[test]
+fn test_vwarnx_with_message() {
+    let msg = b"vwarnx test\0";
+    unsafe { vwarnx(msg.as_ptr() as *const c_char, std::ptr::null_mut()) };
+}
+
+// ---------------------------------------------------------------------------
+// warn with various errno values — exercise strerror path
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_warn_with_eacces_errno() {
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::EACCES };
+    let msg = b"access denied\0";
+    unsafe { warn(msg.as_ptr() as *const c_char) };
+}
+
+#[test]
+fn test_warn_with_enomem_errno() {
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::ENOMEM };
+    let msg = b"out of memory\0";
+    unsafe { warn(msg.as_ptr() as *const c_char) };
+}
+
+#[test]
+fn test_warn_with_eio_errno() {
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::EIO };
+    let msg = b"io error\0";
+    unsafe { warn(msg.as_ptr() as *const c_char) };
+}
+
+#[test]
+fn test_warn_with_enosys_errno() {
+    unsafe { *frankenlibc_abi::errno_abi::__errno_location() = libc::ENOSYS };
+    let msg = b"not implemented\0";
+    unsafe { warn(msg.as_ptr() as *const c_char) };
+}
+
+// ---------------------------------------------------------------------------
+// Rapid fire — exercise format caching
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_warn_rapid_fire() {
+    for i in 0..20 {
+        let msg = format!("rapid warn {}\0", i);
+        unsafe { warn(msg.as_ptr() as *const c_char) };
+    }
+}
+
+#[test]
+fn test_warnx_rapid_fire() {
+    for i in 0..20 {
+        let msg = format!("rapid warnx {}\0", i);
+        unsafe { warnx(msg.as_ptr() as *const c_char) };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// warn/warnx alternating with errno changes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_warn_alternating_errno() {
+    let errnos = [libc::ENOENT, libc::EINVAL, libc::EPERM, libc::EACCES, 0];
+    for &e in &errnos {
+        unsafe { *frankenlibc_abi::errno_abi::__errno_location() = e };
+        let msg = b"alternating\0";
+        unsafe { warn(msg.as_ptr() as *const c_char) };
+    }
+}
