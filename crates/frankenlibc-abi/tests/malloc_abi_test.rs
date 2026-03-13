@@ -465,3 +465,99 @@ fn test_malloc_info_bad_options() {
     let rc = unsafe { malloc_info(1, &dummy as *const i32 as *mut c_void) };
     assert_eq!(rc, -1, "malloc_info with options != 0 should return -1");
 }
+
+// ---------------------------------------------------------------------------
+// realloc — edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_realloc_null_zero_size() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { realloc(ptr::null_mut(), 0) };
+    // realloc(NULL, 0) is like malloc(0)
+    if !p.is_null() {
+        unsafe { free(p) };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// malloc — alloc/free cycling
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_malloc_free_cycles() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    for _ in 0..100 {
+        let p = unsafe { malloc(128) };
+        assert!(!p.is_null(), "malloc should succeed in cycle");
+        unsafe { free(p) };
+    }
+}
+
+#[test]
+fn test_malloc_large_allocation() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    // Allocate 1MB
+    let p = unsafe { malloc(1024 * 1024) };
+    assert!(!p.is_null(), "malloc(1MB) should succeed");
+    // Write first and last byte
+    unsafe {
+        *(p as *mut u8) = 0xAA;
+        *((p as *mut u8).add(1024 * 1024 - 1)) = 0xBB;
+    }
+    assert_eq!(unsafe { *(p as *const u8) }, 0xAA);
+    assert_eq!(unsafe { *((p as *const u8).add(1024 * 1024 - 1)) }, 0xBB);
+    unsafe { free(p) };
+}
+
+// ---------------------------------------------------------------------------
+// calloc — data integrity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_calloc_large_zero_initialized() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { calloc(1, 4096) };
+    assert!(!p.is_null());
+    let slice = unsafe { std::slice::from_raw_parts(p as *const u8, 4096) };
+    assert!(slice.iter().all(|&b| b == 0), "calloc 4096 must be zero");
+    unsafe { free(p) };
+}
+
+// ---------------------------------------------------------------------------
+// aligned_alloc — various alignments
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_aligned_alloc_small_alignment() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { aligned_alloc(8, 64) };
+    assert!(!p.is_null());
+    assert_eq!((p as usize) % 8, 0, "must be 8-byte aligned");
+    unsafe { free(p) };
+}
+
+#[test]
+fn test_aligned_alloc_large_alignment() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { aligned_alloc(4096, 8192) };
+    assert!(!p.is_null());
+    assert_eq!((p as usize) % 4096, 0, "must be 4096-byte aligned");
+    unsafe { free(p) };
+}
+
+// ---------------------------------------------------------------------------
+// malloc_usable_size — after realloc
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_malloc_usable_size_after_realloc() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { malloc(64) };
+    assert!(!p.is_null());
+    let p2 = unsafe { realloc(p, 512) };
+    assert!(!p2.is_null());
+    let usable = unsafe { malloc_usable_size(p2) };
+    assert!(usable >= 512, "usable size after realloc to 512 should be >= 512");
+    unsafe { free(p2) };
+}
