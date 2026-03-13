@@ -58,4 +58,19 @@ name = "fuzz_ctype"
 path = "fuzz_targets/fuzz_ctype.rs"
 doc = false
 
+[[bin]]
+name = "fuzz_time"
+path = "fuzz_targets/fuzz_time.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_math"
+path = "fuzz_targets/fuzz_math.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_inet"
+path = "fuzz_targets/fuzz_inet.rs"
+doc = false
+
 [workspace]

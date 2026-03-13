@@ -441,3 +441,197 @@ fn group_concurrent_lookup_coherence_under_file_churn() {
     }
     let _ = fs::remove_file(&path);
 }
+
+// ---------------------------------------------------------------------------
+// Additional edge-case tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn passwd_empty_file_returns_null_on_getpwent() {
+    let _guard = TEST_LOCK.lock().expect("lock should be available");
+    let path = temp_path("passwd-empty");
+
+    write_file(&path, b"");
+    unsafe { std::env::set_var(PASSWD_ENV, &path) };
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        frankenlibc_abi::pwd_abi::setpwent();
+    }
+
+    let entry = unsafe { frankenlibc_abi::pwd_abi::getpwent() };
+    assert!(
+        entry.is_null(),
+        "getpwent on empty file should return NULL"
+    );
+
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        std::env::remove_var(PASSWD_ENV);
+    }
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn group_empty_file_returns_null_on_getgrnam() {
+    let _guard = TEST_LOCK.lock().expect("lock should be available");
+    let path = temp_path("group-empty");
+
+    write_file(&path, b"");
+    unsafe { std::env::set_var(GROUP_ENV, &path) };
+    unsafe {
+        frankenlibc_abi::grp_abi::endgrent();
+    }
+
+    let name = CString::new("nonexistent").expect("literal has no interior NUL");
+    let entry = unsafe { frankenlibc_abi::grp_abi::getgrnam(name.as_ptr()) };
+    assert!(
+        entry.is_null(),
+        "getgrnam on empty file should return NULL"
+    );
+
+    unsafe {
+        frankenlibc_abi::grp_abi::endgrent();
+        std::env::remove_var(GROUP_ENV);
+    }
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn passwd_iteration_exhausts_then_returns_null() {
+    let _guard = TEST_LOCK.lock().expect("lock should be available");
+    let path = temp_path("passwd-exhaust");
+
+    write_file(
+        &path,
+        b"alpha:x:500:500::/home/alpha:/bin/sh\nbeta:x:501:501::/home/beta:/bin/sh\n",
+    );
+    unsafe { std::env::set_var(PASSWD_ENV, &path) };
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        frankenlibc_abi::pwd_abi::setpwent();
+    }
+
+    let first = unsafe { frankenlibc_abi::pwd_abi::getpwent() };
+    assert!(!first.is_null(), "first entry should exist");
+    let first_name = unsafe { passwd_name(first) };
+    assert_eq!(first_name, "alpha");
+
+    let second = unsafe { frankenlibc_abi::pwd_abi::getpwent() };
+    assert!(!second.is_null(), "second entry should exist");
+    let second_name = unsafe { passwd_name(second) };
+    assert_eq!(second_name, "beta");
+
+    let third = unsafe { frankenlibc_abi::pwd_abi::getpwent() };
+    assert!(
+        third.is_null(),
+        "third getpwent should return NULL (exhausted)"
+    );
+
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        std::env::remove_var(PASSWD_ENV);
+    }
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn passwd_getpwuid_finds_correct_user() {
+    let _guard = TEST_LOCK.lock().expect("lock should be available");
+    let path = temp_path("passwd-uid-lookup");
+
+    write_file(
+        &path,
+        b"root:x:0:0:root:/root:/bin/sh\nalice:x:5001:5001::/home/alice:/bin/sh\nbob:x:5002:5002::/home/bob:/bin/sh\n",
+    );
+    unsafe { std::env::set_var(PASSWD_ENV, &path) };
+    unsafe { frankenlibc_abi::pwd_abi::endpwent() };
+
+    let entry = unsafe { frankenlibc_abi::pwd_abi::getpwuid(5002) };
+    assert!(!entry.is_null(), "getpwuid(5002) should find bob");
+    let name = unsafe { passwd_name(entry) };
+    assert_eq!(name, "bob");
+
+    // Non-existent UID
+    let missing = unsafe { frankenlibc_abi::pwd_abi::getpwuid(99999) };
+    assert!(
+        missing.is_null(),
+        "getpwuid(99999) should return NULL for missing UID"
+    );
+
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        std::env::remove_var(PASSWD_ENV);
+    }
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn group_getgrgid_finds_correct_group() {
+    let _guard = TEST_LOCK.lock().expect("lock should be available");
+    let path = temp_path("group-gid-lookup");
+
+    write_file(&path, b"root:x:0:\nadmin:x:800:alice\ndev:x:900:alice,bob\n");
+    unsafe { std::env::set_var(GROUP_ENV, &path) };
+    unsafe { frankenlibc_abi::grp_abi::endgrent() };
+
+    let entry = unsafe { frankenlibc_abi::grp_abi::getgrgid(900) };
+    assert!(!entry.is_null(), "getgrgid(900) should find dev");
+    let gname = unsafe { CStr::from_ptr((*entry).gr_name) }
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(gname, "dev");
+    let members = unsafe { group_members(entry) };
+    assert_eq!(members, vec!["alice".to_string(), "bob".to_string()]);
+
+    // Non-existent GID
+    let missing = unsafe { frankenlibc_abi::grp_abi::getgrgid(88888) };
+    assert!(
+        missing.is_null(),
+        "getgrgid(88888) should return NULL for missing GID"
+    );
+
+    unsafe {
+        frankenlibc_abi::grp_abi::endgrent();
+        std::env::remove_var(GROUP_ENV);
+    }
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn passwd_setpwent_rewinds_iteration() {
+    let _guard = TEST_LOCK.lock().expect("lock should be available");
+    let path = temp_path("passwd-rewind");
+
+    write_file(
+        &path,
+        b"eve:x:600:600::/home/eve:/bin/sh\nfrank:x:601:601::/home/frank:/bin/sh\n",
+    );
+    unsafe { std::env::set_var(PASSWD_ENV, &path) };
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        frankenlibc_abi::pwd_abi::setpwent();
+    }
+
+    // Read first entry
+    let first = unsafe { frankenlibc_abi::pwd_abi::getpwent() };
+    assert!(!first.is_null());
+    assert_eq!(unsafe { passwd_name(first) }, "eve");
+
+    // Rewind
+    unsafe { frankenlibc_abi::pwd_abi::setpwent() };
+
+    // Should get the first entry again
+    let rewound = unsafe { frankenlibc_abi::pwd_abi::getpwent() };
+    assert!(!rewound.is_null());
+    assert_eq!(
+        unsafe { passwd_name(rewound) },
+        "eve",
+        "setpwent should rewind iteration to the beginning"
+    );
+
+    unsafe {
+        frankenlibc_abi::pwd_abi::endpwent();
+        std::env::remove_var(PASSWD_ENV);
+    }
+    let _ = fs::remove_file(&path);
+}

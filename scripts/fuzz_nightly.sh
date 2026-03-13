@@ -36,6 +36,9 @@ TARGETS=(
     fuzz_scanf
     fuzz_stdlib
     fuzz_ctype
+    fuzz_time
+    fuzz_math
+    fuzz_inet
 )
 
 # Parse CLI arguments
