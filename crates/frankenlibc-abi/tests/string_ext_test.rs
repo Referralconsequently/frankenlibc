@@ -145,3 +145,57 @@ fn test_strverscmp_same_prefix_different_length() {
     let rc = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
     assert!(rc < 0, "file should come before file1");
 }
+
+#[test]
+fn test_strverscmp_reflexive() {
+    let s = b"version2.5.1\0";
+    let rc = unsafe { strverscmp(s.as_ptr() as *const c_char, s.as_ptr() as *const c_char) };
+    assert_eq!(rc, 0, "comparing string with itself should return 0");
+}
+
+#[test]
+fn test_strverscmp_antisymmetric() {
+    let a = b"ver1\0";
+    let b = b"ver2\0";
+    let ab = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
+    let ba = unsafe { strverscmp(b.as_ptr() as *const c_char, a.as_ptr() as *const c_char) };
+    assert!(ab < 0);
+    assert!(ba > 0);
+    // Signs must be opposite.
+    assert!(
+        (ab < 0 && ba > 0) || (ab > 0 && ba < 0),
+        "strverscmp should be antisymmetric"
+    );
+}
+
+#[test]
+fn test_strverscmp_all_digits() {
+    let a = b"100\0";
+    let b = b"20\0";
+    let rc = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
+    assert!(rc > 0, "100 should come after 20 in version order, got {rc}");
+}
+
+#[test]
+fn test_rawmemchr_all_same_byte() {
+    let data = b"aaaaaa\0";
+    let result = unsafe { rawmemchr(data.as_ptr() as *const c_void, b'a' as c_int) };
+    let offset = result as usize - data.as_ptr() as usize;
+    assert_eq!(offset, 0, "should find first 'a' at index 0");
+}
+
+#[test]
+fn test_rawmemchr_single_byte_buffer() {
+    let data = b"x\0";
+    let result = unsafe { rawmemchr(data.as_ptr() as *const c_void, b'x' as c_int) };
+    let offset = result as usize - data.as_ptr() as usize;
+    assert_eq!(offset, 0);
+}
+
+#[test]
+fn test_strverscmp_long_numeric_segments() {
+    let a = b"file123456\0";
+    let b = b"file123457\0";
+    let rc = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
+    assert!(rc < 0, "file123456 should come before file123457");
+}
