@@ -125,3 +125,142 @@ fn rwlock_writer_blocks_reader_until_unlock() {
         free_rwlock_ptr(rwlock);
     }
 }
+
+#[test]
+fn rwlock_multiple_concurrent_readers() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+    }
+
+    // Take 4 read locks — all should succeed since readers don't block readers.
+    let rwlock_addr = rwlock as usize;
+    let barrier = Arc::new(std::sync::Barrier::new(5)); // 4 readers + main
+    let all_locked = Arc::new(AtomicBool::new(false));
+
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let b = Arc::clone(&barrier);
+            let locked = Arc::clone(&all_locked);
+            std::thread::spawn(move || {
+                let rwl = rwlock_addr as *mut libc::pthread_rwlock_t;
+                unsafe {
+                    assert_eq!(pthread_rwlock_rdlock(rwl), 0);
+                }
+                b.wait(); // all readers hold locks
+                // Wait until main signals we can unlock
+                while !locked.load(Ordering::Acquire) {
+                    std::thread::yield_now();
+                }
+                unsafe {
+                    assert_eq!(pthread_rwlock_unlock(rwl), 0);
+                }
+            })
+        })
+        .collect();
+
+    barrier.wait(); // all 4 readers hold read locks concurrently
+    all_locked.store(true, Ordering::Release);
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    unsafe {
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}
+
+#[test]
+fn rwlock_init_null_is_einval() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    unsafe {
+        assert_eq!(
+            pthread_rwlock_init(std::ptr::null_mut(), std::ptr::null()),
+            libc::EINVAL
+        );
+    }
+}
+
+#[test]
+fn rwlock_rdlock_then_rdlock_same_thread() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        // Multiple read locks from the same thread should succeed
+        assert_eq!(pthread_rwlock_rdlock(rwlock), 0);
+        assert_eq!(pthread_rwlock_rdlock(rwlock), 0);
+        assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+        assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}
+
+#[test]
+fn rwlock_destroy_null_is_einval() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    unsafe {
+        assert_eq!(pthread_rwlock_destroy(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn rwlock_init_destroy_reinit() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        // Reinit after destroy should work
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        assert_eq!(pthread_rwlock_rdlock(rwlock), 0);
+        assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}
+
+#[test]
+fn rwlock_write_then_write_different_thread_blocks() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        assert_eq!(pthread_rwlock_wrlock(rwlock), 0);
+    }
+
+    let writer_entered = Arc::new(AtomicBool::new(false));
+    let entered_clone = Arc::clone(&writer_entered);
+    let rwlock_addr = rwlock as usize;
+
+    let handle = std::thread::spawn(move || {
+        let rwl = rwlock_addr as *mut libc::pthread_rwlock_t;
+        unsafe {
+            assert_eq!(pthread_rwlock_wrlock(rwl), 0);
+            entered_clone.store(true, Ordering::Release);
+            assert_eq!(pthread_rwlock_unlock(rwl), 0);
+        }
+    });
+
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(
+        !writer_entered.load(Ordering::Acquire),
+        "second writer should be blocked"
+    );
+
+    unsafe {
+        assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+    }
+    handle.join().unwrap();
+
+    assert!(writer_entered.load(Ordering::Acquire));
+
+    unsafe {
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}

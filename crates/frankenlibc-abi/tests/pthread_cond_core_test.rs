@@ -198,3 +198,106 @@ fn condvar_timedwait_rejects_null_abstime_and_invalid_nsec() {
         free_mutex_ptr(mutex);
     }
 }
+
+#[test]
+fn condvar_init_null_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(
+            pthread_cond_init(std::ptr::null_mut(), std::ptr::null()),
+            libc::EINVAL
+        );
+    }
+}
+
+#[test]
+fn condvar_destroy_null_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(pthread_cond_destroy(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn condvar_signal_null_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(pthread_cond_signal(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn condvar_broadcast_null_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(
+            pthread_cond_broadcast(std::ptr::null_mut()),
+            libc::EINVAL
+        );
+    }
+}
+
+#[test]
+fn condvar_signal_wakes_timedwait_thread() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    pthread_mutex_reset_state_for_tests();
+    let cond = alloc_cond_ptr();
+    let mutex = alloc_mutex_ptr();
+
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_cond_init(cond, std::ptr::null()), 0);
+    }
+
+    let signaled = Arc::new(AtomicBool::new(false));
+    let signaled_clone = Arc::clone(&signaled);
+    let cond_addr = cond as usize;
+    let mutex_addr = mutex as usize;
+
+    let handle = std::thread::spawn(move || {
+        let c = cond_addr as *mut libc::pthread_cond_t;
+        let m = mutex_addr as *mut libc::pthread_mutex_t;
+        unsafe {
+            assert_eq!(pthread_mutex_lock(m), 0);
+            // Use timedwait with a generous timeout
+            let abstime = realtime_abstime_after(2000);
+            let rc = pthread_cond_timedwait(c, m, &abstime as *const libc::timespec);
+            signaled_clone.store(true, Ordering::Release);
+            assert_eq!(rc, 0, "should wake from signal, not timeout");
+            assert_eq!(pthread_mutex_unlock(m), 0);
+        }
+    });
+
+    // Give the waiter time to enter timedwait
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    unsafe {
+        assert_eq!(pthread_cond_signal(cond), 0);
+    }
+
+    handle.join().unwrap();
+    assert!(signaled.load(Ordering::Acquire));
+
+    unsafe {
+        assert_eq!(pthread_cond_destroy(cond), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_cond_ptr(cond);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn condvar_init_destroy_reinit() {
+    pthread_mutex_reset_state_for_tests();
+    let cond = alloc_cond_ptr();
+    unsafe {
+        assert_eq!(pthread_cond_init(cond, std::ptr::null()), 0);
+        assert_eq!(pthread_cond_destroy(cond), 0);
+        // Reinit after destroy should succeed
+        assert_eq!(pthread_cond_init(cond, std::ptr::null()), 0);
+        assert_eq!(pthread_cond_signal(cond), 0);
+        assert_eq!(pthread_cond_destroy(cond), 0);
+        free_cond_ptr(cond);
+    }
+}

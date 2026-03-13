@@ -105,3 +105,43 @@ fn test_rawmemchr_null_ptr() {
     let result = unsafe { rawmemchr(std::ptr::null(), b'x' as c_int) };
     assert!(result.is_null(), "rawmemchr(NULL) should return NULL");
 }
+
+#[test]
+fn test_rawmemchr_last_before_nul() {
+    let data = b"abcde\0";
+    let result = unsafe { rawmemchr(data.as_ptr() as *const c_void, b'e' as c_int) };
+    let offset = result as usize - data.as_ptr() as usize;
+    assert_eq!(offset, 4);
+}
+
+#[test]
+fn test_rawmemchr_repeated_byte_finds_first() {
+    let data = b"aabaa\0";
+    let result = unsafe { rawmemchr(data.as_ptr() as *const c_void, b'b' as c_int) };
+    let offset = result as usize - data.as_ptr() as usize;
+    assert_eq!(offset, 2, "should find first occurrence of 'b'");
+}
+
+#[test]
+fn test_strverscmp_empty_strings() {
+    let a = b"\0";
+    let b = b"\0";
+    let rc = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
+    assert_eq!(rc, 0, "two empty strings should be equal");
+}
+
+#[test]
+fn test_strverscmp_empty_vs_nonempty() {
+    let a = b"\0";
+    let b = b"a\0";
+    let rc = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
+    assert!(rc < 0, "empty string should come before 'a'");
+}
+
+#[test]
+fn test_strverscmp_same_prefix_different_length() {
+    let a = b"file\0";
+    let b = b"file1\0";
+    let rc = unsafe { strverscmp(a.as_ptr() as *const c_char, b.as_ptr() as *const c_char) };
+    assert!(rc < 0, "file should come before file1");
+}

@@ -237,3 +237,101 @@ fn futex_mutex_linearizable_counter_smoke() {
         free_mutex_ptr(mutex);
     }
 }
+
+#[test]
+fn futex_mutex_init_null_is_einval() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(
+            pthread_mutex_init(std::ptr::null_mut(), std::ptr::null()),
+            libc::EINVAL
+        );
+    }
+}
+
+#[test]
+fn futex_mutex_lock_null_is_einval() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(pthread_mutex_lock(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn futex_mutex_unlock_null_is_einval() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(pthread_mutex_unlock(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn futex_mutex_destroy_null_is_einval() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(pthread_mutex_destroy(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn futex_mutex_trylock_null_is_einval() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+    unsafe {
+        assert_eq!(pthread_mutex_trylock(std::ptr::null_mut()), libc::EINVAL);
+    }
+}
+
+#[test]
+fn futex_mutex_trylock_succeeds_when_unlocked() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_trylock(mutex), 0);
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn futex_mutex_init_destroy_reinit() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        // Reinit after destroy should succeed
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(mutex), 0);
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn futex_mutex_lock_unlock_repeated() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        for _ in 0..100 {
+            assert_eq!(pthread_mutex_lock(mutex), 0);
+            assert_eq!(pthread_mutex_unlock(mutex), 0);
+        }
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}

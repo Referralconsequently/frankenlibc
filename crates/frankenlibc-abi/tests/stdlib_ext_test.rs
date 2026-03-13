@@ -83,3 +83,43 @@ fn test_confstr_truncation() {
     // Last byte should be NUL (truncated).
     assert_eq!(buf[3], 0);
 }
+
+#[test]
+fn test_gnu_get_libc_version_stable_across_calls() {
+    let v1 = unsafe { gnu_get_libc_version() };
+    let v2 = unsafe { gnu_get_libc_version() };
+    // Should return the same pointer (static string)
+    assert_eq!(v1, v2, "repeated calls should return same pointer");
+}
+
+#[test]
+fn test_confstr_cs_path_null_buffer_returns_needed() {
+    // _CS_PATH = 0, buffer=null, size=0 — should return needed size
+    let needed = unsafe { confstr(0, std::ptr::null_mut(), 0) };
+    assert!(needed > 1, "CS_PATH needs at least some bytes");
+}
+
+#[test]
+fn test_confstr_pthread_filenames() {
+    // _CS_GNU_LIBPTHREAD_VERSION = 3
+    let needed = unsafe { confstr(3, std::ptr::null_mut(), 0) };
+    if needed > 0 {
+        let mut buf = vec![0u8; needed];
+        let written = unsafe { confstr(3, buf.as_mut_ptr() as *mut c_char, needed) };
+        assert_eq!(written, needed);
+        let ver = CStr::from_bytes_with_nul(&buf).unwrap();
+        assert!(
+            !ver.to_str().unwrap().is_empty(),
+            "pthread version should not be empty"
+        );
+    }
+}
+
+#[test]
+fn test_confstr_size_one_buffer() {
+    // Buffer of size 1 — should write just a NUL
+    let mut buf = [0xFFu8; 1];
+    let needed = unsafe { confstr(0, buf.as_mut_ptr() as *mut c_char, 1) };
+    assert!(needed > 1, "CS_PATH should need more than 1 byte");
+    assert_eq!(buf[0], 0, "size-1 buffer should contain only NUL");
+}
