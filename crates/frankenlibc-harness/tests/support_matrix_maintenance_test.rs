@@ -59,6 +59,26 @@ fn run_support_matrix_gate(trace_symbol_events: bool) -> std::process::Output {
         .expect("failed to execute support matrix maintenance gate")
 }
 
+const IO_INTERNAL_WAVE1_NATIVE_SYMBOLS: &[&str] = &[
+    "_IO_fclose",
+    "_IO_fdopen",
+    "_IO_fflush",
+    "_IO_fgetpos",
+    "_IO_fgetpos64",
+    "_IO_fgets",
+    "_IO_fopen",
+    "_IO_fputs",
+    "_IO_fread",
+    "_IO_fsetpos",
+    "_IO_fsetpos64",
+    "_IO_ftell",
+    "_IO_fwrite",
+    "_IO_fprintf",
+    "_IO_printf",
+    "_IO_sprintf",
+    "_IO_sscanf",
+];
+
 #[test]
 fn maintenance_report_generates_successfully() {
     let root = repo_root();
@@ -201,6 +221,27 @@ fn maintenance_module_coverage_consistent() {
         total_from_modules, total_from_summary,
         "Module total ({total_from_modules}) != summary total ({total_from_summary})"
     );
+}
+
+#[test]
+fn maintenance_report_marks_io_internal_wave1_symbols_implemented() {
+    let root = repo_root();
+    let report_path = root.join("tests/conformance/support_matrix_maintenance_report.v1.json");
+    let data = load_json(&report_path);
+    let symbol_status_map = data["symbol_status_map"]
+        .as_object()
+        .expect("symbol_status_map should be an object");
+
+    for symbol in IO_INTERNAL_WAVE1_NATIVE_SYMBOLS {
+        let status = symbol_status_map
+            .get(*symbol)
+            .and_then(serde_json::Value::as_str);
+        assert_eq!(
+            status,
+            Some("Implemented"),
+            "expected {symbol} to be Implemented in support_matrix_maintenance_report.v1.json"
+        );
+    }
 }
 
 #[test]
