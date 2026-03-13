@@ -452,3 +452,86 @@ fn group_iteration_count_consistent() {
         "two iterations should produce the same count"
     );
 }
+
+// ===========================================================================
+// Reentrant lookups from multiple threads
+// ===========================================================================
+
+#[test]
+fn getgrnam_r_concurrent_lookups() {
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            std::thread::spawn(|| {
+                let name = std::ffi::CString::new("root").unwrap();
+                let mut grp: libc::group = unsafe { std::mem::zeroed() };
+                let mut buf = vec![0u8; 4096];
+                let mut result: *mut libc::group = std::ptr::null_mut();
+
+                let rc = unsafe {
+                    getgrnam_r(
+                        name.as_ptr(),
+                        &mut grp,
+                        buf.as_mut_ptr().cast(),
+                        buf.len(),
+                        &mut result,
+                    )
+                };
+                assert_eq!(rc, 0);
+                assert!(!result.is_null());
+                assert_eq!(grp.gr_gid, 0);
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().unwrap();
+    }
+}
+
+#[test]
+fn getgrgid_r_concurrent_lookups() {
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            std::thread::spawn(|| {
+                let mut grp: libc::group = unsafe { std::mem::zeroed() };
+                let mut buf = vec![0u8; 4096];
+                let mut result: *mut libc::group = std::ptr::null_mut();
+
+                let rc = unsafe {
+                    getgrgid_r(0, &mut grp, buf.as_mut_ptr().cast(), buf.len(), &mut result)
+                };
+                assert_eq!(rc, 0);
+                assert!(!result.is_null());
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().unwrap();
+    }
+}
+
+// ===========================================================================
+// getgrnam_r with adequately large buffer
+// ===========================================================================
+
+#[test]
+fn getgrnam_r_large_buffer() {
+    let name = CString::new("root").unwrap();
+    let mut grp: libc::group = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0u8; 65536]; // 64KB — plenty
+    let mut result: *mut libc::group = std::ptr::null_mut();
+
+    let rc = unsafe {
+        getgrnam_r(
+            name.as_ptr(),
+            &mut grp,
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(!result.is_null());
+    assert_eq!(grp.gr_gid, 0);
+}

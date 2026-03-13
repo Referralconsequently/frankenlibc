@@ -400,6 +400,118 @@ fn iconv_roundtrip_utf8_utf16le_utf8() {
 // Empty input
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// iconv — Latin-1 → UTF-8
+// ---------------------------------------------------------------------------
+
+#[test]
+fn iconv_latin1_to_utf8() {
+    unsafe {
+        let cd = iconv_open(c_str(b"UTF-8\0"), c_str(b"ISO-8859-1\0"));
+        assert_ne!(cd, iconv_error_handle());
+
+        // "café" in Latin-1: c=63 a=61 f=66 é=E9
+        let mut input = vec![0x63u8, 0x61, 0x66, 0xE9];
+        let mut in_ptr = input.as_mut_ptr().cast::<c_char>();
+        let mut in_left = input.len();
+
+        let mut output = [0u8; 16];
+        let mut out_ptr = output.as_mut_ptr().cast::<c_char>();
+        let mut out_left = output.len();
+
+        let rc = iconv(cd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
+        assert_eq!(rc, 0);
+        assert_eq!(in_left, 0);
+        // "café" in UTF-8: c=63 a=61 f=66 é=C3 A9
+        let written = 16 - out_left;
+        assert_eq!(written, 5);
+        assert_eq!(&output[..5], b"caf\xc3\xa9");
+
+        assert_eq!(iconv_close(cd), 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// iconv — same encoding (passthrough)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn iconv_open_same_encoding() {
+    let cd = unsafe { iconv_open(c_str(b"UTF-8\0"), c_str(b"UTF-8\0")) };
+    assert_ne!(cd, iconv_error_handle());
+    assert_eq!(unsafe { iconv_close(cd) }, 0);
+}
+
+#[test]
+fn iconv_utf8_to_utf8_passthrough() {
+    unsafe {
+        let cd = iconv_open(c_str(b"UTF-8\0"), c_str(b"UTF-8\0"));
+        assert_ne!(cd, iconv_error_handle());
+
+        let mut input = b"Hello, world!".to_vec();
+        let mut in_ptr = input.as_mut_ptr().cast::<c_char>();
+        let mut in_left = input.len();
+
+        let mut output = [0u8; 32];
+        let mut out_ptr = output.as_mut_ptr().cast::<c_char>();
+        let mut out_left = output.len();
+
+        let rc = iconv(cd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
+        assert_eq!(rc, 0);
+        assert_eq!(in_left, 0);
+        let written = 32 - out_left;
+        assert_eq!(&output[..written], b"Hello, world!");
+
+        assert_eq!(iconv_close(cd), 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// iconv — ASCII subset encoding aliases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn iconv_open_ascii_alias() {
+    let cd = unsafe { iconv_open(c_str(b"ASCII\0"), c_str(b"UTF-8\0")) };
+    // ASCII may or may not be supported; just check we don't crash
+    if cd != iconv_error_handle() {
+        assert_eq!(unsafe { iconv_close(cd) }, 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// iconv — multi-byte sequence
+// ---------------------------------------------------------------------------
+
+#[test]
+fn iconv_utf8_multibyte_to_utf16le() {
+    unsafe {
+        let cd = iconv_open(c_str(b"UTF-16LE\0"), c_str(b"UTF-8\0"));
+        assert_ne!(cd, iconv_error_handle());
+
+        // Euro sign: U+20AC = UTF-8: E2 82 AC, UTF-16LE: AC 20
+        let mut input = vec![0xE2u8, 0x82, 0xAC];
+        let mut in_ptr = input.as_mut_ptr().cast::<c_char>();
+        let mut in_left = input.len();
+
+        let mut output = [0u8; 8];
+        let mut out_ptr = output.as_mut_ptr().cast::<c_char>();
+        let mut out_left = output.len();
+
+        let rc = iconv(cd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
+        assert_eq!(rc, 0);
+        assert_eq!(in_left, 0);
+        assert_eq!(out_left, 6); // 2 bytes written
+        assert_eq!(&output[..2], &[0xAC, 0x20]);
+
+        assert_eq!(iconv_close(cd), 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Empty input
+// ---------------------------------------------------------------------------
+
 #[test]
 fn iconv_empty_input() {
     unsafe {
