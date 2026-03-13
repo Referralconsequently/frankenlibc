@@ -123,3 +123,56 @@ fn test_confstr_size_one_buffer() {
     assert!(needed > 1, "CS_PATH should need more than 1 byte");
     assert_eq!(buf[0], 0, "size-1 buffer should contain only NUL");
 }
+
+#[test]
+fn test_gnu_get_libc_version_is_ascii() {
+    let ver = unsafe { gnu_get_libc_version() };
+    let s = unsafe { CStr::from_ptr(ver) };
+    let ver_str = s.to_str().unwrap();
+    assert!(
+        ver_str.is_ascii(),
+        "version string should be pure ASCII: {:?}",
+        ver_str
+    );
+}
+
+#[test]
+fn test_confstr_exact_buffer_succeeds() {
+    // Get exact needed size, then provide exactly that much buffer.
+    let needed = unsafe { confstr(0, std::ptr::null_mut(), 0) };
+    assert!(needed > 0);
+    let mut buf = vec![0u8; needed];
+    let written = unsafe { confstr(0, buf.as_mut_ptr() as *mut c_char, needed) };
+    assert_eq!(written, needed, "exact-size buffer should fill completely");
+    // Last byte should be NUL
+    assert_eq!(buf[needed - 1], 0);
+}
+
+#[test]
+fn test_confstr_multiple_invalid_names_return_zero() {
+    for name in [100, 200, 9999, -1i32 as u32 as i32] {
+        let result = unsafe { confstr(name, std::ptr::null_mut(), 0) };
+        assert_eq!(
+            result, 0,
+            "confstr({name}) should return 0 for invalid name"
+        );
+    }
+}
+
+#[test]
+fn test_confstr_cs_path_deterministic() {
+    let needed1 = unsafe { confstr(0, std::ptr::null_mut(), 0) };
+    let needed2 = unsafe { confstr(0, std::ptr::null_mut(), 0) };
+    assert_eq!(
+        needed1, needed2,
+        "confstr should return the same needed size on repeated calls"
+    );
+
+    let mut buf1 = vec![0u8; needed1];
+    let mut buf2 = vec![0u8; needed2];
+    unsafe {
+        confstr(0, buf1.as_mut_ptr() as *mut c_char, needed1);
+        confstr(0, buf2.as_mut_ptr() as *mut c_char, needed2);
+    }
+    assert_eq!(buf1, buf2, "confstr should produce identical output");
+}

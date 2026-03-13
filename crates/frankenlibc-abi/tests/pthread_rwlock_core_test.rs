@@ -264,3 +264,50 @@ fn rwlock_write_then_write_different_thread_blocks() {
         free_rwlock_ptr(rwlock);
     }
 }
+
+#[test]
+fn rwlock_read_lock_unlock_repeated_cycle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        for _ in 0..20 {
+            assert_eq!(pthread_rwlock_rdlock(rwlock), 0);
+            assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+        }
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}
+
+#[test]
+fn rwlock_write_lock_unlock_repeated_cycle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        for _ in 0..20 {
+            assert_eq!(pthread_rwlock_wrlock(rwlock), 0);
+            assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+        }
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}
+
+#[test]
+fn rwlock_read_then_write_interleaved_cycle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwlock = alloc_rwlock_ptr();
+    unsafe {
+        assert_eq!(pthread_rwlock_init(rwlock, std::ptr::null()), 0);
+        for _ in 0..10 {
+            assert_eq!(pthread_rwlock_rdlock(rwlock), 0);
+            assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+            assert_eq!(pthread_rwlock_wrlock(rwlock), 0);
+            assert_eq!(pthread_rwlock_unlock(rwlock), 0);
+        }
+        assert_eq!(pthread_rwlock_destroy(rwlock), 0);
+        free_rwlock_ptr(rwlock);
+    }
+}
