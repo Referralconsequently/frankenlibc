@@ -398,6 +398,11 @@ if [[ "${FRANKENLIBC_EXTENDED_GATES:-0}" == "1" ]]; then
     scripts/check_proof_binder.sh
     echo "PASS"
     echo ""
+
+    echo "--- fuzz nightly build gate (bd-1oz.7) ---"
+    FUZZ_DURATION="${FUZZ_DURATION:-10}" scripts/fuzz_nightly.sh --no-fail-on-crash
+    echo "PASS"
+    echo ""
 else
     echo "SKIP extended gates (set FRANKENLIBC_EXTENDED_GATES=1 to run full policy/perf/snapshot checks)"
     echo ""
