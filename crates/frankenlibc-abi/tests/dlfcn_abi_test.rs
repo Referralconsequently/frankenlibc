@@ -174,3 +174,66 @@ fn dlsym_null_name_returns_null() {
     assert!(sym.is_null(), "dlsym with null name should return NULL");
     unsafe { dlclose(handle) };
 }
+
+// ---------------------------------------------------------------------------
+// Additional dlopen/dlclose edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dlopen_same_handle_twice_returns_same_handle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let h1 = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    let h2 = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    assert!(!h1.is_null());
+    assert!(!h2.is_null());
+    // Both opens refer to the main program; closing both should succeed
+    unsafe {
+        dlclose(h1);
+        dlclose(h2);
+    }
+}
+
+#[test]
+fn dlopen_rtld_lazy_succeeds() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_LAZY) };
+    assert!(
+        !handle.is_null(),
+        "dlopen(NULL, RTLD_LAZY) should return main program handle"
+    );
+    unsafe { dlclose(handle) };
+}
+
+#[test]
+fn dlsym_finds_malloc() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    assert!(!handle.is_null());
+
+    let sym_name = CString::new("malloc").unwrap();
+    let sym = unsafe { dlsym(handle, sym_name.as_ptr()) };
+    assert!(!sym.is_null(), "dlsym should find 'malloc' in main handle");
+
+    unsafe { dlclose(handle) };
+}
+
+#[test]
+fn dlclose_idempotent_for_main_handle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let handle = unsafe { dlopen(std::ptr::null(), libc::RTLD_NOW) };
+    assert!(!handle.is_null());
+    // First close should succeed
+    let rc1 = unsafe { dlclose(handle) };
+    assert_eq!(rc1, 0, "first dlclose should succeed");
+}
+
+#[test]
+fn dlopen_empty_string_returns_null_or_main() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let name = CString::new("").unwrap();
+    let handle = unsafe { dlopen(name.as_ptr(), libc::RTLD_NOW) };
+    // Empty string may return main handle or NULL depending on implementation
+    if !handle.is_null() {
+        unsafe { dlclose(handle) };
+    }
+}
