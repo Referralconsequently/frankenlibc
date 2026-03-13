@@ -123,3 +123,79 @@ fn trywrlock_null_is_einval() {
         libc::EINVAL
     );
 }
+
+#[test]
+fn tryrdlock_multiple_concurrent_reads_succeed() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwl = alloc_rwlock();
+    assert_eq!(unsafe { pthread_rwlock_init(rwl, std::ptr::null()) }, 0);
+
+    // Take 3 read locks via tryrdlock — all should succeed.
+    for _ in 0..3 {
+        assert_eq!(unsafe { pthread_rwlock_tryrdlock(rwl) }, 0);
+    }
+    // Unlock all 3.
+    for _ in 0..3 {
+        assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+    }
+
+    assert_eq!(unsafe { pthread_rwlock_destroy(rwl) }, 0);
+    unsafe { free_rwlock(rwl) };
+}
+
+#[test]
+fn trywrlock_after_read_unlock_succeeds() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwl = alloc_rwlock();
+    assert_eq!(unsafe { pthread_rwlock_init(rwl, std::ptr::null()) }, 0);
+
+    assert_eq!(unsafe { pthread_rwlock_rdlock(rwl) }, 0);
+    // trywrlock should fail while read-locked.
+    assert_eq!(unsafe { pthread_rwlock_trywrlock(rwl) }, libc::EBUSY);
+    // Release the read lock.
+    assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+    // Now trywrlock should succeed.
+    assert_eq!(unsafe { pthread_rwlock_trywrlock(rwl) }, 0);
+    assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+
+    assert_eq!(unsafe { pthread_rwlock_destroy(rwl) }, 0);
+    unsafe { free_rwlock(rwl) };
+}
+
+#[test]
+fn tryrdlock_after_write_unlock_succeeds() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwl = alloc_rwlock();
+    assert_eq!(unsafe { pthread_rwlock_init(rwl, std::ptr::null()) }, 0);
+
+    assert_eq!(unsafe { pthread_rwlock_wrlock(rwl) }, 0);
+    // tryrdlock should fail while write-locked.
+    assert_eq!(unsafe { pthread_rwlock_tryrdlock(rwl) }, libc::EBUSY);
+    // Release the write lock.
+    assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+    // Now tryrdlock should succeed.
+    assert_eq!(unsafe { pthread_rwlock_tryrdlock(rwl) }, 0);
+    assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+
+    assert_eq!(unsafe { pthread_rwlock_destroy(rwl) }, 0);
+    unsafe { free_rwlock(rwl) };
+}
+
+#[test]
+fn tryrdlock_trywrlock_interleaved_cycle() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    let rwl = alloc_rwlock();
+    assert_eq!(unsafe { pthread_rwlock_init(rwl, std::ptr::null()) }, 0);
+
+    for _ in 0..10 {
+        // Read lock cycle
+        assert_eq!(unsafe { pthread_rwlock_tryrdlock(rwl) }, 0);
+        assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+        // Write lock cycle
+        assert_eq!(unsafe { pthread_rwlock_trywrlock(rwl) }, 0);
+        assert_eq!(unsafe { pthread_rwlock_unlock(rwl) }, 0);
+    }
+
+    assert_eq!(unsafe { pthread_rwlock_destroy(rwl) }, 0);
+    unsafe { free_rwlock(rwl) };
+}

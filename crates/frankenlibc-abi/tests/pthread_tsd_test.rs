@@ -232,3 +232,86 @@ fn tsd_teardown_keeps_main_thread_clean() {
     );
     assert_eq!(unsafe { pthread_key_delete(key) }, 0);
 }
+
+#[test]
+fn key_create_many_keys_are_unique() {
+    let _guard = lock_and_force_native();
+    const N: usize = 10;
+    let mut keys = [0u32; N];
+
+    for key in &mut keys {
+        assert_eq!(unsafe { pthread_key_create(key as *mut libc::pthread_key_t, None) }, 0);
+    }
+
+    // All keys must be distinct.
+    for i in 0..N {
+        for j in (i + 1)..N {
+            assert_ne!(keys[i], keys[j], "keys[{i}] and keys[{j}] should differ");
+        }
+    }
+
+    for &key in &keys {
+        assert_eq!(unsafe { pthread_key_delete(key) }, 0);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn setspecific_overwrite_returns_latest() {
+    let _guard = lock_and_force_native();
+    let mut key: libc::pthread_key_t = 0;
+    assert_eq!(unsafe { pthread_key_create(&mut key, None) }, 0);
+
+    let v1: usize = 0xAAAA;
+    let v2: usize = 0xBBBB;
+    assert_eq!(unsafe { pthread_setspecific(key, v1 as *const c_void) }, 0);
+    assert_eq!(unsafe { pthread_getspecific(key) as usize }, v1);
+
+    // Overwrite with a new value.
+    assert_eq!(unsafe { pthread_setspecific(key, v2 as *const c_void) }, 0);
+    assert_eq!(
+        unsafe { pthread_getspecific(key) as usize },
+        v2,
+        "getspecific should return the latest value"
+    );
+
+    assert_eq!(unsafe { pthread_key_delete(key) }, 0);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn setspecific_null_clears_value() {
+    let _guard = lock_and_force_native();
+    let mut key: libc::pthread_key_t = 0;
+    assert_eq!(unsafe { pthread_key_create(&mut key, None) }, 0);
+
+    let sentinel: usize = 0xCAFE;
+    assert_eq!(unsafe { pthread_setspecific(key, sentinel as *const c_void) }, 0);
+    assert_eq!(unsafe { pthread_getspecific(key) as usize }, sentinel);
+
+    // Set to NULL.
+    assert_eq!(
+        unsafe { pthread_setspecific(key, std::ptr::null()) },
+        0
+    );
+    assert!(
+        unsafe { pthread_getspecific(key) }.is_null(),
+        "setting null should clear the value"
+    );
+
+    assert_eq!(unsafe { pthread_key_delete(key) }, 0);
+}
+
+#[test]
+fn key_delete_twice_is_einval() {
+    let _guard = lock_and_force_native();
+    let mut key: libc::pthread_key_t = 0;
+    assert_eq!(unsafe { pthread_key_create(&mut key, None) }, 0);
+    assert_eq!(unsafe { pthread_key_delete(key) }, 0);
+    // Deleting a second time should fail.
+    assert_eq!(
+        unsafe { pthread_key_delete(key) },
+        libc::EINVAL,
+        "double delete should return EINVAL"
+    );
+}

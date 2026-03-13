@@ -219,3 +219,49 @@ fn once_high_thread_count_still_runs_once() {
         "16 threads should still result in exactly 1 execution"
     );
 }
+
+#[test]
+fn once_both_null_is_einval() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    assert_eq!(
+        unsafe { pthread_once(std::ptr::null_mut(), None) },
+        libc::EINVAL
+    );
+}
+
+static LATE_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+unsafe extern "C" fn late_increment() {
+    LATE_COUNTER.fetch_add(1, Ordering::Relaxed);
+}
+
+#[test]
+fn once_completed_with_different_routine_is_noop() {
+    let _guard = TEST_GUARD.lock().unwrap();
+    INIT_COUNTER.store(0, Ordering::Relaxed);
+    LATE_COUNTER.store(0, Ordering::Relaxed);
+
+    let mut once: libc::pthread_once_t = 0;
+    // First call with increment_counter.
+    assert_eq!(
+        unsafe { pthread_once(&mut once, Some(increment_counter)) },
+        0
+    );
+    assert_eq!(INIT_COUNTER.load(Ordering::Relaxed), 1);
+
+    // Second call with a DIFFERENT routine — should still be a no-op.
+    assert_eq!(
+        unsafe { pthread_once(&mut once, Some(late_increment)) },
+        0
+    );
+    assert_eq!(
+        LATE_COUNTER.load(Ordering::Relaxed),
+        0,
+        "second routine should not run after once is complete"
+    );
+    assert_eq!(
+        INIT_COUNTER.load(Ordering::Relaxed),
+        1,
+        "original counter should remain at 1"
+    );
+}
