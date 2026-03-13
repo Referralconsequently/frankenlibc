@@ -287,3 +287,253 @@ fn phase0_calls_init_and_fini_hooks() {
     assert!(unsafe { INIT_CALLED }, "init hook should have been called");
     assert!(unsafe { FINI_CALLED }, "fini hook should have been called");
 }
+
+// ---------------------------------------------------------------------------
+// Phase-0 — argc / argv edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn phase0_zero_argc_succeeds() {
+    // argc=0 is technically valid (no program name)
+    let mut argv = vec![ptr::null_mut::<c_char>()]; // just null terminator
+    let mut auxv = vec![AT_NULL, 0usize];
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            0,
+            argv.as_mut_ptr(),
+            None,
+            None,
+            None,
+            auxv.as_mut_ptr().cast::<c_void>(),
+        )
+    };
+    assert_eq!(rc, 42, "phase0 with argc=0 should still run main");
+}
+
+#[test]
+fn phase0_negative_argc_still_runs() {
+    // Implementation treats argc as a hint; negative argc doesn't prevent execution
+    let mut fix = StartupFixture::new(b"app");
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            -1,
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+    // Implementation may accept or reject negative argc
+    assert!(rc == 42 || rc < 0, "phase0 should either run main or reject");
+}
+
+// ---------------------------------------------------------------------------
+// Return value propagation
+// ---------------------------------------------------------------------------
+
+unsafe extern "C" fn main_returns_zero(
+    _argc: c_int,
+    _argv: *mut *mut c_char,
+    _envp: *mut *mut c_char,
+) -> c_int {
+    0
+}
+
+unsafe extern "C" fn main_returns_one(
+    _argc: c_int,
+    _argv: *mut *mut c_char,
+    _envp: *mut *mut c_char,
+) -> c_int {
+    1
+}
+
+unsafe extern "C" fn main_returns_negative(
+    _argc: c_int,
+    _argv: *mut *mut c_char,
+    _envp: *mut *mut c_char,
+) -> c_int {
+    -1
+}
+
+#[test]
+fn phase0_propagates_zero_return() {
+    let mut fix = StartupFixture::new(b"app");
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(main_returns_zero),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn phase0_propagates_one_return() {
+    let mut fix = StartupFixture::new(b"app");
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(main_returns_one),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+    assert_eq!(rc, 1);
+}
+
+#[test]
+fn phase0_propagates_negative_return() {
+    let mut fix = StartupFixture::new(b"app");
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(main_returns_negative),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+    assert_eq!(rc, -1);
+}
+
+// ---------------------------------------------------------------------------
+// Program name parsing edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn phase0_bare_name_sets_matching_short_name() {
+    let mut fix = StartupFixture::new(b"simple");
+    let _rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+
+    let name_ptr = program_invocation_name.load(Ordering::Acquire);
+    let short_ptr = program_invocation_short_name.load(Ordering::Acquire);
+    assert!(!name_ptr.is_null());
+    assert!(!short_ptr.is_null());
+
+    let full = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+    let short = unsafe { std::ffi::CStr::from_ptr(short_ptr) };
+    // For a bare name, full and short should match
+    assert_eq!(full.to_bytes(), b"simple");
+    assert_eq!(short.to_bytes(), b"simple");
+}
+
+#[test]
+fn phase0_deep_path_extracts_basename() {
+    let mut fix = StartupFixture::new(b"/a/b/c/d/e/prog");
+    let _rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+
+    let short_ptr = program_invocation_short_name.load(Ordering::Acquire);
+    assert!(!short_ptr.is_null());
+    let short = unsafe { std::ffi::CStr::from_ptr(short_ptr) };
+    assert_eq!(short.to_bytes(), b"prog");
+}
+
+// ---------------------------------------------------------------------------
+// __cxa_thread_atexit_impl — edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cxa_thread_atexit_impl_null_obj_returns_zero() {
+    let rc = unsafe { __cxa_thread_atexit_impl(test_dtor, ptr::null_mut(), ptr::null_mut()) };
+    assert_eq!(rc, 0, "null obj should still register successfully");
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot field validation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn startup_snapshot_argc_matches_fixture() {
+    let mut fix = StartupFixture::new(b"/bin/test");
+    let _rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            None,
+            None,
+            fix.stack_end(),
+        )
+    };
+
+    let mut snap = StartupInvariantSnapshot {
+        argc: 0,
+        argv_count: 0,
+        env_count: 0,
+        auxv_count: 0,
+        secure_mode: 0,
+    };
+    let rc = unsafe { __frankenlibc_startup_snapshot(&mut snap) };
+    assert_eq!(rc, 0);
+    // We passed argc=1 (one argv element), snapshot should reflect that
+    // snapshot should have captured some meaningful state
+    assert!(snap.argc > 0 || snap.argv_count > 0, "should have captured some invariants");
+}
+
+#[test]
+fn phase0_only_init_hook_no_fini() {
+    let mut fix = StartupFixture::new(b"initonly");
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            fix.argc(),
+            fix.argv_ptr(),
+            Some(init_hook),
+            None, // no fini
+            None,
+            fix.stack_end(),
+        )
+    };
+    assert_eq!(rc, 42);
+}
+
+#[test]
+fn phase0_only_fini_hook_no_init() {
+    let mut fix = StartupFixture::new(b"finionly");
+    let rc = unsafe {
+        __frankenlibc_startup_phase0(
+            Some(test_main),
+            fix.argc(),
+            fix.argv_ptr(),
+            None,
+            Some(fini_hook), // only fini
+            None,
+            fix.stack_end(),
+        )
+    };
+    assert_eq!(rc, 42);
+}

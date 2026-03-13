@@ -298,3 +298,147 @@ fn errno_pointer_different_across_threads() {
         "main and child thread should have different errno pointers"
     );
 }
+
+// ---------------------------------------------------------------------------
+// EWOULDBLOCK == EAGAIN on Linux
+// ---------------------------------------------------------------------------
+
+#[test]
+fn errno_ewouldblock_equals_eagain() {
+    // On Linux, EWOULDBLOCK and EAGAIN are the same value
+    assert_eq!(
+        libc::EWOULDBLOCK,
+        libc::EAGAIN,
+        "EWOULDBLOCK should equal EAGAIN on Linux"
+    );
+
+    let p = unsafe { __errno_location() };
+    let original = unsafe { *p };
+    unsafe { *p = libc::EWOULDBLOCK };
+    assert_eq!(unsafe { *p }, libc::EAGAIN);
+    unsafe { *p = original };
+}
+
+// ---------------------------------------------------------------------------
+// errno survives between consecutive function calls
+// ---------------------------------------------------------------------------
+
+#[test]
+fn errno_stable_across_errno_location_calls() {
+    let p = unsafe { __errno_location() };
+    let original = unsafe { *p };
+
+    unsafe { *p = libc::ENOMEM };
+
+    // Call __errno_location again — should still see ENOMEM
+    let p2 = unsafe { __errno_location() };
+    assert_eq!(unsafe { *p2 }, libc::ENOMEM);
+
+    // And again
+    let p3 = unsafe { __errno_location() };
+    assert_eq!(unsafe { *p3 }, libc::ENOMEM);
+
+    unsafe { *p = original };
+}
+
+// ---------------------------------------------------------------------------
+// Sequential set/read of many values
+// ---------------------------------------------------------------------------
+
+#[test]
+fn errno_sequential_overwrite() {
+    let p = unsafe { __errno_location() };
+    let original = unsafe { *p };
+
+    // Set errno to each value and verify the previous value was overwritten
+    let sequence: &[c_int] = &[1, 2, 3, 100, 200, 0, -1, 42, 0];
+    for &val in sequence {
+        unsafe { *p = val };
+        assert_eq!(unsafe { *p }, val, "errno should hold {val}");
+    }
+
+    unsafe { *p = original };
+}
+
+// ---------------------------------------------------------------------------
+// Multiple threads writing concurrently don't interfere
+// ---------------------------------------------------------------------------
+
+#[test]
+fn errno_concurrent_writers_isolation() {
+    use std::sync::{Arc, Barrier};
+
+    let n = 4;
+    let iterations = 500;
+    let barrier = Arc::new(Barrier::new(n));
+
+    let handles: Vec<_> = (0..n)
+        .map(|i| {
+            let b = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                let p = unsafe { __errno_location() };
+                let my_val = ((i + 1) * 1000) as c_int;
+
+                b.wait();
+
+                for _ in 0..iterations {
+                    unsafe { *p = my_val };
+                    // No other thread should be able to change our errno
+                    assert_eq!(
+                        unsafe { *p },
+                        my_val,
+                        "thread {i} errno corrupted"
+                    );
+                }
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().unwrap();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// High errno codes (Linux-specific, above standard POSIX)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn errno_linux_specific_codes() {
+    let p = unsafe { __errno_location() };
+    let original = unsafe { *p };
+
+    let codes: &[c_int] = &[
+        libc::ENOMEDIUM,
+        libc::EMEDIUMTYPE,
+        libc::ECANCELED,
+        libc::ENOKEY,
+        libc::EKEYEXPIRED,
+        libc::EKEYREVOKED,
+        libc::EKEYREJECTED,
+        libc::EOWNERDEAD,
+        libc::ENOTRECOVERABLE,
+    ];
+
+    for &code in codes {
+        unsafe { *p = code };
+        assert_eq!(unsafe { *p }, code, "errno should hold Linux code {code}");
+    }
+
+    unsafe { *p = original };
+}
+
+// ---------------------------------------------------------------------------
+// errno_location pointer alignment
+// ---------------------------------------------------------------------------
+
+#[test]
+fn errno_pointer_is_aligned() {
+    let p = unsafe { __errno_location() };
+    let addr = p as usize;
+    assert_eq!(
+        addr % std::mem::align_of::<c_int>(),
+        0,
+        "errno pointer should be aligned to c_int alignment"
+    );
+}

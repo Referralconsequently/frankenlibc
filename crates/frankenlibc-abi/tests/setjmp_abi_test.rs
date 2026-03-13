@@ -116,3 +116,99 @@ fn sigsetjmp_nonzero_savemask_treated_as_true() {
         assert_eq!(rc, 0, "sigsetjmp(env, {mask}) should return 0");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Capture with pre-filled buffer succeeds
+// ---------------------------------------------------------------------------
+
+#[test]
+fn setjmp_succeeds_on_prefilled_buffer() {
+    let mut env = [0xFFu64; 32];
+    let rc = unsafe { setjmp(env.as_mut_ptr().cast::<c_void>()) };
+    assert_eq!(rc, 0, "setjmp should succeed even on pre-filled buffer");
+}
+
+#[test]
+fn _setjmp_succeeds_on_prefilled_buffer() {
+    let mut env = [0xFFu64; 32];
+    let rc = unsafe { _setjmp(env.as_mut_ptr().cast::<c_void>()) };
+    assert_eq!(rc, 0, "_setjmp should succeed even on pre-filled buffer");
+}
+
+#[test]
+fn sigsetjmp_succeeds_on_prefilled_buffer() {
+    let mut env = [0xFFu64; 32];
+    let rc = unsafe { sigsetjmp(env.as_mut_ptr().cast::<c_void>(), 1) };
+    assert_eq!(rc, 0, "sigsetjmp should succeed even on pre-filled buffer");
+}
+
+// ---------------------------------------------------------------------------
+// Distinct buffers both succeed independently
+// ---------------------------------------------------------------------------
+
+#[test]
+fn distinct_buffers_are_independent() {
+    let mut env_a = [0u64; 32];
+    let mut env_b = [0u64; 32];
+    let rc_a = unsafe { setjmp(env_a.as_mut_ptr().cast::<c_void>()) };
+    let rc_b = unsafe { setjmp(env_b.as_mut_ptr().cast::<c_void>()) };
+    assert_eq!(rc_a, 0);
+    assert_eq!(rc_b, 0);
+}
+
+// ---------------------------------------------------------------------------
+// _setjmp repeated capture
+// ---------------------------------------------------------------------------
+
+#[test]
+fn _setjmp_repeated_capture_same_buffer() {
+    let mut env = [0u64; 32];
+    let env_ptr = env.as_mut_ptr().cast::<c_void>();
+    for _ in 0..5 {
+        let rc = unsafe { _setjmp(env_ptr) };
+        assert_eq!(rc, 0, "repeated _setjmp on same buffer should return 0");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// sigsetjmp repeated capture
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sigsetjmp_repeated_capture_same_buffer() {
+    let mut env = [0u64; 32];
+    let env_ptr = env.as_mut_ptr().cast::<c_void>();
+    for mask in [0, 1, 0, 1, 0] {
+        let rc = unsafe { sigsetjmp(env_ptr, mask) };
+        assert_eq!(
+            rc, 0,
+            "repeated sigsetjmp on same buffer should return 0"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Null env for all variants (defensive)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn all_capture_variants_reject_null() {
+    assert_eq!(unsafe { setjmp(ptr::null_mut()) }, -1);
+    assert_eq!(unsafe { _setjmp(ptr::null_mut()) }, -1);
+    assert_eq!(unsafe { sigsetjmp(ptr::null_mut(), 0) }, -1);
+    assert_eq!(unsafe { sigsetjmp(ptr::null_mut(), 1) }, -1);
+}
+
+// ---------------------------------------------------------------------------
+// Capture with mask 0 vs 1 produces the same return code
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sigsetjmp_mask_zero_vs_one_both_return_zero() {
+    let mut env0 = [0u64; 32];
+    let mut env1 = [0u64; 32];
+    let rc0 = unsafe { sigsetjmp(env0.as_mut_ptr().cast::<c_void>(), 0) };
+    let rc1 = unsafe { sigsetjmp(env1.as_mut_ptr().cast::<c_void>(), 1) };
+    assert_eq!(rc0, 0);
+    assert_eq!(rc1, 0);
+}
