@@ -212,3 +212,50 @@ fn sigsetjmp_mask_zero_vs_one_both_return_zero() {
     assert_eq!(rc0, 0);
     assert_eq!(rc1, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Null pointer rejection is deterministic across repeated calls
+// ---------------------------------------------------------------------------
+
+#[test]
+fn null_env_rejection_is_deterministic() {
+    for _ in 0..10 {
+        assert_eq!(unsafe { setjmp(ptr::null_mut()) }, -1);
+        assert_eq!(unsafe { _setjmp(ptr::null_mut()) }, -1);
+        assert_eq!(unsafe { sigsetjmp(ptr::null_mut(), 0) }, -1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// All three variants succeed with aligned stack buffer
+// ---------------------------------------------------------------------------
+
+#[test]
+fn all_variants_succeed_with_stack_allocated_buffer() {
+    #[repr(align(64))]
+    struct AlignedBuf([u64; 32]);
+
+    let mut buf = AlignedBuf([0u64; 32]);
+    let ptr = buf.0.as_mut_ptr().cast::<c_void>();
+    assert_eq!(unsafe { setjmp(ptr) }, 0);
+    assert_eq!(unsafe { _setjmp(ptr) }, 0);
+    assert_eq!(unsafe { sigsetjmp(ptr, 0) }, 0);
+    assert_eq!(unsafe { sigsetjmp(ptr, 1) }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Sequential captures across all three variants on same buffer
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sequential_captures_all_variants_same_buffer() {
+    let mut env = [0u64; 32];
+    let ptr = env.as_mut_ptr().cast::<c_void>();
+    // Cycle through variants on the same buffer.
+    for _ in 0..3 {
+        assert_eq!(unsafe { setjmp(ptr) }, 0);
+        assert_eq!(unsafe { _setjmp(ptr) }, 0);
+        assert_eq!(unsafe { sigsetjmp(ptr, 0) }, 0);
+        assert_eq!(unsafe { sigsetjmp(ptr, 1) }, 0);
+    }
+}

@@ -403,3 +403,105 @@ fn pthread_setname_getname_unknown_thread_return_esrch() {
         "unknown-thread pthread_getname_np should be ESRCH"
     );
 }
+
+#[test]
+fn pthread_detach_twice_is_esrch() {
+    let _guard = lock_and_force_native();
+
+    let mut tid: libc::pthread_t = 0;
+    let rc = unsafe {
+        pthread_create(
+            &mut tid as *mut libc::pthread_t,
+            std::ptr::null(),
+            Some(start_return_arg),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, 0);
+
+    let first = unsafe { pthread_detach(tid) };
+    assert_eq!(first, 0, "first detach should succeed");
+
+    let second = unsafe { pthread_detach(tid) };
+    assert_eq!(
+        second,
+        libc::ESRCH,
+        "second detach on same tid should be ESRCH"
+    );
+}
+
+#[test]
+fn pthread_setname_too_long_is_erange() {
+    let _guard = lock_and_force_native();
+
+    let self_id = unsafe { pthread_self() };
+    // POSIX thread name limit is 15 chars + NUL = 16 bytes.
+    let long_name = CString::new("a]234567890123456").expect("valid cstring");
+    let rc = unsafe { pthread_setname_np(self_id, long_name.as_ptr()) };
+    assert_eq!(
+        rc,
+        libc::ERANGE,
+        "name exceeding 15 chars should return ERANGE"
+    );
+}
+
+#[test]
+fn pthread_create_join_multiple_sequential() {
+    let _guard = lock_and_force_native();
+
+    for i in 1usize..=5 {
+        let arg = (i * 100) as *mut c_void;
+        let mut tid: libc::pthread_t = 0;
+        let rc = unsafe {
+            pthread_create(
+                &mut tid as *mut libc::pthread_t,
+                std::ptr::null(),
+                Some(start_return_arg),
+                arg,
+            )
+        };
+        assert_eq!(rc, 0, "pthread_create failed for thread {i}");
+
+        let mut retval: *mut c_void = std::ptr::null_mut();
+        let join_rc = unsafe { pthread_join(tid, &mut retval as *mut *mut c_void) };
+        assert_eq!(join_rc, 0, "pthread_join failed for thread {i}");
+        assert_eq!(retval, arg, "return value mismatch for thread {i}");
+    }
+}
+
+#[test]
+fn pthread_equal_same_thread_returns_nonzero() {
+    let _guard = lock_and_force_native();
+
+    let mut tid: libc::pthread_t = 0;
+    let rc = unsafe {
+        pthread_create(
+            &mut tid as *mut libc::pthread_t,
+            std::ptr::null(),
+            Some(start_return_arg),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, 0);
+
+    // Equal on same tid should return nonzero.
+    assert_ne!(unsafe { pthread_equal(tid, tid) }, 0);
+
+    let join_rc = unsafe { pthread_join(tid, std::ptr::null_mut()) };
+    assert_eq!(join_rc, 0);
+}
+
+#[test]
+fn pthread_getname_zero_buflen_is_einval() {
+    let _guard = lock_and_force_native();
+
+    let self_id = unsafe { pthread_self() };
+    let mut buf = [0 as libc::c_char; 1];
+    // Zero-length buffer should fail with EINVAL.
+    let rc = unsafe { pthread_getname_np(self_id, buf.as_mut_ptr(), 0) };
+    assert_eq!(
+        rc,
+        libc::EINVAL,
+        "zero-length buffer should return EINVAL"
+    );
+}

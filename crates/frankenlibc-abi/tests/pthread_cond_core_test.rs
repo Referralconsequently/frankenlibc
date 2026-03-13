@@ -301,3 +301,157 @@ fn condvar_init_destroy_reinit() {
         free_cond_ptr(cond);
     }
 }
+
+#[test]
+fn condvar_wait_null_cond_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(mutex), 0);
+        assert_eq!(
+            pthread_cond_wait(std::ptr::null_mut(), mutex),
+            libc::EINVAL
+        );
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn condvar_timedwait_null_cond_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(mutex), 0);
+        let abstime = realtime_abstime_after(100);
+        assert_eq!(
+            pthread_cond_timedwait(
+                std::ptr::null_mut(),
+                mutex,
+                &abstime as *const libc::timespec
+            ),
+            libc::EINVAL
+        );
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn condvar_timedwait_past_abstime_returns_etimedout() {
+    pthread_mutex_reset_state_for_tests();
+    let cond = alloc_cond_ptr();
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_cond_init(cond, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(mutex), 0);
+
+        // abstime in the past: epoch 0
+        let past = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        assert_eq!(
+            pthread_cond_timedwait(cond, mutex, &past as *const libc::timespec),
+            libc::ETIMEDOUT
+        );
+
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_cond_destroy(cond), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_cond_ptr(cond);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn condvar_timedwait_negative_nsec_is_einval() {
+    pthread_mutex_reset_state_for_tests();
+    let cond = alloc_cond_ptr();
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_cond_init(cond, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(mutex), 0);
+
+        let bad_ts = libc::timespec {
+            tv_sec: 1_000_000,
+            tv_nsec: -1,
+        };
+        assert_eq!(
+            pthread_cond_timedwait(cond, mutex, &bad_ts as *const libc::timespec),
+            libc::EINVAL
+        );
+
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_cond_destroy(cond), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_cond_ptr(cond);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn condvar_broadcast_wakes_multiple_timedwait_threads() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+
+    pthread_mutex_reset_state_for_tests();
+    let cond = alloc_cond_ptr();
+    let mutex = alloc_mutex_ptr();
+
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_cond_init(cond, std::ptr::null()), 0);
+    }
+
+    let woke_count = Arc::new(AtomicU32::new(0));
+    let cond_addr = cond as usize;
+    let mutex_addr = mutex as usize;
+
+    let mut handles = Vec::new();
+    for _ in 0..3 {
+        let wc = Arc::clone(&woke_count);
+        handles.push(std::thread::spawn(move || {
+            let c = cond_addr as *mut libc::pthread_cond_t;
+            let m = mutex_addr as *mut libc::pthread_mutex_t;
+            unsafe {
+                assert_eq!(pthread_mutex_lock(m), 0);
+                let abstime = realtime_abstime_after(2000);
+                let rc = pthread_cond_timedwait(c, m, &abstime as *const libc::timespec);
+                if rc == 0 {
+                    wc.fetch_add(1, Ordering::Relaxed);
+                }
+                assert_eq!(pthread_mutex_unlock(m), 0);
+            }
+        }));
+    }
+
+    // Let all waiters enter timedwait.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    unsafe {
+        assert_eq!(pthread_cond_broadcast(cond), 0);
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    assert_eq!(
+        woke_count.load(Ordering::Relaxed),
+        3,
+        "broadcast should wake all 3 waiters"
+    );
+
+    unsafe {
+        assert_eq!(pthread_cond_destroy(cond), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_cond_ptr(cond);
+        free_mutex_ptr(mutex);
+    }
+}

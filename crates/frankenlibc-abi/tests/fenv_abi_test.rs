@@ -390,3 +390,76 @@ fn feclearexcept_all_then_test_returns_zero() {
         );
     }
 }
+
+#[test]
+fn fesetround_preserves_exception_flags() {
+    let _guard = RoundingGuard::new();
+    unsafe {
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+        assert_eq!(feraiseexcept(FE_INVALID), 0);
+
+        // Changing rounding mode should not clear exception flags.
+        assert_eq!(fesetround(FE_UPWARD), 0);
+        assert_ne!(
+            fetestexcept(FE_INVALID) & FE_INVALID,
+            0,
+            "rounding mode change should not clear FE_INVALID"
+        );
+
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+    }
+}
+
+#[test]
+fn fesetround_negative_is_rejected() {
+    let _guard = RoundingGuard::new();
+    assert_ne!(
+        unsafe { fesetround(-1) },
+        0,
+        "fesetround(-1) should be rejected"
+    );
+}
+
+#[test]
+fn fesetenv_null_is_rejected() {
+    unsafe {
+        assert_eq!(fesetenv(std::ptr::null()), -1);
+    }
+}
+
+#[test]
+fn fetestexcept_zero_returns_zero() {
+    unsafe {
+        // Testing for no flags should always return 0.
+        assert_eq!(fetestexcept(0), 0);
+    }
+}
+
+#[test]
+fn feraiseexcept_all_then_test_each_individually() {
+    unsafe {
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+        assert_eq!(feraiseexcept(FE_ALL_EXCEPT), 0);
+
+        // Each individual flag should be set.
+        assert_ne!(fetestexcept(FE_INVALID) & FE_INVALID, 0);
+        assert_ne!(fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO, 0);
+
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+    }
+}
+
+#[test]
+fn fegetenv_repeated_calls_are_deterministic() {
+    unsafe {
+        assert_eq!(feclearexcept(FE_ALL_EXCEPT), 0);
+
+        let mut env1 = [0_u8; 256];
+        let mut env2 = [0_u8; 256];
+        assert_eq!(fegetenv(env1.as_mut_ptr().cast::<c_void>()), 0);
+        assert_eq!(fegetenv(env2.as_mut_ptr().cast::<c_void>()), 0);
+
+        // Both snapshots should be identical.
+        assert_eq!(env1[..], env2[..], "repeated fegetenv should produce same state");
+    }
+}

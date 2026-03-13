@@ -335,3 +335,132 @@ fn futex_mutex_lock_unlock_repeated() {
         free_mutex_ptr(mutex);
     }
 }
+
+#[test]
+fn futex_mutex_trylock_busy_then_succeeds_after_unlock() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(mutex), 0);
+        assert_eq!(pthread_mutex_trylock(mutex), libc::EBUSY);
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        // After unlock, trylock should succeed.
+        assert_eq!(pthread_mutex_trylock(mutex), 0);
+        assert_eq!(pthread_mutex_unlock(mutex), 0);
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn futex_mutex_multiple_init_destroy_cycles() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    for _ in 0..10 {
+        unsafe {
+            assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+            assert_eq!(pthread_mutex_lock(mutex), 0);
+            assert_eq!(pthread_mutex_unlock(mutex), 0);
+            assert_eq!(pthread_mutex_destroy(mutex), 0);
+        }
+    }
+    unsafe { free_mutex_ptr(mutex) };
+}
+
+#[test]
+fn futex_mutex_trylock_repeated_succeeds() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        for _ in 0..20 {
+            assert_eq!(pthread_mutex_trylock(mutex), 0);
+            assert_eq!(pthread_mutex_unlock(mutex), 0);
+        }
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn futex_mutex_lock_then_trylock_then_unlock_cycle() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+        for _ in 0..10 {
+            assert_eq!(pthread_mutex_lock(mutex), 0);
+            assert_eq!(pthread_mutex_trylock(mutex), libc::EBUSY);
+            assert_eq!(pthread_mutex_unlock(mutex), 0);
+            assert_eq!(pthread_mutex_trylock(mutex), 0);
+            assert_eq!(pthread_mutex_unlock(mutex), 0);
+        }
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
+
+#[test]
+fn futex_mutex_contention_two_threads_alternating() {
+    let _guard = acquire_test_guard();
+    pthread_mutex_reset_state_for_tests();
+
+    let mutex = alloc_mutex_ptr();
+    unsafe {
+        assert_eq!(pthread_mutex_init(mutex, std::ptr::null()), 0);
+    }
+
+    let counter = Arc::new(AtomicU64::new(0));
+    let mutex_addr = mutex as usize;
+    let barrier = Arc::new(Barrier::new(3)); // 2 workers + main
+
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let b = Arc::clone(&barrier);
+        let c = Arc::clone(&counter);
+        handles.push(std::thread::spawn(move || {
+            b.wait();
+            for _ in 0..500 {
+                unsafe {
+                    assert_eq!(
+                        pthread_mutex_lock(mutex_addr as *mut libc::pthread_mutex_t),
+                        0
+                    );
+                }
+                let cur = c.load(Ordering::Relaxed);
+                c.store(cur + 1, Ordering::Relaxed);
+                unsafe {
+                    assert_eq!(
+                        pthread_mutex_unlock(mutex_addr as *mut libc::pthread_mutex_t),
+                        0
+                    );
+                }
+            }
+        }));
+    }
+
+    barrier.wait();
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    assert_eq!(
+        counter.load(Ordering::Acquire),
+        1000,
+        "two threads * 500 increments = 1000"
+    );
+
+    unsafe {
+        assert_eq!(pthread_mutex_destroy(mutex), 0);
+        free_mutex_ptr(mutex);
+    }
+}
