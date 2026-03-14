@@ -35,6 +35,8 @@ pub mod traceability;
 pub mod verify;
 
 pub use fixtures::{FixtureCase, FixtureSet};
-pub use report::{ConformanceReport, PosixConformanceReport, RealityReport};
+pub use report::{
+    ConformanceReport, PosixConformanceReport, PosixObligationMatrixReport, RealityReport,
+};
 pub use runner::TestRunner;
 pub use verify::VerificationResult;

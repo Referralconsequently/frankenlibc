@@ -59,6 +59,18 @@ enum Command {
     },
     /// Generate traceability matrix.
     Traceability {
+        /// Input support matrix JSON path.
+        #[arg(long, default_value = "support_matrix.json")]
+        support_matrix: PathBuf,
+        /// Fixture directory path.
+        #[arg(long, default_value = "tests/conformance/fixtures")]
+        fixture: PathBuf,
+        /// Input conformance matrix JSON path.
+        #[arg(long, default_value = "tests/conformance/conformance_matrix.v1.json")]
+        conformance_matrix: PathBuf,
+        /// Integration C fixture specification path.
+        #[arg(long, default_value = "tests/conformance/c_fixture_spec.json")]
+        c_fixture_spec: PathBuf,
         /// Output markdown path.
         #[arg(long)]
         output_md: PathBuf,
@@ -90,6 +102,27 @@ enum Command {
         #[arg(
             long,
             default_value = "target/conformance/posix_conformance_report.current.v1.json"
+        )]
+        output: PathBuf,
+    },
+    /// Generate POSIX obligation traceability matrix across unit + C fixture packs.
+    PosixObligationReport {
+        /// Input support matrix JSON path.
+        #[arg(long, default_value = "support_matrix.json")]
+        support_matrix: PathBuf,
+        /// Fixture directory path.
+        #[arg(long, default_value = "tests/conformance/fixtures")]
+        fixture: PathBuf,
+        /// Input conformance matrix JSON path.
+        #[arg(long, default_value = "tests/conformance/conformance_matrix.v1.json")]
+        conformance_matrix: PathBuf,
+        /// Integration C fixture specification path.
+        #[arg(long, default_value = "tests/conformance/c_fixture_spec.json")]
+        c_fixture_spec: PathBuf,
+        /// Output JSON report path.
+        #[arg(
+            long,
+            default_value = "target/conformance/posix_obligation_matrix.current.v1.json"
         )]
         output: PathBuf,
     },
@@ -506,13 +539,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Traceability {
+            support_matrix,
+            fixture,
+            conformance_matrix,
+            c_fixture_spec,
             output_md,
             output_json,
         } => {
-            let matrix = frankenlibc_harness::traceability::TraceabilityMatrix::new();
+            let report = frankenlibc_harness::report::PosixObligationMatrixReport::from_paths(
+                &support_matrix,
+                &fixture,
+                &conformance_matrix,
+                &c_fixture_spec,
+            )
+            .map_err(|err| format!("failed generating POSIX obligation report: {err}"))?;
+            let matrix =
+                frankenlibc_harness::traceability::TraceabilityMatrix::from_posix_obligation_report(
+                    &report,
+                );
+            if let Some(parent) = output_md.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            if let Some(parent) = output_json.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
             std::fs::write(&output_md, matrix.to_markdown())?;
-            let json = serde_json::to_string_pretty(&matrix.to_markdown())?;
-            std::fs::write(&output_json, json)?;
+            std::fs::write(&output_json, matrix.to_json())?;
             eprintln!(
                 "Traceability written to {} and {}",
                 output_md.display(),
@@ -559,6 +611,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output.display(),
                 report.summary.eligible_symbols,
                 report.summary.symbols_with_cases
+            );
+        }
+        Command::PosixObligationReport {
+            support_matrix,
+            fixture,
+            conformance_matrix,
+            c_fixture_spec,
+            output,
+        } => {
+            let report = frankenlibc_harness::report::PosixObligationMatrixReport::from_paths(
+                &support_matrix,
+                &fixture,
+                &conformance_matrix,
+                &c_fixture_spec,
+            )
+            .map_err(|err| format!("failed generating POSIX obligation report: {err}"))?;
+
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&output, report.to_json())?;
+            eprintln!(
+                "Wrote POSIX obligation report to {} (obligations={}, gaps={})",
+                output.display(),
+                report.summary.total_obligations,
+                report.gaps.len()
             );
         }
         Command::VerifyMembrane {

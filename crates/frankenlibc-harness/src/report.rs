@@ -626,6 +626,688 @@ impl PosixConformanceReport {
     }
 }
 
+/// Summary section for POSIX obligation traceability coverage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixObligationSummary {
+    pub total_exported: u64,
+    pub tracked_symbols: u64,
+    pub total_obligations: u64,
+    pub covered_obligations: u64,
+    pub mapped_without_execution: u64,
+    pub obligations_with_execution_failures: u64,
+    pub error_condition_obligations: u64,
+    pub async_concurrency_obligations: u64,
+    pub symbols_missing_any_mapping: u64,
+    pub symbols_missing_execution_evidence: u64,
+    pub symbols_missing_error_conditions: u64,
+    pub symbols_missing_async_concurrency: u64,
+}
+
+/// Per-obligation traceability row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixObligationRow {
+    pub obligation_id: String,
+    pub posix_ref: String,
+    pub symbol: String,
+    pub symbol_family: String,
+    pub owner: String,
+    pub support_status: String,
+    pub coverage_state: String,
+    pub obligation_kinds: Vec<String>,
+    pub modes: Vec<String>,
+    pub test_refs: Vec<String>,
+    pub artifact_refs: Vec<String>,
+    pub execution: PosixExecutionCounts,
+}
+
+/// Explicit gap row for symbols that lack obligation coverage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixObligationGapRow {
+    pub symbol: String,
+    pub symbol_family: String,
+    pub owner: String,
+    pub support_status: String,
+    pub mapped_posix_refs: Vec<String>,
+    pub test_refs: Vec<String>,
+    pub gap_reasons: Vec<String>,
+}
+
+/// Machine-readable report for bd-2tq.4 POSIX obligation mapping.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PosixObligationMatrixReport {
+    pub schema_version: String,
+    pub bead: String,
+    pub generated_at_utc: String,
+    pub summary: PosixObligationSummary,
+    pub obligations: Vec<PosixObligationRow>,
+    pub gaps: Vec<PosixObligationGapRow>,
+}
+
+#[derive(Debug, Clone)]
+struct FixtureCatalogEntry {
+    source: String,
+    set: FixtureSet,
+}
+
+#[derive(Debug, Clone)]
+struct SupportSymbolMetadata {
+    status: String,
+    module: String,
+    family: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PosixObligationAggregate {
+    symbol_family: String,
+    owner: String,
+    support_status: String,
+    obligation_kinds: BTreeSet<String>,
+    modes: BTreeSet<String>,
+    test_refs: BTreeSet<String>,
+    artifact_refs: BTreeSet<String>,
+    execution: PosixExecutionCounts,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CFixtureSpec {
+    #[serde(default)]
+    fixtures: Vec<CFixturePack>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CFixturePack {
+    id: String,
+    source: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    covered_symbols: Vec<String>,
+    #[serde(default)]
+    covered_modules: Vec<String>,
+    #[serde(default)]
+    spec_traceability: CFixtureTraceability,
+    #[serde(default)]
+    mode_expectations: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CFixtureTraceability {
+    #[serde(default)]
+    posix: Vec<String>,
+}
+
+impl PosixObligationMatrixReport {
+    /// Build report from on-disk support matrix + fixture directory + conformance matrix + C fixture spec.
+    pub fn from_paths(
+        support_matrix_path: &Path,
+        fixture_dir: &Path,
+        conformance_matrix_path: &Path,
+        c_fixture_spec_path: &Path,
+    ) -> Result<Self, String> {
+        let support_matrix_json = std::fs::read_to_string(support_matrix_path).map_err(|err| {
+            format!(
+                "failed reading support matrix '{}': {err}",
+                support_matrix_path.display()
+            )
+        })?;
+        let conformance_matrix_json =
+            std::fs::read_to_string(conformance_matrix_path).map_err(|err| {
+                format!(
+                    "failed reading conformance matrix '{}': {err}",
+                    conformance_matrix_path.display()
+                )
+            })?;
+        let c_fixture_spec_json = std::fs::read_to_string(c_fixture_spec_path).map_err(|err| {
+            format!(
+                "failed reading C fixture spec '{}': {err}",
+                c_fixture_spec_path.display()
+            )
+        })?;
+        let fixture_catalog = load_fixture_catalog_from_dir(fixture_dir)?;
+        Self::from_fixture_catalog_inputs(
+            &support_matrix_json,
+            &fixture_catalog,
+            &conformance_matrix_json,
+            &c_fixture_spec_json,
+        )
+    }
+
+    /// Build report from parsed fixture sets and raw JSON blobs.
+    pub fn from_inputs(
+        support_matrix_json: &str,
+        fixture_sets: &[FixtureSet],
+        conformance_matrix_json: &str,
+        c_fixture_spec_json: &str,
+    ) -> Result<Self, String> {
+        let fixture_catalog = fixture_sets
+            .iter()
+            .map(|set| FixtureCatalogEntry {
+                source: format!("tests/conformance/fixtures/{}.json", set.family),
+                set: set.clone(),
+            })
+            .collect::<Vec<_>>();
+        Self::from_fixture_catalog_inputs(
+            support_matrix_json,
+            &fixture_catalog,
+            conformance_matrix_json,
+            c_fixture_spec_json,
+        )
+    }
+
+    fn from_fixture_catalog_inputs(
+        support_matrix_json: &str,
+        fixture_catalog: &[FixtureCatalogEntry],
+        conformance_matrix_json: &str,
+        c_fixture_spec_json: &str,
+    ) -> Result<Self, String> {
+        let support_value: serde_json::Value = serde_json::from_str(support_matrix_json)
+            .map_err(|err| format!("invalid support matrix JSON: {err}"))?;
+        let generated_at_utc = support_value["generated_at_utc"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+        let total_exported = support_value["total_exported"]
+            .as_u64()
+            .ok_or("missing total_exported in support matrix")?;
+        let support_symbols = support_value["symbols"]
+            .as_array()
+            .ok_or("missing symbols[] in support matrix")?;
+
+        let mut tracked_symbols = BTreeMap::new();
+        for symbol_row in support_symbols {
+            let symbol = symbol_row["symbol"]
+                .as_str()
+                .ok_or("support matrix symbol row missing symbol")?;
+            let status = symbol_row["status"]
+                .as_str()
+                .ok_or("support matrix symbol row missing status")?;
+            if !status_tracks_posix_obligations(status) {
+                continue;
+            }
+
+            let module = symbol_row["module"].as_str().unwrap_or("unknown");
+            tracked_symbols.insert(
+                symbol.to_string(),
+                SupportSymbolMetadata {
+                    status: status.to_string(),
+                    module: module.to_string(),
+                    family: derive_family_from_module(module),
+                },
+            );
+        }
+
+        let mut obligations: BTreeMap<(String, String), PosixObligationAggregate> = BTreeMap::new();
+        let mut matrix_case_lookup: BTreeMap<(String, String, String), (String, String)> =
+            BTreeMap::new();
+
+        for entry in fixture_catalog {
+            for case in &entry.set.cases {
+                let posix_ref = normalize_obligation_ref(&case.spec_section);
+                if !is_posix_ref(&posix_ref) {
+                    continue;
+                }
+
+                let symbol = case.function.clone();
+                let key = (symbol.clone(), posix_ref.clone());
+                let support_meta = tracked_symbols.get(&symbol);
+                let aggregate = obligations.entry(key.clone()).or_default();
+                if aggregate.symbol_family.is_empty() {
+                    aggregate.symbol_family = if !entry.set.family.trim().is_empty() {
+                        entry.set.family.clone()
+                    } else {
+                        support_meta
+                            .map(|meta| meta.family.clone())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    };
+                }
+                if aggregate.owner.is_empty() {
+                    aggregate.owner = support_meta
+                        .map(|meta| meta.module.clone())
+                        .unwrap_or_else(|| "unknown".to_string());
+                }
+                if aggregate.support_status.is_empty() {
+                    aggregate.support_status = support_meta
+                        .map(|meta| meta.status.clone())
+                        .unwrap_or_else(|| "Untracked".to_string());
+                }
+
+                aggregate.obligation_kinds.extend(classify_obligation_kinds(
+                    &[
+                        &entry.set.family,
+                        &case.function,
+                        &case.name,
+                        &case.spec_section,
+                        &case.inputs.to_string(),
+                    ],
+                    case.expected_errno,
+                ));
+                for mode in expand_modes(&case.mode) {
+                    aggregate.modes.insert(mode.clone());
+                    let test_ref =
+                        format!("fixture::{}::{}::{}", entry.set.family, case.name, mode);
+                    aggregate.test_refs.insert(test_ref);
+                    matrix_case_lookup.insert(
+                        (symbol.clone(), case.name.clone(), mode.clone()),
+                        key.clone(),
+                    );
+                    matrix_case_lookup.insert(
+                        (
+                            symbol.clone(),
+                            format!("{} [{}]", case.name, mode),
+                            mode.clone(),
+                        ),
+                        key.clone(),
+                    );
+                }
+                aggregate.artifact_refs.insert(entry.source.clone());
+            }
+        }
+
+        let c_fixture_spec: CFixtureSpec = serde_json::from_str(c_fixture_spec_json)
+            .map_err(|err| format!("invalid C fixture spec JSON: {err}"))?;
+        for fixture in &c_fixture_spec.fixtures {
+            for posix_ref_raw in &fixture.spec_traceability.posix {
+                let posix_ref = normalize_obligation_ref(posix_ref_raw);
+                if !is_posix_ref(&posix_ref) {
+                    continue;
+                }
+
+                for symbol in &fixture.covered_symbols {
+                    let key = (symbol.clone(), posix_ref.clone());
+                    let support_meta = tracked_symbols.get(symbol);
+                    let aggregate = obligations.entry(key).or_default();
+                    if aggregate.symbol_family.is_empty() {
+                        aggregate.symbol_family = support_meta
+                            .map(|meta| meta.family.clone())
+                            .or_else(|| {
+                                fixture
+                                    .covered_modules
+                                    .first()
+                                    .map(|module| derive_family_from_module(module))
+                            })
+                            .unwrap_or_else(|| "unknown".to_string());
+                    }
+                    if aggregate.owner.is_empty() {
+                        aggregate.owner = support_meta
+                            .map(|meta| meta.module.clone())
+                            .or_else(|| fixture.covered_modules.first().cloned())
+                            .unwrap_or_else(|| "unknown".to_string());
+                    }
+                    if aggregate.support_status.is_empty() {
+                        aggregate.support_status = support_meta
+                            .map(|meta| meta.status.clone())
+                            .unwrap_or_else(|| "Untracked".to_string());
+                    }
+
+                    aggregate.obligation_kinds.extend(classify_obligation_kinds(
+                        &[&fixture.id, &fixture.description, posix_ref_raw],
+                        0,
+                    ));
+
+                    if fixture.mode_expectations.is_empty() {
+                        aggregate
+                            .test_refs
+                            .insert(format!("c_fixture::{}", fixture.id));
+                    } else {
+                        for mode in fixture.mode_expectations.keys() {
+                            let mode = mode.to_ascii_lowercase();
+                            aggregate.modes.extend(expand_modes(&mode).into_iter());
+                            aggregate
+                                .test_refs
+                                .insert(format!("c_fixture::{}::{}", fixture.id, mode));
+                        }
+                    }
+                    aggregate.artifact_refs.insert(fixture.source.clone());
+                    aggregate
+                        .artifact_refs
+                        .insert(String::from("tests/conformance/c_fixture_spec.json"));
+                }
+            }
+        }
+
+        let matrix: ConformanceMatrixReport = serde_json::from_str(conformance_matrix_json)
+            .map_err(|err| format!("invalid conformance matrix JSON: {err}"))?;
+        for case in &matrix.cases {
+            let lookup_key = (
+                case.symbol.clone(),
+                case.case_name.clone(),
+                case.mode.to_ascii_lowercase(),
+            );
+            let Some(obligation_key) = matrix_case_lookup.get(&lookup_key) else {
+                continue;
+            };
+            let Some(aggregate) = obligations.get_mut(obligation_key) else {
+                continue;
+            };
+            aggregate.execution.total = aggregate.execution.total.saturating_add(1);
+            match case.status.as_str() {
+                "pass" => aggregate.execution.pass = aggregate.execution.pass.saturating_add(1),
+                "fail" => aggregate.execution.fail = aggregate.execution.fail.saturating_add(1),
+                "error" => aggregate.execution.error = aggregate.execution.error.saturating_add(1),
+                "timeout" => {
+                    aggregate.execution.timeout = aggregate.execution.timeout.saturating_add(1)
+                }
+                "crash" => aggregate.execution.crash = aggregate.execution.crash.saturating_add(1),
+                _ => {}
+            }
+        }
+
+        let mut obligation_rows = obligations
+            .into_iter()
+            .map(|((symbol, posix_ref), aggregate)| PosixObligationRow {
+                obligation_id: format!("{}::{}", symbol, obligation_ref_slug(&posix_ref)),
+                posix_ref,
+                symbol,
+                symbol_family: aggregate.symbol_family,
+                owner: aggregate.owner,
+                support_status: aggregate.support_status,
+                coverage_state: classify_obligation_coverage_state(&aggregate.execution)
+                    .to_string(),
+                obligation_kinds: aggregate.obligation_kinds.into_iter().collect(),
+                modes: aggregate.modes.into_iter().collect(),
+                test_refs: aggregate.test_refs.into_iter().collect(),
+                artifact_refs: aggregate.artifact_refs.into_iter().collect(),
+                execution: aggregate.execution,
+            })
+            .collect::<Vec<_>>();
+        obligation_rows.sort_by(|a, b| {
+            a.symbol
+                .cmp(&b.symbol)
+                .then_with(|| a.posix_ref.cmp(&b.posix_ref))
+        });
+
+        let mut gaps = Vec::new();
+        for (symbol, meta) in &tracked_symbols {
+            let symbol_rows = obligation_rows
+                .iter()
+                .filter(|row| row.symbol == *symbol)
+                .collect::<Vec<_>>();
+            let mut gap_reasons = Vec::new();
+            if symbol_rows.is_empty() {
+                gap_reasons.push(String::from("missing_test_mapping"));
+                gap_reasons.push(String::from("missing_posix_traceability"));
+            } else {
+                if symbol_rows.iter().all(|row| row.execution.total == 0) {
+                    gap_reasons.push(String::from("missing_execution_evidence"));
+                }
+                if symbol_rows.iter().all(|row| {
+                    !row.obligation_kinds
+                        .iter()
+                        .any(|kind| kind == "error_condition")
+                }) {
+                    gap_reasons.push(String::from("missing_error_condition_obligation"));
+                }
+                if async_concurrency_candidate_for_symbol(symbol, &meta.family, &meta.module)
+                    && symbol_rows.iter().all(|row| {
+                        !row.obligation_kinds
+                            .iter()
+                            .any(|kind| kind == "async_concurrency")
+                    })
+                {
+                    gap_reasons.push(String::from("missing_async_concurrency_obligation"));
+                }
+            }
+
+            if gap_reasons.is_empty() {
+                continue;
+            }
+
+            gaps.push(PosixObligationGapRow {
+                symbol: symbol.clone(),
+                symbol_family: meta.family.clone(),
+                owner: meta.module.clone(),
+                support_status: meta.status.clone(),
+                mapped_posix_refs: symbol_rows
+                    .iter()
+                    .map(|row| row.posix_ref.clone())
+                    .collect(),
+                test_refs: symbol_rows
+                    .iter()
+                    .flat_map(|row| row.test_refs.iter().cloned())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+                gap_reasons,
+            });
+        }
+        gaps.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+
+        let total_obligations = u64::try_from(obligation_rows.len())
+            .map_err(|_| "obligation count overflow".to_string())?;
+        let tracked_symbols_count = u64::try_from(tracked_symbols.len())
+            .map_err(|_| "tracked symbol count overflow".to_string())?;
+        let covered_obligations = u64::try_from(
+            obligation_rows
+                .iter()
+                .filter(|row| row.coverage_state == "covered")
+                .count(),
+        )
+        .unwrap_or(0);
+        let mapped_without_execution = u64::try_from(
+            obligation_rows
+                .iter()
+                .filter(|row| row.coverage_state == "mapped_without_execution")
+                .count(),
+        )
+        .unwrap_or(0);
+        let obligations_with_execution_failures = u64::try_from(
+            obligation_rows
+                .iter()
+                .filter(|row| row.coverage_state == "execution_failures")
+                .count(),
+        )
+        .unwrap_or(0);
+        let error_condition_obligations = u64::try_from(
+            obligation_rows
+                .iter()
+                .filter(|row| {
+                    row.obligation_kinds
+                        .iter()
+                        .any(|kind| kind == "error_condition")
+                })
+                .count(),
+        )
+        .unwrap_or(0);
+        let async_concurrency_obligations = u64::try_from(
+            obligation_rows
+                .iter()
+                .filter(|row| {
+                    row.obligation_kinds
+                        .iter()
+                        .any(|kind| kind == "async_concurrency")
+                })
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_missing_any_mapping = u64::try_from(
+            gaps.iter()
+                .filter(|gap| {
+                    gap.gap_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_test_mapping")
+                })
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_missing_execution_evidence = u64::try_from(
+            gaps.iter()
+                .filter(|gap| {
+                    gap.gap_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_execution_evidence")
+                })
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_missing_error_conditions = u64::try_from(
+            gaps.iter()
+                .filter(|gap| {
+                    gap.gap_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_error_condition_obligation")
+                })
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_missing_async_concurrency = u64::try_from(
+            gaps.iter()
+                .filter(|gap| {
+                    gap.gap_reasons
+                        .iter()
+                        .any(|reason| reason == "missing_async_concurrency_obligation")
+                })
+                .count(),
+        )
+        .unwrap_or(0);
+
+        Ok(Self {
+            schema_version: "v1".to_string(),
+            bead: "bd-2tq.4".to_string(),
+            generated_at_utc,
+            summary: PosixObligationSummary {
+                total_exported,
+                tracked_symbols: tracked_symbols_count,
+                total_obligations,
+                covered_obligations,
+                mapped_without_execution,
+                obligations_with_execution_failures,
+                error_condition_obligations,
+                async_concurrency_obligations,
+                symbols_missing_any_mapping,
+                symbols_missing_execution_evidence,
+                symbols_missing_error_conditions,
+                symbols_missing_async_concurrency,
+            },
+            obligations: obligation_rows,
+            gaps,
+        })
+    }
+
+    /// Render report as pretty JSON.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
+    }
+}
+
+fn classify_obligation_coverage_state(execution: &PosixExecutionCounts) -> &'static str {
+    if execution.total == 0 {
+        "mapped_without_execution"
+    } else if execution.has_failures() {
+        "execution_failures"
+    } else {
+        "covered"
+    }
+}
+
+fn status_tracks_posix_obligations(status: &str) -> bool {
+    matches!(status, "Implemented" | "RawSyscall" | "GlibcCallThrough")
+}
+
+fn derive_family_from_module(module: &str) -> String {
+    module.strip_suffix("_abi").unwrap_or(module).to_string()
+}
+
+fn normalize_obligation_ref(raw: &str) -> String {
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn is_posix_ref(spec_ref: &str) -> bool {
+    spec_ref.to_ascii_lowercase().contains("posix")
+}
+
+fn obligation_ref_slug(spec_ref: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_sep = false;
+    for ch in spec_ref.chars() {
+        let normalized = ch.to_ascii_lowercase();
+        if normalized.is_ascii_alphanumeric() {
+            slug.push(normalized);
+            last_was_sep = false;
+        } else if !last_was_sep {
+            slug.push('_');
+            last_was_sep = true;
+        }
+    }
+    slug.trim_matches('_').to_string()
+}
+
+fn classify_obligation_kinds(text_fragments: &[&str], expected_errno: i32) -> BTreeSet<String> {
+    let mut kinds = BTreeSet::from([String::from("functional")]);
+    let combined = text_fragments
+        .iter()
+        .map(|text| text.to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if expected_errno != 0
+        || [
+            "errno",
+            "error",
+            "invalid",
+            "fault",
+            "efault",
+            "einval",
+            "eperm",
+            "ebusy",
+            "eagain",
+            "range",
+            "adversarial",
+            "denied",
+        ]
+        .iter()
+        .any(|marker| combined.contains(marker))
+    {
+        kinds.insert(String::from("error_condition"));
+    }
+
+    if [
+        "pthread",
+        "thread",
+        "mutex",
+        "cond",
+        "rwlock",
+        "signal",
+        "sig",
+        "setjmp",
+        "longjmp",
+        "concurrent",
+        "concurrency",
+        "spawn",
+        "exec",
+        "cancel",
+        "poll",
+        "select",
+        "fork",
+    ]
+    .iter()
+    .any(|marker| combined.contains(marker))
+    {
+        kinds.insert(String::from("async_concurrency"));
+    }
+
+    kinds
+}
+
+fn async_concurrency_candidate_for_symbol(symbol: &str, family: &str, owner: &str) -> bool {
+    let combined = format!("{symbol}\n{family}\n{owner}").to_ascii_lowercase();
+    [
+        "pthread", "thread", "mutex", "cond", "rwlock", "signal", "sig", "setjmp", "spawn", "exec",
+        "poll", "select", "fork",
+    ]
+    .iter()
+    .any(|marker| combined.contains(marker))
+}
+
+fn expand_modes(raw: &str) -> Vec<String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "both" => vec![String::from("hardened"), String::from("strict")],
+        "hardened" => vec![String::from("hardened")],
+        "strict" => vec![String::from("strict")],
+        other => vec![other.to_string()],
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PosixCaseClass {
     Normal,
@@ -695,7 +1377,21 @@ fn classify_posix_case(case: &FixtureCase) -> PosixCaseClass {
     PosixCaseClass::Other
 }
 
-fn load_fixture_sets_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureSet>, String> {
+fn stable_artifact_source_path(path: &Path) -> String {
+    if path.is_relative() {
+        return path.to_string_lossy().to_string();
+    }
+
+    if let Ok(current_dir) = std::env::current_dir()
+        && let Ok(relative) = path.strip_prefix(&current_dir)
+    {
+        return relative.to_string_lossy().to_string();
+    }
+
+    path.to_string_lossy().to_string()
+}
+
+fn load_fixture_catalog_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureCatalogEntry>, String> {
     let mut fixture_paths: Vec<_> = std::fs::read_dir(fixture_dir)
         .map_err(|err| {
             format!(
@@ -708,18 +1404,31 @@ fn load_fixture_sets_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureSet>, Str
         .collect();
     fixture_paths.sort();
 
-    let mut sets = Vec::new();
+    let mut entries = Vec::new();
     for path in fixture_paths {
         if let Ok(set) = FixtureSet::from_file(&path) {
-            sets.push(set);
+            entries.push(FixtureCatalogEntry {
+                source: stable_artifact_source_path(&path),
+                set,
+            });
         }
     }
 
-    if sets.is_empty() {
+    if entries.is_empty() {
         return Err(format!(
             "no fixture sets could be parsed from '{}'",
             fixture_dir.display()
         ));
+    }
+
+    Ok(entries)
+}
+
+fn load_fixture_sets_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureSet>, String> {
+    let entries = load_fixture_catalog_from_dir(fixture_dir)?;
+    let mut sets = Vec::with_capacity(entries.len());
+    for entry in entries {
+        sets.push(entry.set);
     }
 
     Ok(sets)
@@ -728,8 +1437,8 @@ fn load_fixture_sets_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureSet>, Str
 #[cfg(test)]
 mod tests {
     use super::{
-        DecisionTraceReport, PosixCaseCategoryCounts, PosixConformanceReport, RealityCounts,
-        RealityReport,
+        DecisionTraceReport, PosixCaseCategoryCounts, PosixConformanceReport,
+        PosixObligationMatrixReport, RealityCounts, RealityReport,
     };
     use crate::FixtureSet;
 
@@ -871,6 +1580,28 @@ mod tests {
         .expect("fixture set should parse")
     }
 
+    fn sample_c_fixture_spec() -> &'static str {
+        r#"{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "fixture_pthread",
+      "source": "tests/integration/fixture_pthread.c",
+      "description": "Concurrent pthread create/join lifecycle fixture",
+      "covered_symbols": ["pthread_create"],
+      "covered_modules": ["pthread_abi"],
+      "spec_traceability": {
+        "posix": ["POSIX.1-2017 pthread create/join lifecycle under concurrent execution"]
+      },
+      "mode_expectations": {
+        "strict": {"expected_exit": 0},
+        "hardened": {"expected_exit": 0}
+      }
+    }
+  ]
+}"#
+    }
+
     #[test]
     fn posix_conformance_report_builds_from_inputs() {
         let support_matrix = r#"{
@@ -941,6 +1672,105 @@ mod tests {
             malloc_row
                 .quality_flags
                 .contains(&"missing_fixture_cases".to_string())
+        );
+    }
+
+    #[test]
+    fn posix_obligation_matrix_report_builds_rows_and_gaps() {
+        let support_matrix = r#"{
+  "generated_at_utc":"2026-02-26T00:00:00Z",
+  "total_exported":3,
+  "symbols":[
+    {"symbol":"strlen","status":"Implemented","module":"string_abi"},
+    {"symbol":"pthread_create","status":"Implemented","module":"pthread_abi"},
+    {"symbol":"malloc","status":"RawSyscall","module":"malloc_abi"}
+  ]
+}"#;
+        let conformance_matrix = r#"{
+  "schema_version":"v1",
+  "bead":"bd-l93x.2",
+  "generated_at_utc":"2026-02-26T00:00:00Z",
+  "campaign":"test",
+  "mode":"both",
+  "total_fixture_sets":1,
+  "summary":{"total_cases":3,"passed":2,"failed":1,"errors":0,"pass_rate_percent":66.7},
+  "symbol_matrix":[],
+  "cases":[
+    {"trace_id":"t1","family":"string","symbol":"strlen","mode":"strict","case_name":"normal_strlen","spec_section":"POSIX","input_hex":"","expected_output":"3","actual_output":"3","host_output":"3","host_parity":true,"note":null,"status":"pass","passed":true,"error":null,"diff_offset":null},
+    {"trace_id":"t2","family":"string","symbol":"strlen","mode":"hardened","case_name":"boundary_strlen_size_max","spec_section":"POSIX","input_hex":"","expected_output":"1","actual_output":"1","host_output":"1","host_parity":true,"note":null,"status":"pass","passed":true,"error":null,"diff_offset":null},
+    {"trace_id":"t3","family":"string","symbol":"strlen","mode":"strict","case_name":"error_strlen_efault","spec_section":"POSIX","input_hex":"","expected_output":"0","actual_output":"-1","host_output":"-1","host_parity":false,"note":null,"status":"fail","passed":false,"error":null,"diff_offset":0}
+  ]
+}"#;
+
+        let report = PosixObligationMatrixReport::from_inputs(
+            support_matrix,
+            &[sample_fixture_set()],
+            conformance_matrix,
+            sample_c_fixture_spec(),
+        )
+        .expect("report should build");
+
+        assert_eq!(report.schema_version, "v1");
+        assert_eq!(report.bead, "bd-2tq.4");
+        assert_eq!(report.summary.tracked_symbols, 3);
+        assert!(report.summary.total_obligations >= 2);
+        assert_eq!(report.summary.symbols_missing_any_mapping, 1);
+
+        let strlen_error = report
+            .obligations
+            .iter()
+            .find(|row| row.symbol == "strlen" && row.posix_ref.contains("errno"))
+            .expect("strlen errno obligation");
+        assert_eq!(strlen_error.coverage_state, "execution_failures");
+        assert!(
+            strlen_error
+                .obligation_kinds
+                .contains(&"error_condition".to_string())
+        );
+        assert!(
+            strlen_error
+                .test_refs
+                .iter()
+                .any(|test_ref| test_ref.contains("error_strlen_efault"))
+        );
+
+        let pthread_row = report
+            .obligations
+            .iter()
+            .find(|row| row.symbol == "pthread_create")
+            .expect("pthread_create obligation");
+        assert_eq!(pthread_row.coverage_state, "mapped_without_execution");
+        assert!(
+            pthread_row
+                .obligation_kinds
+                .contains(&"async_concurrency".to_string())
+        );
+        assert!(
+            pthread_row
+                .artifact_refs
+                .contains(&"tests/integration/fixture_pthread.c".to_string())
+        );
+
+        let malloc_gap = report
+            .gaps
+            .iter()
+            .find(|gap| gap.symbol == "malloc")
+            .expect("malloc gap");
+        assert!(
+            malloc_gap
+                .gap_reasons
+                .contains(&"missing_test_mapping".to_string())
+        );
+
+        let pthread_gap = report
+            .gaps
+            .iter()
+            .find(|gap| gap.symbol == "pthread_create")
+            .expect("pthread gap");
+        assert!(
+            pthread_gap
+                .gap_reasons
+                .contains(&"missing_execution_evidence".to_string())
         );
     }
 }
