@@ -6,6 +6,7 @@
 //! 3. Non-pass rows include divergence metadata.
 //! 4. Gate script executes and emits deterministic report/log artifacts.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{fs, io::Write};
@@ -124,6 +125,65 @@ fn non_pass_rows_include_diff_metadata() {
         checked > 0,
         "expected at least one non-pass row for gate coverage"
     );
+}
+
+#[test]
+fn canonical_matrix_keeps_pthread_cond_cases_covered() {
+    let root = workspace_root();
+    let artifact = load_json(&root.join("tests/conformance/conformance_matrix.v1.json"));
+    let rows = artifact["cases"].as_array().expect("cases should be array");
+
+    let expected_symbols = BTreeSet::from([
+        "pthread_cond_broadcast",
+        "pthread_cond_destroy",
+        "pthread_cond_init",
+        "pthread_cond_signal",
+        "pthread_cond_timedwait",
+        "pthread_cond_wait",
+    ]);
+
+    let pthread_cond_rows = rows
+        .iter()
+        .filter(|row| {
+            row["symbol"]
+                .as_str()
+                .is_some_and(|symbol| expected_symbols.contains(symbol))
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        pthread_cond_rows.len() >= 48,
+        "expected canonical matrix to include the full pthread_cond fixture family"
+    );
+
+    let present_symbols = pthread_cond_rows
+        .iter()
+        .filter_map(|row| row["symbol"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        present_symbols, expected_symbols,
+        "canonical matrix lost part of the pthread_cond family"
+    );
+
+    for row in pthread_cond_rows {
+        let trace_id = row["trace_id"].as_str().unwrap_or("<unknown>");
+        assert_eq!(
+            row["status"].as_str(),
+            Some("pass"),
+            "pthread_cond row regressed: {trace_id}"
+        );
+        assert!(
+            row.get("error").is_none() || row["error"].is_null(),
+            "pthread_cond row should not report an execution error: {trace_id}"
+        );
+        assert!(
+            !row["actual_output"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("unsupported:"),
+            "pthread_cond row should not fall back to unsupported output: {trace_id}"
+        );
+    }
 }
 
 #[test]

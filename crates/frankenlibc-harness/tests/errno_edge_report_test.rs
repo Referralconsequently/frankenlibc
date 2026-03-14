@@ -145,3 +145,48 @@ fn errno_edge_gate_script_passes() {
         );
     }
 }
+
+#[test]
+fn canonical_errno_edge_report_keeps_pthread_cond_rows_out_of_unsupported() {
+    let root = workspace_root();
+    let report = load_json(&root.join("tests/conformance/errno_edge_report.v1.json"));
+    let rows = report["rows"].as_array().expect("rows should be array");
+
+    let pthread_cond_rows = rows
+        .iter()
+        .filter(|row| {
+            row["symbol"]
+                .as_str()
+                .is_some_and(|symbol| symbol.starts_with("pthread_cond_"))
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        !pthread_cond_rows.is_empty(),
+        "expected pthread_cond rows in canonical errno-edge report"
+    );
+
+    for row in pthread_cond_rows {
+        let symbol = row["symbol"].as_str().unwrap_or("<unknown>");
+        let case_id = row["case_id"].as_str().unwrap_or("<unknown>");
+        let runtime_mode = row["runtime_mode"].as_str().unwrap_or("<unknown>");
+
+        assert_eq!(
+            row["status"].as_str(),
+            Some("pass"),
+            "pthread_cond errno-edge row regressed: {symbol}::{case_id}::{runtime_mode}"
+        );
+        assert_ne!(
+            row["failure_kind"].as_str(),
+            Some("unsupported_function"),
+            "pthread_cond errno-edge row should not be classified as unsupported: {symbol}::{case_id}::{runtime_mode}"
+        );
+        assert!(
+            row["diff_ref"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("conformance_matrix::trace_id::franken_shadow::pthread/cond::"),
+            "pthread_cond errno-edge row should point at a concrete conformance trace: {symbol}::{case_id}::{runtime_mode}"
+        );
+    }
+}
