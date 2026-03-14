@@ -218,7 +218,11 @@
       "name": "wait_reacquires_mutex",
       "function": "pthread_cond_wait",
       "spec_section": "POSIX.1-2017 pthread_cond_wait",
-      "inputs": { "condvar": "initialized", "mutex": "locked_by_caller" },
+      "inputs": {
+        "condvar": "initialized",
+        "mutex": "locked_by_caller",
+        "verify_mutex_held_on_return": true
+      },
       "expected_output": "mutex_held_on_return",
       "expected_errno": 0,
       "mode": "both",

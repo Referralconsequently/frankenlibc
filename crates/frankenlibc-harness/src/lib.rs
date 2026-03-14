@@ -36,7 +36,8 @@ pub mod verify;
 
 pub use fixtures::{FixtureCase, FixtureSet};
 pub use report::{
-    ConformanceReport, PosixConformanceReport, PosixObligationMatrixReport, RealityReport,
+    ConformanceReport, ErrnoEdgeCaseReport, PosixConformanceReport, PosixObligationMatrixReport,
+    RealityReport,
 };
 pub use runner::TestRunner;
 pub use verify::VerificationResult;

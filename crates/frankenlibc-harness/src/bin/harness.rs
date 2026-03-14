@@ -126,6 +126,24 @@ enum Command {
         )]
         output: PathBuf,
     },
+    /// Generate errno + edge-case prioritization report across high-impact APIs.
+    ErrnoEdgeReport {
+        /// Input support matrix JSON path.
+        #[arg(long, default_value = "support_matrix.json")]
+        support_matrix: PathBuf,
+        /// Fixture directory path.
+        #[arg(long, default_value = "tests/conformance/fixtures")]
+        fixture: PathBuf,
+        /// Input conformance matrix JSON path.
+        #[arg(long, default_value = "tests/conformance/conformance_matrix.v1.json")]
+        conformance_matrix: PathBuf,
+        /// Output JSON report path.
+        #[arg(
+            long,
+            default_value = "target/conformance/errno_edge_report.current.v1.json"
+        )]
+        output: PathBuf,
+    },
     /// Run membrane-specific verification tests.
     VerifyMembrane {
         /// Runtime mode to test (`strict`, `hardened`, or `both`).
@@ -637,6 +655,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output.display(),
                 report.summary.total_obligations,
                 report.gaps.len()
+            );
+        }
+        Command::ErrnoEdgeReport {
+            support_matrix,
+            fixture,
+            conformance_matrix,
+            output,
+        } => {
+            let report = frankenlibc_harness::report::ErrnoEdgeCaseReport::from_paths(
+                &support_matrix,
+                &fixture,
+                &conformance_matrix,
+            )
+            .map_err(|err| format!("failed generating errno edge report: {err}"))?;
+
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&output, report.to_json())?;
+            eprintln!(
+                "Wrote errno edge report to {} (rows={}, failing_edge_cases={})",
+                output.display(),
+                report.rows.len(),
+                report.summary.failing_edge_cases
             );
         }
         Command::VerifyMembrane {

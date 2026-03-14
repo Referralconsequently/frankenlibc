@@ -330,6 +330,13 @@ pub fn execute_fixture_case(
         // iconv lifecycle
         "iconv_open" => execute_iconv_open_case(inputs, mode),
         "iconv_close" => execute_iconv_close_case(inputs, mode),
+        // pthread condvars
+        "pthread_cond_init" => execute_pthread_cond_init_case(inputs, mode),
+        "pthread_cond_destroy" => execute_pthread_cond_destroy_case(inputs, mode),
+        "pthread_cond_wait" => execute_pthread_cond_wait_case(inputs, mode),
+        "pthread_cond_timedwait" => execute_pthread_cond_timedwait_case(inputs, mode),
+        "pthread_cond_signal" => execute_pthread_cond_signal_case(inputs, mode),
+        "pthread_cond_broadcast" => execute_pthread_cond_broadcast_case(inputs, mode),
         // pthread TLS keys
         "pthread_key_create" => execute_pthread_key_create_case(inputs, mode),
         "pthread_key_delete" => execute_pthread_key_delete_case(inputs, mode),
@@ -5462,13 +5469,856 @@ fn reset_pthread_tls_case_state() {
     }
 }
 
+fn reset_pthread_cond_case_state() {
+    frankenlibc_abi::pthread_abi::pthread_mutex_reset_state_for_tests();
+}
+
 fn format_pthread_status(rc: i32) -> String {
     match rc {
         0 => String::from("0"),
         x if x == libc::EAGAIN => String::from("EAGAIN"),
+        x if x == libc::EBUSY => String::from("EBUSY"),
         x if x == libc::EINVAL => String::from("EINVAL"),
+        x if x == libc::EPERM => String::from("EPERM"),
+        x if x == libc::ETIMEDOUT => String::from("ETIMEDOUT"),
         _ => rc.to_string(),
     }
+}
+
+fn alloc_pthread_mutex_ptr() -> *mut libc::pthread_mutex_t {
+    let boxed: Box<libc::pthread_mutex_t> = Box::new(unsafe { std::mem::zeroed() });
+    Box::into_raw(boxed)
+}
+
+fn alloc_pthread_cond_ptr() -> *mut libc::pthread_cond_t {
+    let boxed: Box<libc::pthread_cond_t> = Box::new(unsafe { std::mem::zeroed() });
+    Box::into_raw(boxed)
+}
+
+unsafe fn free_pthread_mutex_ptr(ptr: *mut libc::pthread_mutex_t) {
+    // SAFETY: pointer was allocated via Box::into_raw in alloc_pthread_mutex_ptr.
+    unsafe { drop(Box::from_raw(ptr)) };
+}
+
+unsafe fn free_pthread_cond_ptr(ptr: *mut libc::pthread_cond_t) {
+    // SAFETY: pointer was allocated via Box::into_raw in alloc_pthread_cond_ptr.
+    unsafe { drop(Box::from_raw(ptr)) };
+}
+
+fn clock_abstime_after(clock_id: libc::clockid_t, millis: i64) -> Result<libc::timespec, String> {
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::clock_gettime(clock_id, &mut ts as *mut libc::timespec) };
+    if rc != 0 {
+        return Err(format!("clock_gettime({clock_id}) failed: {rc}"));
+    }
+
+    ts.tv_sec += millis / 1000;
+    ts.tv_nsec += (millis % 1000) * 1_000_000;
+    if ts.tv_nsec >= 1_000_000_000 {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1_000_000_000;
+    }
+    Ok(ts)
+}
+
+fn init_pthread_mutex_for_case(mutex: *mut libc::pthread_mutex_t) -> Result<(), String> {
+    let rc = unsafe { frankenlibc_abi::pthread_abi::pthread_mutex_init(mutex, std::ptr::null()) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "pthread_mutex_init failed: {}",
+            format_pthread_status(rc)
+        ))
+    }
+}
+
+fn init_pthread_cond_for_case(
+    cond: *mut libc::pthread_cond_t,
+    attr_clock: Option<c_int>,
+) -> Result<(), String> {
+    let mut attr: libc::pthread_condattr_t = unsafe { std::mem::zeroed() };
+    let attr_ptr = if let Some(clock_id) = attr_clock {
+        let init_rc =
+            unsafe { libc::pthread_condattr_init(&mut attr as *mut libc::pthread_condattr_t) };
+        if init_rc != 0 {
+            return Err(format!(
+                "pthread_condattr_init failed: {}",
+                format_pthread_status(init_rc)
+            ));
+        }
+        let set_rc = unsafe {
+            libc::pthread_condattr_setclock(&mut attr as *mut libc::pthread_condattr_t, clock_id)
+        };
+        if set_rc != 0 {
+            let _ = unsafe {
+                libc::pthread_condattr_destroy(&mut attr as *mut libc::pthread_condattr_t)
+            };
+            return Err(format!(
+                "pthread_condattr_setclock failed: {}",
+                format_pthread_status(set_rc)
+            ));
+        }
+        &attr as *const libc::pthread_condattr_t
+    } else {
+        std::ptr::null()
+    };
+
+    let rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_init(cond, attr_ptr) };
+    if !attr_ptr.is_null() {
+        let _ =
+            unsafe { libc::pthread_condattr_destroy(&mut attr as *mut libc::pthread_condattr_t) };
+    }
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "pthread_cond_init failed: {}",
+            format_pthread_status(rc)
+        ))
+    }
+}
+
+fn spawn_cond_notifier(
+    cond_addr: usize,
+    delay_ms: u64,
+    broadcast: bool,
+) -> std::thread::JoinHandle<i32> {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        let cond = cond_addr as *mut libc::pthread_cond_t;
+        unsafe {
+            if broadcast {
+                frankenlibc_abi::pthread_abi::pthread_cond_broadcast(cond)
+            } else {
+                frankenlibc_abi::pthread_abi::pthread_cond_signal(cond)
+            }
+        }
+    })
+}
+
+fn spawn_cond_timedwaiter(
+    cond_addr: usize,
+    mutex_addr: usize,
+    clock_id: libc::clockid_t,
+    timeout_ms: i64,
+    ready_tx: Option<std::sync::mpsc::Sender<()>>,
+) -> std::thread::JoinHandle<Result<i32, String>> {
+    std::thread::spawn(move || {
+        let cond = cond_addr as *mut libc::pthread_cond_t;
+        let mutex = mutex_addr as *mut libc::pthread_mutex_t;
+        unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+            if lock_rc != 0 {
+                return Err(format!(
+                    "waiter lock failed: {}",
+                    format_pthread_status(lock_rc)
+                ));
+            }
+            if let Some(tx) = ready_tx {
+                let _ = tx.send(());
+            }
+            let abstime = clock_abstime_after(clock_id, timeout_ms)?;
+            let wait_rc = frankenlibc_abi::pthread_abi::pthread_cond_timedwait(
+                cond,
+                mutex,
+                &abstime as *const libc::timespec,
+            );
+            let unlock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+            if unlock_rc != 0 {
+                Err(format!(
+                    "waiter unlock failed: {}",
+                    format_pthread_status(unlock_rc)
+                ))
+            } else {
+                Ok(wait_rc)
+            }
+        }
+    })
+}
+
+fn execute_pthread_cond_init_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    reset_pthread_cond_case_state();
+
+    if parse_optional_string(inputs, "cond")?.as_deref() == Some("NULL") {
+        let rc = unsafe {
+            frankenlibc_abi::pthread_abi::pthread_cond_init(std::ptr::null_mut(), std::ptr::null())
+        };
+        return Ok(non_host_execution(format_pthread_status(rc)));
+    }
+
+    let cond = alloc_pthread_cond_ptr();
+    let attr_clock = match parse_optional_string(inputs, "attr_clock")?.as_deref() {
+        Some("CLOCK_MONOTONIC") => Some(libc::CLOCK_MONOTONIC),
+        _ => None,
+    };
+    let state = parse_optional_string(inputs, "state")?;
+
+    let impl_output = if state.as_deref() == Some("previously_destroyed") {
+        init_pthread_cond_for_case(cond, None)?;
+        let destroy_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond) };
+        if destroy_rc != 0 {
+            format!("destroy={}", format_pthread_status(destroy_rc))
+        } else {
+            let reinit_rc =
+                unsafe { frankenlibc_abi::pthread_abi::pthread_cond_init(cond, std::ptr::null()) };
+            if reinit_rc == 0 {
+                String::from("0")
+            } else {
+                format_pthread_status(reinit_rc)
+            }
+        }
+    } else {
+        let rc = if matches!(
+            parse_optional_string(inputs, "attr")?.as_deref(),
+            Some("NULL")
+        ) || attr_clock.is_some()
+        {
+            init_pthread_cond_for_case(cond, attr_clock).map(|_| 0)?
+        } else {
+            init_pthread_cond_for_case(cond, None).map(|_| 0)?
+        };
+        format_pthread_status(rc)
+    };
+
+    unsafe {
+        let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+        free_pthread_cond_ptr(cond);
+    }
+
+    Ok(non_host_execution(impl_output))
+}
+
+fn execute_pthread_cond_destroy_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    reset_pthread_cond_case_state();
+
+    if parse_optional_string(inputs, "cond")?.as_deref() == Some("NULL") {
+        let rc =
+            unsafe { frankenlibc_abi::pthread_abi::pthread_cond_destroy(std::ptr::null_mut()) };
+        return Ok(non_host_execution(format_pthread_status(rc)));
+    }
+
+    let state = parse_optional_string(inputs, "state")?;
+    let impl_output = if state.as_deref() == Some("waiting") {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        init_pthread_cond_for_case(cond, None)?;
+
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let waiter = spawn_cond_timedwaiter(
+            cond as usize,
+            mutex as usize,
+            libc::CLOCK_REALTIME,
+            500,
+            Some(ready_tx),
+        );
+        ready_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .map_err(|_| String::from("timed out waiting for destroy waiter setup"))?;
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        let destroy_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond) };
+        let wake_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_broadcast(cond) };
+        let waiter_rc = waiter
+            .join()
+            .map_err(|_| String::from("destroy waiter thread panicked"))??;
+        let cleanup_destroy_rc =
+            unsafe { frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond) };
+
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex);
+        }
+
+        if destroy_rc == libc::EBUSY {
+            String::from("EBUSY")
+        } else {
+            format!(
+                "destroy={};wake={};waiter={};cleanup_destroy={}",
+                format_pthread_status(destroy_rc),
+                format_pthread_status(wake_rc),
+                format_pthread_status(waiter_rc),
+                format_pthread_status(cleanup_destroy_rc)
+            )
+        }
+    } else {
+        let cond = alloc_pthread_cond_ptr();
+        init_pthread_cond_for_case(cond, None)?;
+        let destroy_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond) };
+        unsafe { free_pthread_cond_ptr(cond) };
+        format_pthread_status(destroy_rc)
+    };
+
+    Ok(non_host_execution(impl_output))
+}
+
+fn execute_pthread_cond_signal_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    reset_pthread_cond_case_state();
+
+    let cond_alias = parse_string_any(inputs, &["condvar", "cond"])?;
+    let impl_output = if cond_alias == "NULL" {
+        format_pthread_status(unsafe {
+            frankenlibc_abi::pthread_abi::pthread_cond_signal(std::ptr::null_mut())
+        })
+    } else if cond_alias == "has_one_waiter" {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        init_pthread_cond_for_case(cond, None)?;
+
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let waiter = spawn_cond_timedwaiter(
+            cond as usize,
+            mutex as usize,
+            libc::CLOCK_REALTIME,
+            500,
+            Some(ready_tx),
+        );
+        ready_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .map_err(|_| String::from("timed out waiting for signal waiter setup"))?;
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        let signal_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_signal(cond) };
+        let waiter_rc = waiter
+            .join()
+            .map_err(|_| String::from("signal waiter thread panicked"))??;
+
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex);
+        }
+
+        if signal_rc == 0 && waiter_rc == 0 {
+            String::from("0")
+        } else {
+            format!(
+                "signal={};waiter={}",
+                format_pthread_status(signal_rc),
+                format_pthread_status(waiter_rc)
+            )
+        }
+    } else {
+        let cond = alloc_pthread_cond_ptr();
+        init_pthread_cond_for_case(cond, None)?;
+        let signal_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_signal(cond) };
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            free_pthread_cond_ptr(cond);
+        }
+        format_pthread_status(signal_rc)
+    };
+
+    Ok(non_host_execution(impl_output))
+}
+
+fn execute_pthread_cond_broadcast_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    reset_pthread_cond_case_state();
+
+    let cond_alias = parse_string_any(inputs, &["condvar", "cond"])?;
+    let impl_output = if cond_alias == "NULL" {
+        format_pthread_status(unsafe {
+            frankenlibc_abi::pthread_abi::pthread_cond_broadcast(std::ptr::null_mut())
+        })
+    } else if cond_alias == "has_multiple_waiters" {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        init_pthread_cond_for_case(cond, None)?;
+
+        let (ready_tx_1, ready_rx_1) = std::sync::mpsc::channel();
+        let (ready_tx_2, ready_rx_2) = std::sync::mpsc::channel();
+        let waiter_1 = spawn_cond_timedwaiter(
+            cond as usize,
+            mutex as usize,
+            libc::CLOCK_REALTIME,
+            500,
+            Some(ready_tx_1),
+        );
+        let waiter_2 = spawn_cond_timedwaiter(
+            cond as usize,
+            mutex as usize,
+            libc::CLOCK_REALTIME,
+            500,
+            Some(ready_tx_2),
+        );
+        ready_rx_1
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .map_err(|_| String::from("timed out waiting for first broadcast waiter setup"))?;
+        ready_rx_2
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .map_err(|_| String::from("timed out waiting for second broadcast waiter setup"))?;
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        let broadcast_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_broadcast(cond) };
+        let waiter_1_rc = waiter_1
+            .join()
+            .map_err(|_| String::from("first broadcast waiter thread panicked"))??;
+        let waiter_2_rc = waiter_2
+            .join()
+            .map_err(|_| String::from("second broadcast waiter thread panicked"))??;
+
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex);
+        }
+
+        if broadcast_rc == 0 && waiter_1_rc == 0 && waiter_2_rc == 0 {
+            String::from("0")
+        } else {
+            format!(
+                "broadcast={};waiter1={};waiter2={}",
+                format_pthread_status(broadcast_rc),
+                format_pthread_status(waiter_1_rc),
+                format_pthread_status(waiter_2_rc)
+            )
+        }
+    } else {
+        let cond = alloc_pthread_cond_ptr();
+        init_pthread_cond_for_case(cond, None)?;
+        let broadcast_rc = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_broadcast(cond) };
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            free_pthread_cond_ptr(cond);
+        }
+        format_pthread_status(broadcast_rc)
+    };
+
+    Ok(non_host_execution(impl_output))
+}
+
+fn execute_pthread_cond_wait_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    reset_pthread_cond_case_state();
+
+    let cond_alias = parse_string_any(inputs, &["condvar", "cond"])?;
+    let mutex_alias =
+        parse_optional_string(inputs, "mutex")?.unwrap_or_else(|| String::from("locked_by_caller"));
+    let pattern = parse_optional_string(inputs, "pattern")?;
+    let verify_mutex_held_on_return = inputs
+        .get("verify_mutex_held_on_return")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    let impl_output = if pattern.as_deref() == Some("predicate_loop") {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        init_pthread_cond_for_case(cond, None)?;
+        let predicate = std::sync::Arc::new(AtomicU32::new(0));
+        let predicate_clone = std::sync::Arc::clone(&predicate);
+        let cond_addr = cond as usize;
+        let notifier = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let cond = cond_addr as *mut libc::pthread_cond_t;
+            let first = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_signal(cond) };
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            predicate_clone.store(1, Ordering::Release);
+            let second = unsafe { frankenlibc_abi::pthread_abi::pthread_cond_signal(cond) };
+            (first, second)
+        });
+
+        let output = unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+            if lock_rc != 0 {
+                format!("lock_failed:{}", format_pthread_status(lock_rc))
+            } else {
+                let mut wait_rc = 0;
+                while predicate.load(Ordering::Acquire) == 0 {
+                    wait_rc = frankenlibc_abi::pthread_abi::pthread_cond_wait(cond, mutex);
+                    if wait_rc != 0 {
+                        break;
+                    }
+                }
+                let unlock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+                let (first_signal_rc, second_signal_rc) = notifier
+                    .join()
+                    .map_err(|_| String::from("predicate notifier thread panicked"))?;
+                if wait_rc == 0
+                    && unlock_rc == 0
+                    && first_signal_rc == 0
+                    && second_signal_rc == 0
+                    && predicate.load(Ordering::Acquire) == 1
+                {
+                    String::from("predicate_satisfied")
+                } else {
+                    format!(
+                        "wait={};unlock={};signal1={};signal2={};predicate={}",
+                        format_pthread_status(wait_rc),
+                        format_pthread_status(unlock_rc),
+                        format_pthread_status(first_signal_rc),
+                        format_pthread_status(second_signal_rc),
+                        predicate.load(Ordering::Acquire)
+                    )
+                }
+            }
+        };
+
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex);
+        }
+        output
+    } else if cond_alias == "has_waiter_with_mutex_A" && mutex_alias == "mutex_B" {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex_a = alloc_pthread_mutex_ptr();
+        let mutex_b = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex_a)?;
+        init_pthread_mutex_for_case(mutex_b)?;
+        init_pthread_cond_for_case(cond, None)?;
+
+        let (tx, rx) = std::sync::mpsc::channel::<Result<i32, String>>();
+        let cond_addr = cond as usize;
+        let mutex_a_addr = mutex_a as usize;
+        let waiter = std::thread::spawn(move || {
+            let cond = cond_addr as *mut libc::pthread_cond_t;
+            let mutex = mutex_a_addr as *mut libc::pthread_mutex_t;
+            let result = (|| -> Result<i32, String> {
+                unsafe {
+                    let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+                    if lock_rc != 0 {
+                        Err(format!(
+                            "waiter lock failed: {}",
+                            format_pthread_status(lock_rc)
+                        ))
+                    } else {
+                        let abstime = clock_abstime_after(libc::CLOCK_REALTIME, 200)?;
+                        let rc = frankenlibc_abi::pthread_abi::pthread_cond_timedwait(
+                            cond,
+                            mutex,
+                            &abstime as *const libc::timespec,
+                        );
+                        let unlock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+                        if unlock_rc != 0 {
+                            Err(format!(
+                                "waiter unlock failed: {}",
+                                format_pthread_status(unlock_rc)
+                            ))
+                        } else {
+                            Ok(rc)
+                        }
+                    }
+                }
+            })();
+            let _ = tx.send(result);
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        let notifier = spawn_cond_notifier(cond as usize, 25, true);
+
+        let output = unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex_b);
+            if lock_rc != 0 {
+                format!("lock_failed:{}", format_pthread_status(lock_rc))
+            } else {
+                let wait_rc = frankenlibc_abi::pthread_abi::pthread_cond_wait(cond, mutex_b);
+                let unlock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex_b);
+                let notify_rc = notifier
+                    .join()
+                    .map_err(|_| String::from("mismatch notifier thread panicked"))?;
+                let background_rc = rx
+                    .recv_timeout(std::time::Duration::from_secs(1))
+                    .map_err(|_| String::from("timed out waiting for primary waiter"))??;
+                waiter
+                    .join()
+                    .map_err(|_| String::from("primary waiter thread panicked"))?;
+                if wait_rc == libc::EINVAL && unlock_rc == 0 {
+                    String::from("EINVAL")
+                } else {
+                    format!(
+                        "wait={};unlock={};notify={};primary_waiter={}",
+                        format_pthread_status(wait_rc),
+                        format_pthread_status(unlock_rc),
+                        format_pthread_status(notify_rc),
+                        format_pthread_status(background_rc)
+                    )
+                }
+            }
+        };
+
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex_a);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex_b);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex_a);
+            free_pthread_mutex_ptr(mutex_b);
+        }
+        output
+    } else if cond_alias == "NULL" {
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        let output = unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+            let wait_rc = if lock_rc == 0 {
+                frankenlibc_abi::pthread_abi::pthread_cond_wait(std::ptr::null_mut(), mutex)
+            } else {
+                lock_rc
+            };
+            let unlock_rc = if lock_rc == 0 {
+                frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex)
+            } else {
+                0
+            };
+            if lock_rc == 0 && wait_rc == libc::EINVAL && unlock_rc == 0 {
+                String::from("EINVAL")
+            } else {
+                format!(
+                    "lock={};wait={};unlock={}",
+                    format_pthread_status(lock_rc),
+                    format_pthread_status(wait_rc),
+                    format_pthread_status(unlock_rc)
+                )
+            }
+        };
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_mutex_ptr(mutex);
+        }
+        output
+    } else if mutex_alias == "NULL" {
+        let cond = alloc_pthread_cond_ptr();
+        init_pthread_cond_for_case(cond, None)?;
+        let output = format_pthread_status(unsafe {
+            frankenlibc_abi::pthread_abi::pthread_cond_wait(cond, std::ptr::null_mut())
+        });
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            free_pthread_cond_ptr(cond);
+        }
+        output
+    } else {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        init_pthread_cond_for_case(cond, None)?;
+        let notifier = spawn_cond_notifier(cond as usize, 20, false);
+        let output = unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+            if lock_rc != 0 {
+                format!("lock_failed:{}", format_pthread_status(lock_rc))
+            } else {
+                let wait_rc = frankenlibc_abi::pthread_abi::pthread_cond_wait(cond, mutex);
+                let notify_rc = notifier
+                    .join()
+                    .map_err(|_| String::from("wait notifier thread panicked"))?;
+                if verify_mutex_held_on_return {
+                    let first_unlock = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+                    let second_unlock = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+                    if wait_rc == 0
+                        && notify_rc == 0
+                        && first_unlock == 0
+                        && second_unlock == libc::EPERM
+                    {
+                        String::from("mutex_held_on_return")
+                    } else {
+                        format!(
+                            "wait={};notify={};unlock={};unlock2={}",
+                            format_pthread_status(wait_rc),
+                            format_pthread_status(notify_rc),
+                            format_pthread_status(first_unlock),
+                            format_pthread_status(second_unlock)
+                        )
+                    }
+                } else {
+                    let unlock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+                    if wait_rc == 0 && notify_rc == 0 && unlock_rc == 0 {
+                        String::from("0")
+                    } else {
+                        format!(
+                            "wait={};notify={};unlock={}",
+                            format_pthread_status(wait_rc),
+                            format_pthread_status(notify_rc),
+                            format_pthread_status(unlock_rc)
+                        )
+                    }
+                }
+            }
+        };
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex);
+        }
+        output
+    };
+
+    Ok(non_host_execution(impl_output))
+}
+
+fn execute_pthread_cond_timedwait_case(
+    inputs: &serde_json::Value,
+    mode: &str,
+) -> Result<DifferentialExecution, String> {
+    ensure_supported_mode(mode)?;
+    reset_pthread_cond_case_state();
+
+    let cond_alias =
+        parse_optional_string(inputs, "condvar")?.unwrap_or_else(|| String::from("initialized"));
+    let mutex_alias =
+        parse_optional_string(inputs, "mutex")?.unwrap_or_else(|| String::from("locked_by_caller"));
+    let deadline_alias = parse_optional_string(inputs, "deadline")?;
+    let tv_nsec = inputs
+        .get("tv_nsec")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+
+    let attr_clock = if cond_alias == "monotonic_clock" {
+        Some(libc::CLOCK_MONOTONIC)
+    } else {
+        None
+    };
+    let clock_id = attr_clock.unwrap_or(libc::CLOCK_REALTIME);
+
+    let impl_output = if cond_alias == "NULL" {
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        let output = unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+            let abstime = clock_abstime_after(clock_id, 25)?;
+            let wait_rc = if lock_rc == 0 {
+                frankenlibc_abi::pthread_abi::pthread_cond_timedwait(
+                    std::ptr::null_mut(),
+                    mutex,
+                    &abstime as *const libc::timespec,
+                )
+            } else {
+                lock_rc
+            };
+            let unlock_rc = if lock_rc == 0 {
+                frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex)
+            } else {
+                0
+            };
+            if lock_rc == 0 && wait_rc == libc::EINVAL && unlock_rc == 0 {
+                String::from("EINVAL")
+            } else {
+                format!(
+                    "lock={};wait={};unlock={}",
+                    format_pthread_status(lock_rc),
+                    format_pthread_status(wait_rc),
+                    format_pthread_status(unlock_rc)
+                )
+            }
+        };
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_mutex_ptr(mutex);
+        }
+        output
+    } else if mutex_alias == "NULL" {
+        let cond = alloc_pthread_cond_ptr();
+        init_pthread_cond_for_case(cond, attr_clock)?;
+        let abstime = clock_abstime_after(clock_id, 25)?;
+        let output = format_pthread_status(unsafe {
+            frankenlibc_abi::pthread_abi::pthread_cond_timedwait(
+                cond,
+                std::ptr::null_mut(),
+                &abstime as *const libc::timespec,
+            )
+        });
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            free_pthread_cond_ptr(cond);
+        }
+        output
+    } else {
+        let cond = alloc_pthread_cond_ptr();
+        let mutex = alloc_pthread_mutex_ptr();
+        init_pthread_mutex_for_case(mutex)?;
+        init_pthread_cond_for_case(cond, attr_clock)?;
+
+        let output = unsafe {
+            let lock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_lock(mutex);
+            if lock_rc != 0 {
+                format!("lock_failed:{}", format_pthread_status(lock_rc))
+            } else {
+                let abstime = match deadline_alias.as_deref() {
+                    Some("past") => libc::timespec {
+                        tv_sec: 0,
+                        tv_nsec: 0,
+                    },
+                    Some("future") => clock_abstime_after(clock_id, 200)?,
+                    Some("monotonic_future") => clock_abstime_after(clock_id, 200)?,
+                    _ if inputs.get("tv_nsec").is_some() => libc::timespec { tv_sec: 1, tv_nsec },
+                    _ => clock_abstime_after(clock_id, 200)?,
+                };
+
+                let notifier = if matches!(
+                    deadline_alias.as_deref(),
+                    Some("future") | Some("monotonic_future")
+                ) {
+                    Some(spawn_cond_notifier(cond as usize, 20, false))
+                } else {
+                    None
+                };
+
+                let wait_rc = frankenlibc_abi::pthread_abi::pthread_cond_timedwait(
+                    cond,
+                    mutex,
+                    &abstime as *const libc::timespec,
+                );
+                let notify_rc = if let Some(handle) = notifier {
+                    handle
+                        .join()
+                        .map_err(|_| String::from("timedwait notifier thread panicked"))?
+                } else {
+                    0
+                };
+                let unlock_rc = frankenlibc_abi::pthread_abi::pthread_mutex_unlock(mutex);
+                if wait_rc == 0 && unlock_rc == 0 && notify_rc == 0 {
+                    String::from("0")
+                } else if wait_rc != 0 && notify_rc == 0 && unlock_rc == 0 {
+                    format_pthread_status(wait_rc)
+                } else {
+                    format!(
+                        "wait={};notify={};unlock={}",
+                        format_pthread_status(wait_rc),
+                        format_pthread_status(notify_rc),
+                        format_pthread_status(unlock_rc)
+                    )
+                }
+            }
+        };
+
+        unsafe {
+            let _ = frankenlibc_abi::pthread_abi::pthread_cond_destroy(cond);
+            let _ = frankenlibc_abi::pthread_abi::pthread_mutex_destroy(mutex);
+            free_pthread_cond_ptr(cond);
+            free_pthread_mutex_ptr(mutex);
+        }
+        output
+    };
+
+    Ok(non_host_execution(impl_output))
 }
 
 fn create_pthread_key(
@@ -6128,6 +6978,57 @@ mod tests {
                 "fixture expected_output mismatch for {}",
                 case.name
             );
+        }
+    }
+
+    #[test]
+    fn pthread_cond_fixture_cases_match_execute_fixture_case() {
+        #[derive(Deserialize)]
+        struct FixtureCaseLite {
+            name: String,
+            function: String,
+            inputs: serde_json::Value,
+            expected_output: String,
+            mode: String,
+        }
+
+        #[derive(Deserialize)]
+        struct FixtureSetLite {
+            cases: Vec<FixtureCaseLite>,
+        }
+
+        let raw = include_str!("../../../tests/conformance/fixtures/pthread_cond.json");
+        let fixture: FixtureSetLite =
+            serde_json::from_str(raw).expect("pthread_cond fixture should parse");
+
+        for case in fixture.cases {
+            let modes: &[&str] = if case.mode.eq_ignore_ascii_case("both") {
+                &["strict", "hardened"]
+            } else {
+                &[case.mode.as_str()]
+            };
+
+            for mode in modes {
+                let result = execute_fixture_case(&case.function, &case.inputs, mode)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "fixture case {} ({mode}) failed to execute: {err}",
+                            case.name
+                        )
+                    });
+                assert_eq!(
+                    result.impl_output, case.expected_output,
+                    "fixture expected_output mismatch for {} ({mode})",
+                    case.name
+                );
+                if *mode == "strict" {
+                    assert!(
+                        result.host_parity,
+                        "strict host parity mismatch for {}",
+                        case.name
+                    );
+                }
+            }
         }
     }
 
@@ -6910,6 +7811,69 @@ mod tests {
         let result = execute_fixture_case("teardown_thread_tls", &inputs, "strict")
             .expect("teardown_thread_tls should execute");
         assert_eq!(result.impl_output, "calls_bounded_at_4");
+        assert!(result.host_parity);
+    }
+
+    #[test]
+    fn pthread_cond_wait_null_cond_reports_einval() {
+        let inputs = serde_json::json!({
+            "condvar": "NULL",
+            "mutex": "locked_by_caller"
+        });
+        let result = execute_fixture_case("pthread_cond_wait", &inputs, "strict")
+            .expect("pthread_cond_wait should execute");
+        assert_eq!(result.impl_output, "EINVAL");
+        assert!(result.host_parity);
+    }
+
+    #[test]
+    fn pthread_cond_wait_reacquires_mutex_supported() {
+        let inputs = serde_json::json!({
+            "condvar": "initialized",
+            "mutex": "locked_by_caller",
+            "verify_mutex_held_on_return": true
+        });
+        let result = execute_fixture_case("pthread_cond_wait", &inputs, "strict")
+            .expect("pthread_cond_wait should execute");
+        assert_eq!(result.impl_output, "mutex_held_on_return");
+        assert!(result.host_parity);
+    }
+
+    #[test]
+    fn pthread_cond_wait_predicate_loop_supported() {
+        let inputs = serde_json::json!({
+            "condvar": "initialized",
+            "pattern": "predicate_loop"
+        });
+        let result = execute_fixture_case("pthread_cond_wait", &inputs, "strict")
+            .expect("pthread_cond_wait predicate loop should execute");
+        assert_eq!(result.impl_output, "predicate_satisfied");
+        assert!(result.host_parity);
+    }
+
+    #[test]
+    fn pthread_cond_timedwait_past_deadline_reports_etimedout() {
+        let inputs = serde_json::json!({
+            "condvar": "initialized",
+            "mutex": "locked_by_caller",
+            "deadline": "past"
+        });
+        let result = execute_fixture_case("pthread_cond_timedwait", &inputs, "strict")
+            .expect("pthread_cond_timedwait should execute");
+        assert_eq!(result.impl_output, "ETIMEDOUT");
+        assert!(result.host_parity);
+    }
+
+    #[test]
+    fn pthread_cond_timedwait_before_deadline_returns_zero() {
+        let inputs = serde_json::json!({
+            "condvar": "initialized",
+            "mutex": "locked_by_caller",
+            "deadline": "future"
+        });
+        let result = execute_fixture_case("pthread_cond_timedwait", &inputs, "strict")
+            .expect("pthread_cond_timedwait should execute");
+        assert_eq!(result.impl_output, "0");
         assert!(result.host_parity);
     }
 }

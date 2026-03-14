@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::conformance_matrix::ConformanceMatrixReport;
+use crate::conformance_matrix::{ConformanceCaseRow, ConformanceMatrixReport};
 use crate::verify::VerificationSummary;
 use crate::{FixtureCase, FixtureSet};
 
@@ -683,6 +683,54 @@ pub struct PosixObligationMatrixReport {
     pub gaps: Vec<PosixObligationGapRow>,
 }
 
+/// Summary section for bd-2tq.5 errno/edge-case prioritization.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ErrnoEdgeCaseSummary {
+    pub tracked_symbols: u64,
+    pub total_edge_cases: u64,
+    pub errno_cases: u64,
+    pub covered_edge_cases: u64,
+    pub failing_edge_cases: u64,
+    pub execution_error_cases: u64,
+    pub missing_execution_cases: u64,
+    pub symbols_with_failures: u64,
+}
+
+/// One errno/edge-case differential row with an actionable triage template.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ErrnoEdgeCaseRow {
+    pub priority_score: u64,
+    pub trace_id: String,
+    pub symbol: String,
+    pub symbol_family: String,
+    pub owner: String,
+    pub support_status: String,
+    pub runtime_mode: String,
+    pub case_id: String,
+    pub spec_section: String,
+    pub edge_class: String,
+    pub expected_output: String,
+    pub actual_output: Option<String>,
+    pub host_output: Option<String>,
+    pub expected_errno: i32,
+    pub actual_errno: Option<i32>,
+    pub status: String,
+    pub failure_kind: String,
+    pub diff_ref: String,
+    pub artifact_refs: Vec<String>,
+    pub triage_steps: Vec<String>,
+}
+
+/// Machine-readable report for bd-2tq.5 errno + edge-case conformance expansion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ErrnoEdgeCaseReport {
+    pub schema_version: String,
+    pub bead: String,
+    pub generated_at_utc: String,
+    pub summary: ErrnoEdgeCaseSummary,
+    pub rows: Vec<ErrnoEdgeCaseRow>,
+}
+
 #[derive(Debug, Clone)]
 struct FixtureCatalogEntry {
     source: String,
@@ -1190,6 +1238,297 @@ impl PosixObligationMatrixReport {
     }
 }
 
+impl ErrnoEdgeCaseReport {
+    /// Build report from on-disk support matrix + fixture directory + conformance matrix.
+    pub fn from_paths(
+        support_matrix_path: &Path,
+        fixture_dir: &Path,
+        conformance_matrix_path: &Path,
+    ) -> Result<Self, String> {
+        let support_matrix_json = std::fs::read_to_string(support_matrix_path).map_err(|err| {
+            format!(
+                "failed reading support matrix '{}': {err}",
+                support_matrix_path.display()
+            )
+        })?;
+        let conformance_matrix_json =
+            std::fs::read_to_string(conformance_matrix_path).map_err(|err| {
+                format!(
+                    "failed reading conformance matrix '{}': {err}",
+                    conformance_matrix_path.display()
+                )
+            })?;
+        let fixture_catalog = load_fixture_catalog_from_dir(fixture_dir)?;
+        Self::from_fixture_catalog_inputs(
+            &support_matrix_json,
+            &fixture_catalog,
+            &conformance_matrix_json,
+        )
+    }
+
+    /// Build report from parsed fixture sets and raw JSON blobs.
+    pub fn from_inputs(
+        support_matrix_json: &str,
+        fixture_sets: &[FixtureSet],
+        conformance_matrix_json: &str,
+    ) -> Result<Self, String> {
+        let fixture_catalog = fixture_sets
+            .iter()
+            .map(|set| FixtureCatalogEntry {
+                source: format!("tests/conformance/fixtures/{}.json", set.family),
+                set: set.clone(),
+            })
+            .collect::<Vec<_>>();
+        Self::from_fixture_catalog_inputs(
+            support_matrix_json,
+            &fixture_catalog,
+            conformance_matrix_json,
+        )
+    }
+
+    fn from_fixture_catalog_inputs(
+        support_matrix_json: &str,
+        fixture_catalog: &[FixtureCatalogEntry],
+        conformance_matrix_json: &str,
+    ) -> Result<Self, String> {
+        let support_value: serde_json::Value = serde_json::from_str(support_matrix_json)
+            .map_err(|err| format!("invalid support matrix JSON: {err}"))?;
+        let generated_at_utc = support_value["generated_at_utc"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+        let support_symbols = support_value["symbols"]
+            .as_array()
+            .ok_or("missing symbols[] in support matrix")?;
+
+        let mut tracked_symbols = BTreeMap::new();
+        for symbol_row in support_symbols {
+            let symbol = symbol_row["symbol"]
+                .as_str()
+                .ok_or("support matrix symbol row missing symbol")?;
+            let status = symbol_row["status"]
+                .as_str()
+                .ok_or("support matrix symbol row missing status")?;
+            if !status_tracks_posix_obligations(status) {
+                continue;
+            }
+
+            let module = symbol_row["module"].as_str().unwrap_or("unknown");
+            tracked_symbols.insert(
+                symbol.to_string(),
+                SupportSymbolMetadata {
+                    status: status.to_string(),
+                    module: module.to_string(),
+                    family: derive_family_from_module(module),
+                },
+            );
+        }
+
+        let matrix: ConformanceMatrixReport = serde_json::from_str(conformance_matrix_json)
+            .map_err(|err| format!("invalid conformance matrix JSON: {err}"))?;
+        let mut matrix_rows = BTreeMap::new();
+        for row in &matrix.cases {
+            matrix_rows.insert(
+                (
+                    row.symbol.clone(),
+                    row.case_name.clone(),
+                    row.mode.to_ascii_lowercase(),
+                ),
+                row.clone(),
+            );
+        }
+
+        let mut symbol_failure_counts: BTreeMap<String, u64> = BTreeMap::new();
+        for entry in fixture_catalog {
+            for case in &entry.set.cases {
+                if !is_errno_or_edge_case(case) {
+                    continue;
+                }
+                for mode in expand_modes(&case.mode) {
+                    let case_name = expected_conformance_case_name(case, &mode);
+                    let status = matrix_rows
+                        .get(&(case.function.clone(), case_name, mode.clone()))
+                        .map(|row| row.status.as_str())
+                        .unwrap_or("missing_execution");
+                    if status != "pass" {
+                        *symbol_failure_counts
+                            .entry(case.function.clone())
+                            .or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
+        let mut rows = Vec::new();
+        for entry in fixture_catalog {
+            for case in &entry.set.cases {
+                if !is_errno_or_edge_case(case) {
+                    continue;
+                }
+
+                let support_meta = tracked_symbols.get(&case.function);
+                let symbol_family = if !entry.set.family.trim().is_empty() {
+                    entry.set.family.clone()
+                } else {
+                    support_meta
+                        .map(|meta| meta.family.clone())
+                        .unwrap_or_else(|| "unknown".to_string())
+                };
+                let owner = support_meta
+                    .map(|meta| meta.module.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let support_status = support_meta
+                    .map(|meta| meta.status.clone())
+                    .unwrap_or_else(|| "Untracked".to_string());
+                let edge_class = classify_errno_edge_class(case).to_string();
+
+                for mode in expand_modes(&case.mode) {
+                    let case_name = expected_conformance_case_name(case, &mode);
+                    let matrix_row =
+                        matrix_rows.get(&(case.function.clone(), case_name.clone(), mode.clone()));
+                    let status = matrix_row
+                        .map(|row| row.status.clone())
+                        .unwrap_or_else(|| "missing_execution".to_string());
+                    let actual_output = matrix_row.map(|row| row.actual_output.clone());
+                    let host_output = matrix_row.and_then(|row| row.host_output.clone());
+                    let actual_errno = matrix_row.and_then(|row| {
+                        parse_errno_value(&row.actual_output)
+                            .or_else(|| row.error.as_deref().and_then(parse_errno_value))
+                    });
+                    let failure_kind = classify_errno_edge_failure_kind(
+                        case.expected_errno,
+                        &status,
+                        matrix_row,
+                        actual_errno,
+                    );
+                    let diff_ref = matrix_row
+                        .map(|row| format!("conformance_matrix::trace_id::{}", row.trace_id))
+                        .unwrap_or_else(|| {
+                            format!(
+                                "conformance_matrix::missing::{}::{}::{}",
+                                case.function, case_name, mode
+                            )
+                        });
+                    let priority_score = symbol_failure_counts
+                        .get(&case.function)
+                        .copied()
+                        .unwrap_or(0)
+                        .saturating_mul(100)
+                        .saturating_add(errno_edge_status_weight(&status))
+                        .saturating_add(if case.expected_errno != 0 { 20 } else { 0 })
+                        .saturating_add(match edge_class.as_str() {
+                            "error_condition" => 10,
+                            "boundary" => 5,
+                            _ => 0,
+                        })
+                        .saturating_add(match support_status.as_str() {
+                            "RawSyscall" => 10,
+                            "GlibcCallThrough" => 5,
+                            _ => 0,
+                        });
+
+                    rows.push(ErrnoEdgeCaseRow {
+                        priority_score,
+                        trace_id: matrix_row
+                            .map(|row| row.trace_id.clone())
+                            .unwrap_or_else(|| {
+                                format!("missing::{}::{}::{}", case.function, mode, case.name)
+                            }),
+                        symbol: case.function.clone(),
+                        symbol_family: symbol_family.clone(),
+                        owner: owner.clone(),
+                        support_status: support_status.clone(),
+                        runtime_mode: mode.clone(),
+                        case_id: case_name.clone(),
+                        spec_section: case.spec_section.clone(),
+                        edge_class: edge_class.clone(),
+                        expected_output: case.expected_output.clone(),
+                        actual_output,
+                        host_output,
+                        expected_errno: case.expected_errno,
+                        actual_errno,
+                        status: status.clone(),
+                        failure_kind: failure_kind.clone(),
+                        diff_ref: diff_ref.clone(),
+                        artifact_refs: vec![
+                            entry.source.clone(),
+                            String::from("tests/conformance/conformance_matrix.v1.json"),
+                        ],
+                        triage_steps: build_errno_edge_triage_steps(
+                            case,
+                            &failure_kind,
+                            &diff_ref,
+                            matrix_row,
+                        ),
+                    });
+                }
+            }
+        }
+
+        rows.sort_by(|a, b| {
+            b.priority_score
+                .cmp(&a.priority_score)
+                .then_with(|| a.symbol.cmp(&b.symbol))
+                .then_with(|| a.case_id.cmp(&b.case_id))
+                .then_with(|| a.runtime_mode.cmp(&b.runtime_mode))
+        });
+
+        let tracked_symbols_count = u64::try_from(tracked_symbols.len())
+            .map_err(|_| "tracked symbol count overflow".to_string())?;
+        let total_edge_cases =
+            u64::try_from(rows.len()).map_err(|_| "errno/edge row count overflow".to_string())?;
+        let errno_cases =
+            u64::try_from(rows.iter().filter(|row| row.expected_errno != 0).count()).unwrap_or(0);
+        let covered_edge_cases =
+            u64::try_from(rows.iter().filter(|row| row.status == "pass").count()).unwrap_or(0);
+        let failing_edge_cases =
+            u64::try_from(rows.iter().filter(|row| row.status != "pass").count()).unwrap_or(0);
+        let execution_error_cases = u64::try_from(
+            rows.iter()
+                .filter(|row| matches!(row.status.as_str(), "error" | "timeout" | "crash"))
+                .count(),
+        )
+        .unwrap_or(0);
+        let missing_execution_cases = u64::try_from(
+            rows.iter()
+                .filter(|row| row.status == "missing_execution")
+                .count(),
+        )
+        .unwrap_or(0);
+        let symbols_with_failures = u64::try_from(
+            rows.iter()
+                .filter(|row| row.status != "pass")
+                .map(|row| row.symbol.clone())
+                .collect::<BTreeSet<_>>()
+                .len(),
+        )
+        .unwrap_or(0);
+
+        Ok(Self {
+            schema_version: "v1".to_string(),
+            bead: "bd-2tq.5".to_string(),
+            generated_at_utc,
+            summary: ErrnoEdgeCaseSummary {
+                tracked_symbols: tracked_symbols_count,
+                total_edge_cases,
+                errno_cases,
+                covered_edge_cases,
+                failing_edge_cases,
+                execution_error_cases,
+                missing_execution_cases,
+                symbols_with_failures,
+            },
+            rows,
+        })
+    }
+
+    /// Render report as pretty JSON.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
+    }
+}
+
 fn classify_obligation_coverage_state(execution: &PosixExecutionCounts) -> &'static str {
     if execution.total == 0 {
         "mapped_without_execution"
@@ -1230,6 +1569,180 @@ fn obligation_ref_slug(spec_ref: &str) -> String {
         }
     }
     slug.trim_matches('_').to_string()
+}
+
+fn is_errno_or_edge_case(case: &FixtureCase) -> bool {
+    case.expected_errno != 0 || !matches!(classify_posix_case(case), PosixCaseClass::Normal)
+}
+
+fn classify_errno_edge_class(case: &FixtureCase) -> &'static str {
+    if case.expected_errno != 0 {
+        return "error_condition";
+    }
+
+    match classify_posix_case(case) {
+        PosixCaseClass::Normal => "normal",
+        PosixCaseClass::Boundary => "boundary",
+        PosixCaseClass::Error => "error_condition",
+        PosixCaseClass::Other => "other_edge",
+    }
+}
+
+fn expected_conformance_case_name(case: &FixtureCase, mode: &str) -> String {
+    if case.mode.eq_ignore_ascii_case("both") {
+        format!("{} [{}]", case.name, mode)
+    } else {
+        case.name.clone()
+    }
+}
+
+fn parse_errno_value(raw: &str) -> Option<i32> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(value) = trimmed.parse::<i32>()
+        && value >= 0
+    {
+        return Some(value);
+    }
+
+    [
+        ("EPERM", 1),
+        ("ENOENT", 2),
+        ("ESRCH", 3),
+        ("EINTR", 4),
+        ("EIO", 5),
+        ("EBADF", 9),
+        ("EAGAIN", 11),
+        ("ENOMEM", 12),
+        ("EACCES", 13),
+        ("EFAULT", 14),
+        ("EBUSY", 16),
+        ("EINVAL", 22),
+        ("ENFILE", 23),
+        ("EMFILE", 24),
+        ("ENOTTY", 25),
+        ("EPIPE", 32),
+        ("ERANGE", 34),
+        ("EDEADLK", 35),
+        ("ENOSYS", 38),
+        ("ENOTSOCK", 88),
+        ("EDESTADDRREQ", 89),
+        ("EMSGSIZE", 90),
+        ("EPROTOTYPE", 91),
+        ("ENOPROTOOPT", 92),
+        ("EPROTONOSUPPORT", 93),
+        ("EAFNOSUPPORT", 97),
+        ("EADDRINUSE", 98),
+        ("EADDRNOTAVAIL", 99),
+        ("ENETDOWN", 100),
+        ("ENETUNREACH", 101),
+        ("ECONNABORTED", 103),
+        ("ECONNRESET", 104),
+        ("ENOBUFS", 105),
+        ("EISCONN", 106),
+        ("ENOTCONN", 107),
+        ("ETIMEDOUT", 110),
+        ("ECONNREFUSED", 111),
+    ]
+    .iter()
+    .find_map(|(name, value)| trimmed.contains(name).then_some(*value))
+}
+
+fn errno_edge_status_weight(status: &str) -> u64 {
+    match status {
+        "error" => 80,
+        "timeout" | "crash" => 70,
+        "fail" => 60,
+        "missing_execution" => 50,
+        _ => 0,
+    }
+}
+
+fn classify_errno_edge_failure_kind(
+    expected_errno: i32,
+    status: &str,
+    matrix_row: Option<&ConformanceCaseRow>,
+    actual_errno: Option<i32>,
+) -> String {
+    match status {
+        "pass" => String::from("covered"),
+        "missing_execution" => String::from("missing_execution"),
+        "timeout" => String::from("timeout"),
+        "crash" => String::from("crash"),
+        "error" => {
+            if matrix_row
+                .and_then(|row| row.error.as_deref())
+                .is_some_and(|err| err.contains("unsupported function"))
+            {
+                String::from("unsupported_function")
+            } else if matrix_row
+                .and_then(|row| row.error.as_deref())
+                .is_some_and(|err| err.contains("missing "))
+            {
+                String::from("input_schema_mismatch")
+            } else {
+                String::from("execution_error")
+            }
+        }
+        "fail" => {
+            if expected_errno != 0 && actual_errno != Some(expected_errno) {
+                String::from("errno_mismatch")
+            } else {
+                String::from("output_mismatch")
+            }
+        }
+        _ => String::from("unknown"),
+    }
+}
+
+fn build_errno_edge_triage_steps(
+    case: &FixtureCase,
+    failure_kind: &str,
+    diff_ref: &str,
+    matrix_row: Option<&ConformanceCaseRow>,
+) -> Vec<String> {
+    let mut steps = vec![format!(
+        "Inspect fixture '{}' for '{}' and compare it against {}.",
+        case.name, case.function, diff_ref
+    )];
+
+    match failure_kind {
+        "unsupported_function" => steps.push(format!(
+            "Add '{}' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+            case.function
+        )),
+        "input_schema_mismatch" => steps.push(format!(
+            "Align the fixture input schema for '{}' with the executor decoder before rerunning the differential case.",
+            case.function
+        )),
+        "errno_mismatch" => steps.push(format!(
+            "Check errno propagation/reset behavior for '{}' and verify the failing path preserves errno {}.",
+            case.function, case.expected_errno
+        )),
+        "output_mismatch" => steps.push(format!(
+            "Diff expected vs actual output for '{}' and inspect strict/hardened repair behavior on this edge path.",
+            case.function
+        )),
+        "missing_execution" => steps.push(format!(
+            "Regenerate the conformance matrix or add missing execution wiring so '{}' runs for this scenario.",
+            case.function
+        )),
+        "timeout" | "crash" => steps.push(format!(
+            "Reproduce '{}' in isolation and capture a minimized replay for the failing edge case.",
+            case.function
+        )),
+        _ => {}
+    }
+
+    if let Some(row) = matrix_row
+        && let Some(error) = &row.error
+    {
+        steps.push(format!("Recorded execution error: {error}"));
+    }
+
+    steps
 }
 
 fn classify_obligation_kinds(text_fragments: &[&str], expected_errno: i32) -> BTreeSet<String> {
@@ -1437,7 +1950,7 @@ fn load_fixture_sets_from_dir(fixture_dir: &Path) -> Result<Vec<FixtureSet>, Str
 #[cfg(test)]
 mod tests {
     use super::{
-        DecisionTraceReport, PosixCaseCategoryCounts, PosixConformanceReport,
+        DecisionTraceReport, ErrnoEdgeCaseReport, PosixCaseCategoryCounts, PosixConformanceReport,
         PosixObligationMatrixReport, RealityCounts, RealityReport,
     };
     use crate::FixtureSet;
@@ -1600,6 +2113,58 @@ mod tests {
     }
   ]
 }"#
+    }
+
+    fn sample_errno_edge_fixture_sets() -> Vec<FixtureSet> {
+        vec![
+            FixtureSet::from_json(
+                r#"{
+  "version":"v1",
+  "family":"socket_ops",
+  "captured_at":"2026-03-01T00:00:00Z",
+  "cases":[
+    {
+      "name":"error_bind_invalid_fd",
+      "function":"bind",
+      "spec_section":"POSIX.1-2024 bind error",
+      "inputs":{"fd":-1,"addrlen":16},
+      "expected_output":"-1",
+      "expected_errno":9,
+      "mode":"both"
+    },
+    {
+      "name":"boundary_bind_zero_length",
+      "function":"bind",
+      "spec_section":"POSIX.1-2024 bind boundary",
+      "inputs":{"fd":3,"addrlen":0},
+      "expected_output":"0",
+      "expected_errno":0,
+      "mode":"strict"
+    }
+  ]
+}"#,
+            )
+            .expect("socket errno fixture set should parse"),
+            FixtureSet::from_json(
+                r#"{
+  "version":"v1",
+  "family":"pthread_cond",
+  "captured_at":"2026-03-01T00:00:00Z",
+  "cases":[
+    {
+      "name":"error_pthread_cond_init_invalid_attr",
+      "function":"pthread_cond_init",
+      "spec_section":"POSIX.1-2024 pthread_cond_init error",
+      "inputs":{"cond":"0x1","attr":"invalid"},
+      "expected_output":"-1",
+      "expected_errno":22,
+      "mode":"strict"
+    }
+  ]
+}"#,
+            )
+            .expect("pthread errno fixture set should parse"),
+        ]
     }
 
     #[test]
@@ -1772,5 +2337,96 @@ mod tests {
                 .gap_reasons
                 .contains(&"missing_execution_evidence".to_string())
         );
+    }
+
+    #[test]
+    fn errno_edge_case_report_prioritizes_failures_and_parses_errno() {
+        let support_matrix = r#"{
+  "generated_at_utc":"2026-03-01T00:00:00Z",
+  "total_exported":3,
+  "symbols":[
+    {"symbol":"bind","status":"Implemented","module":"socket_abi"},
+    {"symbol":"pthread_cond_init","status":"RawSyscall","module":"pthread_abi"},
+    {"symbol":"malloc","status":"Stub","module":"malloc_abi"}
+  ]
+}"#;
+        let conformance_matrix = r#"{
+  "schema_version":"v1",
+  "bead":"bd-l93x.2",
+  "generated_at_utc":"2026-03-01T00:00:00Z",
+  "campaign":"errno-edge",
+  "mode":"both",
+  "total_fixture_sets":2,
+  "summary":{"total_cases":4,"passed":1,"failed":1,"errors":2,"pass_rate_percent":25.0},
+  "symbol_matrix":[],
+  "cases":[
+    {"trace_id":"edge-bind-strict","family":"socket_ops","symbol":"bind","mode":"strict","case_name":"error_bind_invalid_fd [strict]","spec_section":"POSIX","input_hex":"","expected_output":"-1","actual_output":"-1 EINVAL","host_output":"-1 EBADF","host_parity":false,"note":null,"status":"fail","passed":false,"error":null,"diff_offset":0},
+    {"trace_id":"edge-bind-hardened","family":"socket_ops","symbol":"bind","mode":"hardened","case_name":"error_bind_invalid_fd [hardened]","spec_section":"POSIX","input_hex":"","expected_output":"-1","actual_output":"","host_output":null,"host_parity":null,"note":null,"status":"error","passed":false,"error":"missing sockaddr field for bind","diff_offset":null},
+    {"trace_id":"edge-bind-boundary","family":"socket_ops","symbol":"bind","mode":"strict","case_name":"boundary_bind_zero_length","spec_section":"POSIX","input_hex":"","expected_output":"0","actual_output":"0","host_output":"0","host_parity":true,"note":null,"status":"pass","passed":true,"error":null,"diff_offset":null},
+    {"trace_id":"edge-pthread","family":"pthread_cond","symbol":"pthread_cond_init","mode":"strict","case_name":"error_pthread_cond_init_invalid_attr","spec_section":"POSIX","input_hex":"","expected_output":"-1","actual_output":"","host_output":null,"host_parity":null,"note":null,"status":"error","passed":false,"error":"unsupported function: pthread_cond_init","diff_offset":null}
+  ]
+}"#;
+
+        let report = ErrnoEdgeCaseReport::from_inputs(
+            support_matrix,
+            &sample_errno_edge_fixture_sets(),
+            conformance_matrix,
+        )
+        .expect("errno edge report should build");
+
+        assert_eq!(report.schema_version, "v1");
+        assert_eq!(report.bead, "bd-2tq.5");
+        assert_eq!(report.summary.tracked_symbols, 2);
+        assert_eq!(report.summary.total_edge_cases, 4);
+        assert_eq!(report.summary.errno_cases, 3);
+        assert_eq!(report.summary.covered_edge_cases, 1);
+        assert_eq!(report.summary.failing_edge_cases, 3);
+        assert_eq!(report.summary.execution_error_cases, 2);
+        assert_eq!(report.summary.missing_execution_cases, 0);
+        assert_eq!(report.summary.symbols_with_failures, 2);
+
+        assert_eq!(report.rows[0].trace_id, "edge-bind-hardened");
+        assert_eq!(report.rows[0].failure_kind, "input_schema_mismatch");
+
+        let bind_strict = report
+            .rows
+            .iter()
+            .find(|row| row.trace_id == "edge-bind-strict")
+            .expect("bind strict row");
+        assert_eq!(bind_strict.actual_errno, Some(22));
+        assert_eq!(bind_strict.failure_kind, "errno_mismatch");
+        assert_eq!(bind_strict.case_id, "error_bind_invalid_fd [strict]");
+        assert!(bind_strict.diff_ref.contains("edge-bind-strict"));
+        assert!(
+            bind_strict
+                .triage_steps
+                .iter()
+                .any(|step| step.contains("errno 9"))
+        );
+        assert_eq!(
+            bind_strict.artifact_refs,
+            vec![
+                "tests/conformance/fixtures/socket_ops.json".to_string(),
+                "tests/conformance/conformance_matrix.v1.json".to_string(),
+            ]
+        );
+
+        let pthread_row = report
+            .rows
+            .iter()
+            .find(|row| row.trace_id == "edge-pthread")
+            .expect("pthread row");
+        assert_eq!(pthread_row.support_status, "RawSyscall");
+        assert_eq!(pthread_row.failure_kind, "unsupported_function");
+        assert_eq!(pthread_row.actual_errno, None);
+
+        let boundary_row = report
+            .rows
+            .iter()
+            .find(|row| row.trace_id == "edge-bind-boundary")
+            .expect("boundary row");
+        assert_eq!(boundary_row.edge_class, "boundary");
+        assert_eq!(boundary_row.status, "pass");
+        assert_eq!(boundary_row.failure_kind, "covered");
     }
 }
