@@ -1456,9 +1456,14 @@ impl<const CAP: usize> SystematicEvidenceLog<CAP> {
             }
             let decision_id = DecisionId::from_raw(card.decision_id);
             let policy_id = PolicyId::from_raw(card.decision.policy_id);
+            let trace_id = decision_id.scoped_trace_id("runtime_math::decision_card");
+            let api_family = runtime_family_name(card.context.family);
+            let symbol = runtime_decision_symbol(card.context.family);
+            let decision_path = runtime_decision_path(card.decision.action);
             let _ = write!(
                 &mut out,
-                "{{\"decision_id\":{},\"decision_type\":{},\"thread_id\":{},\"symbol_id\":{},\"timestamp_mono_ns\":{},\"epoch_id\":{},\"evidence_seqno\":{},\"family\":{},\"mode\":{},\"profile\":{},\"action\":{},\"counterfactual_action\":{},\"policy_id\":{},\"risk_upper_bound_ppm\":{},\"adverse\":{},\"estimated_cost_ns\":{},\"reasoning_flags\":{},\"context\":{{\"addr_hint\":{},\"requested_bytes\":{},\"is_write\":{},\"contention_hint\":{},\"bloom_negative\":{}}}",
+                "{{\"trace_id\":\"{}\",\"decision_id\":{},\"decision_type\":{},\"thread_id\":{},\"symbol_id\":{},\"timestamp_mono_ns\":{},\"epoch_id\":{},\"evidence_seqno\":{},\"family\":{},\"mode\":{},\"api_family\":\"{}\",\"symbol\":\"{}\",\"decision_path\":\"{}\",\"profile\":{},\"action\":{},\"counterfactual_action\":{},\"policy_id\":{},\"risk_upper_bound_ppm\":{},\"adverse\":{},\"estimated_cost_ns\":{},\"reasoning_flags\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/evidence.rs\"],\"context\":{{\"addr_hint\":{},\"requested_bytes\":{},\"is_write\":{},\"contention_hint\":{},\"bloom_negative\":{}}}",
+                trace_id.as_str(),
                 decision_id.as_u64(),
                 card.decision_type as u8,
                 card.thread_id,
@@ -1468,6 +1473,9 @@ impl<const CAP: usize> SystematicEvidenceLog<CAP> {
                 card.evidence_seqno,
                 card.context.family as u8,
                 decision_mode_code(card.reasoning_flags),
+                api_family,
+                symbol,
+                decision_path,
                 profile_code(card.decision.profile),
                 action_code(card.decision.action),
                 action_code(card.counterfactual_action),
@@ -1617,6 +1625,68 @@ fn next_strict_timestamp_ns(start: Instant, last_timestamp_ns: &AtomicU64) -> u6
 #[inline]
 const fn decision_mode_code(flags: u32) -> u8 {
     if (flags & (1 << 3)) != 0 { 1 } else { 0 }
+}
+
+#[inline]
+fn runtime_family_name(family: ApiFamily) -> &'static str {
+    match family {
+        ApiFamily::PointerValidation => "pointer_validation",
+        ApiFamily::Allocator => "allocator",
+        ApiFamily::StringMemory => "string_memory",
+        ApiFamily::Stdio => "stdio",
+        ApiFamily::Threading => "threading",
+        ApiFamily::Resolver => "resolver",
+        ApiFamily::MathFenv => "math_fenv",
+        ApiFamily::Loader => "loader",
+        ApiFamily::Stdlib => "stdlib",
+        ApiFamily::Ctype => "ctype",
+        ApiFamily::Time => "time",
+        ApiFamily::Signal => "signal",
+        ApiFamily::IoFd => "io_fd",
+        ApiFamily::Socket => "socket",
+        ApiFamily::Locale => "locale",
+        ApiFamily::Termios => "termios",
+        ApiFamily::Inet => "inet",
+        ApiFamily::Process => "process",
+        ApiFamily::VirtualMemory => "virtual_memory",
+        ApiFamily::Poll => "poll",
+    }
+}
+
+#[inline]
+fn runtime_decision_symbol(family: ApiFamily) -> &'static str {
+    match family {
+        ApiFamily::PointerValidation => "runtime_math::pointer_validation",
+        ApiFamily::Allocator => "runtime_math::allocator",
+        ApiFamily::StringMemory => "runtime_math::string_memory",
+        ApiFamily::Stdio => "runtime_math::stdio",
+        ApiFamily::Threading => "runtime_math::threading",
+        ApiFamily::Resolver => "runtime_math::resolver",
+        ApiFamily::MathFenv => "runtime_math::math_fenv",
+        ApiFamily::Loader => "runtime_math::loader",
+        ApiFamily::Stdlib => "runtime_math::stdlib",
+        ApiFamily::Ctype => "runtime_math::ctype",
+        ApiFamily::Time => "runtime_math::time",
+        ApiFamily::Signal => "runtime_math::signal",
+        ApiFamily::IoFd => "runtime_math::io_fd",
+        ApiFamily::Socket => "runtime_math::socket",
+        ApiFamily::Locale => "runtime_math::locale",
+        ApiFamily::Termios => "runtime_math::termios",
+        ApiFamily::Inet => "runtime_math::inet",
+        ApiFamily::Process => "runtime_math::process",
+        ApiFamily::VirtualMemory => "runtime_math::virtual_memory",
+        ApiFamily::Poll => "runtime_math::poll",
+    }
+}
+
+#[inline]
+fn runtime_decision_path(action: MembraneAction) -> &'static str {
+    match action {
+        MembraneAction::Allow => "mode->runtime_math_kernel->allow",
+        MembraneAction::FullValidate => "mode->runtime_math_kernel->full_validate",
+        MembraneAction::Repair(_) => "mode->runtime_math_kernel->repair",
+        MembraneAction::Deny => "mode->runtime_math_kernel->deny",
+    }
 }
 
 /// Overwrite-on-full decision-card ring buffer.
@@ -2432,6 +2502,21 @@ mod tests {
         assert!(parsed["cards"].is_array());
         assert_eq!(parsed["cards"].as_array().unwrap().len(), 2);
         for card in parsed["cards"].as_array().expect("cards must be array") {
+            assert!(card["trace_id"]
+                .as_str()
+                .is_some_and(|trace_id| trace_id.starts_with("runtime_math::decision_card::")));
+            assert!(card["mode"].as_u64().is_some());
+            assert!(card["api_family"].as_str().is_some_and(|value| !value.is_empty()));
+            assert!(card["symbol"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("runtime_math::")));
+            assert!(card["decision_path"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("mode->runtime_math_kernel->")));
+            assert_eq!(
+                card["artifact_refs"][0].as_str(),
+                Some("crates/frankenlibc-membrane/src/runtime_math/evidence.rs")
+            );
             assert!(card["decision_id"].as_u64().is_some_and(|id| id > 0));
             assert!(card["policy_id"].as_u64().is_some_and(|id| id > 0));
         }
