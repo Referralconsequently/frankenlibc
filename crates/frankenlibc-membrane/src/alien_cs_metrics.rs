@@ -14,6 +14,7 @@
 use crate::ebr::EbrDiagnostics;
 use crate::flat_combining::FlatCombinerDiagnostics;
 use crate::seqlock::SeqLockDiagnostics;
+use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -62,6 +63,42 @@ pub enum MetricEventKind {
     RcuUpdate,
     /// RCU reader refreshed.
     RcuReaderRefresh,
+}
+
+impl MetricEventKind {
+    const fn concept_event_name(self) -> &'static str {
+        match self {
+            Self::SeqLockCacheMiss => "alien_cs_seqlock_cache_miss",
+            Self::SeqLockContention => "alien_cs_seqlock_contention",
+            Self::EbrEpochAdvance => "alien_cs_ebr_epoch_advance",
+            Self::EbrReclaim => "alien_cs_ebr_reclaim",
+            Self::EbrGracePeriodDelay => "alien_cs_ebr_grace_period_delay",
+            Self::FcCombiningPass => "alien_cs_flat_combining_pass",
+            Self::RcuUpdate => "alien_cs_rcu_update",
+            Self::RcuReaderRefresh => "alien_cs_rcu_reader_refresh",
+        }
+    }
+
+    const fn level(self) -> &'static str {
+        match self {
+            Self::SeqLockContention | Self::EbrGracePeriodDelay => "warn",
+            Self::SeqLockCacheMiss | Self::FcCombiningPass | Self::RcuReaderRefresh => "debug",
+            Self::EbrEpochAdvance | Self::EbrReclaim | Self::RcuUpdate => "info",
+        }
+    }
+
+    const fn decision_path(self) -> &'static str {
+        match self {
+            Self::SeqLockCacheMiss => "alien_cs::seqlock::reader_refresh",
+            Self::SeqLockContention => "alien_cs::seqlock::writer_wait",
+            Self::EbrEpochAdvance => "alien_cs::ebr::advance_epoch",
+            Self::EbrReclaim => "alien_cs::ebr::reclaim",
+            Self::EbrGracePeriodDelay => "alien_cs::ebr::grace_period_delay",
+            Self::FcCombiningPass => "alien_cs::flat_combining::run_pass",
+            Self::RcuUpdate => "alien_cs::rcu::update",
+            Self::RcuReaderRefresh => "alien_cs::rcu::reader_refresh",
+        }
+    }
 }
 
 /// A single metric event with structured fields.
@@ -159,6 +196,38 @@ impl MetricRing {
             .filter(|e| e.concept == concept)
             .count()
     }
+
+    /// Export buffered Alien CS metric events as deterministic JSONL rows.
+    ///
+    /// This mirrors the membrane/runtime structured-log contract closely enough
+    /// for downstream artifact validation without introducing a logging crate.
+    #[must_use]
+    pub fn export_jsonl(&self, bead_id: &str, run_id: &str) -> String {
+        let bead = sanitize_trace_component(bead_id);
+        let run = sanitize_trace_component(run_id);
+        let timestamp = now_utc_iso_like();
+        let events = self.snapshot();
+        let mut out =
+            String::with_capacity(events.len().saturating_mul(320).saturating_add(256));
+
+        for (index, event) in events.iter().enumerate() {
+            let _ = writeln!(
+                &mut out,
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:03}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{}\",\"event\":\"{}\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::{}\",\"decision_path\":\"{}\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"metric_kind\":\"{}\",\"metric_value\":{},\"concept\":\"{}\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}",
+                index + 1,
+                event.kind.level(),
+                event.kind.concept_event_name(),
+                event.concept,
+                event.kind.decision_path(),
+                event.timestamp_ns,
+                event.kind.concept_event_name(),
+                event.value,
+                event.concept,
+            );
+        }
+
+        out
+    }
 }
 
 /// Compute a contention score from diagnostics.
@@ -235,6 +304,63 @@ pub fn build_snapshot(
         rcu,
         contention_score: contention,
     }
+}
+
+impl AlienCsSnapshot {
+    /// Export a single aggregate snapshot row as JSONL.
+    #[must_use]
+    pub fn export_jsonl(&self, bead_id: &str, run_id: &str) -> String {
+        let bead = sanitize_trace_component(bead_id);
+        let run = sanitize_trace_component(run_id);
+        let timestamp = now_utc_iso_like();
+        let level = if self.contention_score >= 0.75 {
+            "warn"
+        } else {
+            "info"
+        };
+        let seqlock_reads = self.seqlock.as_ref().map_or(0, |diag| diag.reads);
+        let seqlock_writes = self.seqlock.as_ref().map_or(0, |diag| diag.writes);
+        let ebr_epoch = self.ebr.as_ref().map_or(0, |diag| diag.global_epoch);
+        let ebr_active_threads = self.ebr.as_ref().map_or(0, |diag| diag.active_threads);
+        let ebr_pinned_threads = self.ebr.as_ref().map_or(0, |diag| diag.pinned_threads);
+        let fc_total_ops = self.flat_combining.as_ref().map_or(0, |diag| diag.total_ops);
+        let fc_total_passes = self
+            .flat_combining
+            .as_ref()
+            .map_or(0, |diag| diag.total_passes);
+        let rcu_epoch = self.rcu.as_ref().map_or(0, |diag| diag.epoch);
+        let rcu_reader_count = self.rcu.as_ref().map_or(0, |diag| diag.reader_count);
+
+        format!(
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{level}\",\"event\":\"alien_cs_snapshot\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::snapshot\",\"decision_path\":\"alien_cs::snapshot::build\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"contention_score\":{},\"seqlock_reads\":{seqlock_reads},\"seqlock_writes\":{seqlock_writes},\"ebr_epoch\":{ebr_epoch},\"ebr_active_threads\":{ebr_active_threads},\"ebr_pinned_threads\":{ebr_pinned_threads},\"flat_combining_total_ops\":{fc_total_ops},\"flat_combining_total_passes\":{fc_total_passes},\"rcu_epoch\":{rcu_epoch},\"rcu_reader_count\":{rcu_reader_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}\n",
+            self.captured_at_ns, self.contention_score,
+        )
+    }
+}
+
+fn sanitize_trace_component(component: &str) -> String {
+    let sanitized: String = component
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if sanitized.is_empty() {
+        "unknown".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn now_utc_iso_like() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{:09}Z", now.as_secs(), now.subsec_nanos())
 }
 
 #[cfg(test)]
@@ -418,5 +544,112 @@ mod tests {
         let score = compute_contention_score(None, None, Some(&fc_diag));
         // 1/1 = 1.0 efficiency loss → high contention.
         assert!(score > 0.5, "expected high contention, got {}", score);
+    }
+
+    #[test]
+    fn metric_ring_export_jsonl_contains_required_fields() {
+        let ring = MetricRing::new(8);
+        ring.emit(MetricEventKind::SeqLockContention, 7, "seqlock");
+        ring.emit(MetricEventKind::EbrEpochAdvance, 2, "ebr");
+
+        let jsonl = ring.export_jsonl("bd-32e", "alien-cs-smoke");
+        let lines: Vec<_> = jsonl.lines().collect();
+        assert_eq!(lines.len(), 2);
+
+        for (index, line) in lines.iter().enumerate() {
+            let parsed: serde_json::Value =
+                serde_json::from_str(line).expect("exported line should be valid json");
+            for field in [
+                "timestamp",
+                "trace_id",
+                "bead_id",
+                "scenario_id",
+                "level",
+                "event",
+                "controller_id",
+                "api_family",
+                "symbol",
+                "decision_path",
+                "errno",
+                "latency_ns",
+                "metric_kind",
+                "metric_value",
+                "concept",
+                "artifact_refs",
+            ] {
+                assert!(parsed.get(field).is_some(), "missing field {field}");
+            }
+            assert_eq!(parsed["bead_id"], "bd-32e");
+            assert_eq!(parsed["scenario_id"], "alien-cs-smoke");
+            assert_eq!(parsed["api_family"], "alien_cs");
+            assert!(parsed["trace_id"]
+                .as_str()
+                .expect("trace_id must be string")
+                .contains("::"));
+            assert_eq!(parsed["artifact_refs"][0], "crates/frankenlibc-membrane/src/alien_cs_metrics.rs");
+            assert_eq!(parsed["metric_value"], if index == 0 { 7 } else { 2 });
+        }
+    }
+
+    #[test]
+    fn snapshot_export_jsonl_contains_aggregate_diagnostics() {
+        let snapshot = AlienCsSnapshot {
+            captured_at_ns: 42,
+            seqlock: Some(SeqLockDiagnostics {
+                reads: 11,
+                cache_hits: 9,
+                cache_misses: 2,
+                writes: 3,
+                contention_events: 1,
+                pending_writers: 0,
+                hit_ratio: 9.0 / 11.0,
+            }),
+            ebr: Some(EbrDiagnostics {
+                global_epoch: 5,
+                active_threads: 2,
+                pinned_threads: 1,
+                total_retired: 8,
+                total_reclaimed: 3,
+                pending_per_epoch: [1, 0, 0],
+            }),
+            flat_combining: Some(FlatCombinerDiagnostics {
+                total_ops: 13,
+                total_passes: 4,
+                max_batch_size: 5,
+                avg_batch_size: 3.25,
+                active_slots: 2,
+                total_slots: 8,
+            }),
+            rcu: Some(RcuMetrics {
+                epoch: 6,
+                reader_count: 3,
+            }),
+            contention_score: 0.8,
+        };
+
+        let jsonl = snapshot.export_jsonl("bd-32e", "aggregate");
+        let line = jsonl.lines().next().expect("snapshot row should exist");
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).expect("snapshot export should be valid json");
+
+        assert_eq!(parsed["event"], "alien_cs_snapshot");
+        assert_eq!(parsed["level"], "warn");
+        assert_eq!(parsed["bead_id"], "bd-32e");
+        assert_eq!(parsed["scenario_id"], "aggregate");
+        assert_eq!(parsed["contention_score"], 0.8);
+        assert_eq!(parsed["seqlock_reads"], 11);
+        assert_eq!(parsed["seqlock_writes"], 3);
+        assert_eq!(parsed["ebr_epoch"], 5);
+        assert_eq!(parsed["flat_combining_total_ops"], 13);
+        assert_eq!(parsed["rcu_epoch"], 6);
+        assert_eq!(parsed["rcu_reader_count"], 3);
+        assert_eq!(parsed["artifact_refs"][0], "crates/frankenlibc-membrane/src/alien_cs_metrics.rs");
+    }
+
+    #[test]
+    fn sanitize_trace_component_rewrites_non_identifier_bytes() {
+        assert_eq!(sanitize_trace_component("bd-32e"), "bd-32e");
+        assert_eq!(sanitize_trace_component("run id/1"), "run_id_1");
+        assert_eq!(sanitize_trace_component(""), "unknown");
     }
 }
