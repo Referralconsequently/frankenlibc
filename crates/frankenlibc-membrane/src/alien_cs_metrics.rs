@@ -12,6 +12,7 @@
 //! as appropriate for their context.
 
 use crate::ebr::EbrDiagnostics;
+use crate::ids::{DecisionId, MEMBRANE_SCHEMA_VERSION};
 use crate::flat_combining::FlatCombinerDiagnostics;
 use crate::seqlock::SeqLockDiagnostics;
 use std::fmt::Write as _;
@@ -211,10 +212,13 @@ impl MetricRing {
             String::with_capacity(events.len().saturating_mul(320).saturating_add(256));
 
         for (index, event) in events.iter().enumerate() {
+            let decision_id = DecisionId::from_raw((index + 1) as u64);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:03}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{}\",\"event\":\"{}\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::{}\",\"decision_path\":\"{}\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"metric_kind\":\"{}\",\"metric_value\":{},\"concept\":\"{}\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}",
-                index + 1,
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:03}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"schema_version\":\"{}\",\"level\":\"{}\",\"event\":\"{}\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::{}\",\"decision_path\":\"{}\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"metric_kind\":\"{}\",\"metric_value\":{},\"concept\":\"{}\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}",
+                decision_id.as_u64(),
+                decision_id.as_u64(),
+                MEMBRANE_SCHEMA_VERSION,
                 event.kind.level(),
                 event.kind.concept_event_name(),
                 event.concept,
@@ -332,7 +336,8 @@ impl AlienCsSnapshot {
         let rcu_reader_count = self.rcu.as_ref().map_or(0, |diag| diag.reader_count);
 
         format!(
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{level}\",\"event\":\"alien_cs_snapshot\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::snapshot\",\"decision_path\":\"alien_cs::snapshot::build\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"contention_score\":{},\"seqlock_reads\":{seqlock_reads},\"seqlock_writes\":{seqlock_writes},\"ebr_epoch\":{ebr_epoch},\"ebr_active_threads\":{ebr_active_threads},\"ebr_pinned_threads\":{ebr_pinned_threads},\"flat_combining_total_ops\":{fc_total_ops},\"flat_combining_total_passes\":{fc_total_passes},\"rcu_epoch\":{rcu_epoch},\"rcu_reader_count\":{rcu_reader_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}\n",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"{level}\",\"event\":\"alien_cs_snapshot\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::snapshot\",\"decision_path\":\"alien_cs::snapshot::build\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"contention_score\":{},\"seqlock_reads\":{seqlock_reads},\"seqlock_writes\":{seqlock_writes},\"ebr_epoch\":{ebr_epoch},\"ebr_active_threads\":{ebr_active_threads},\"ebr_pinned_threads\":{ebr_pinned_threads},\"flat_combining_total_ops\":{fc_total_ops},\"flat_combining_total_passes\":{fc_total_passes},\"rcu_epoch\":{rcu_epoch},\"rcu_reader_count\":{rcu_reader_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}\n",
+            MEMBRANE_SCHEMA_VERSION,
             self.captured_at_ns, self.contention_score,
         )
     }
@@ -564,6 +569,8 @@ mod tests {
                 "trace_id",
                 "bead_id",
                 "scenario_id",
+                "decision_id",
+                "schema_version",
                 "level",
                 "event",
                 "controller_id",
@@ -581,6 +588,8 @@ mod tests {
             }
             assert_eq!(parsed["bead_id"], "bd-32e");
             assert_eq!(parsed["scenario_id"], "alien-cs-smoke");
+            assert_eq!(parsed["decision_id"], (index + 1) as u64);
+            assert_eq!(parsed["schema_version"], "1.0");
             assert_eq!(parsed["api_family"], "alien_cs");
             assert!(parsed["trace_id"]
                 .as_str()
@@ -633,6 +642,8 @@ mod tests {
             serde_json::from_str(line).expect("snapshot export should be valid json");
 
         assert_eq!(parsed["event"], "alien_cs_snapshot");
+        assert_eq!(parsed["decision_id"], 0);
+        assert_eq!(parsed["schema_version"], "1.0");
         assert_eq!(parsed["level"], "warn");
         assert_eq!(parsed["bead_id"], "bd-32e");
         assert_eq!(parsed["scenario_id"], "aggregate");

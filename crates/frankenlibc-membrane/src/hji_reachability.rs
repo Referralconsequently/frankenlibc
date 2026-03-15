@@ -59,6 +59,7 @@
 //! Hamilton-Jacobi-Isaacs reachability analysis for attacker-controller
 //! safety boundaries.
 
+use crate::ids::MEMBRANE_SCHEMA_VERSION;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -423,7 +424,7 @@ pub fn viability_proof_artifact() -> HjiViabilityComputation {
         .collect();
 
     HjiViabilityComputation {
-        schema_version: "v1".to_string(),
+        schema_version: MEMBRANE_SCHEMA_VERSION.to_string(),
         model: "discrete_hji_risk_latency_adverse".to_string(),
         grid_resolution: GRID as u32,
         state_count: STATES as u32,
@@ -725,6 +726,7 @@ mod tests {
     #[test]
     fn viability_artifact_reports_expected_kernel_counts() {
         let artifact = viability_proof_artifact();
+        assert_eq!(artifact.schema_version, "1.0");
         assert_eq!(artifact.safe_kernel_volume, 48);
         assert_eq!(artifact.non_viable_volume, 16);
         assert_eq!(artifact.converged_iteration, 2);
