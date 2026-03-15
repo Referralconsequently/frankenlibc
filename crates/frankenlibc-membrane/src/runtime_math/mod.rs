@@ -11,7 +11,7 @@
 //! The runtime path remains deterministic and low overhead. Heavy synthesis
 //! stays offline; online code only executes compact control kernels.
 
-use crate::ids::{DecisionId, MEMBRANE_SCHEMA_VERSION, PolicyId};
+use crate::ids::{DecisionId, MEMBRANE_SCHEMA_VERSION, PolicyId, TraceId};
 
 pub mod admm_budget;
 pub mod alpha_investing;
@@ -4481,6 +4481,9 @@ impl RuntimeMathKernel {
         for card in cards {
             let decision_id = DecisionId::from_raw(card.decision_id);
             let policy_id = PolicyId::from_raw(card.decision.policy_id);
+            let dispatch_trace_id = decision_id.scoped_trace_id("runtime_math::dispatch");
+            let runtime_decision_trace_id = decision_id.scoped_trace_id("runtime_math::decision");
+            let runtime_evidence_trace_id = decision_id.scoped_trace_id("runtime_math::evidence");
             let action_name = action_name(card.decision.action);
             let level = level_for_action(card.decision.action);
             let family_name = family_name(card.context.family);
@@ -4490,8 +4493,8 @@ impl RuntimeMathKernel {
             let profile_name = profile_name(card.decision.profile);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:06}::dispatch\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"schema_version\":\"{}\",\"level\":\"trace\",\"event\":\"runtime_mode_dispatch\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision\":\"{decision_name}\",\"decision_action\":\"{action_name}\",\"decision_path\":\"mode->runtime_math_kernel->decision\",\"validation_profile\":\"{profile_name}\",\"mode\":\"{mode_label}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::dispatch\",\"healing_action\":{healing_action},\"errno\":0,\"latency_ns\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
-                decision_id.as_u64(),
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"schema_version\":\"{}\",\"level\":\"trace\",\"event\":\"runtime_mode_dispatch\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision\":\"{decision_name}\",\"decision_action\":\"{action_name}\",\"decision_path\":\"mode->runtime_math_kernel->decision\",\"validation_profile\":\"{profile_name}\",\"mode\":\"{mode_label}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::dispatch\",\"healing_action\":{healing_action},\"errno\":0,\"latency_ns\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                dispatch_trace_id.as_str(),
                 decision_id.as_u64(),
                 MEMBRANE_SCHEMA_VERSION,
                 card.estimated_cost_ns,
@@ -4499,8 +4502,8 @@ impl RuntimeMathKernel {
             );
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:06}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{level}\",\"event\":\"runtime_decision\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision\":\"{decision_name}\",\"decision_action\":\"{action_name}\",\"decision_path\":\"{decision_path}\",\"healing_action\":{healing_action},\"decision_id\":{},\"schema_version\":\"{}\",\"mode\":\"{}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::{family_name}\",\"errno\":0,\"latency_ns\":{},\"policy_id\":{},\"risk_upper_bound_ppm\":{},\"evidence_seqno\":{},\"overload_state\":\"{pressure_regime_label}\",\"degradation_active\":{degradation_active},\"overload_policy\":\"{overload_policy_label}\",\"overload_policy_count\":{overload_policy_count},\"pressure_score_milli\":{pressure_score_milli},\"pressure_raw_score_milli\":{pressure_raw_score_milli},\"risk_inputs\":{{\"requested_bytes\":{},\"bloom_negative\":{},\"is_write\":{},\"contention_hint\":{},\"addr_hint\":{},\"pressure_epoch\":{pressure_epoch},\"pressure_transition_count\":{pressure_transition_count}}},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
-                decision_id.as_u64(),
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"level\":\"{level}\",\"event\":\"runtime_decision\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision\":\"{decision_name}\",\"decision_action\":\"{action_name}\",\"decision_path\":\"{decision_path}\",\"healing_action\":{healing_action},\"decision_id\":{},\"schema_version\":\"{}\",\"mode\":\"{}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::{family_name}\",\"errno\":0,\"latency_ns\":{},\"policy_id\":{},\"risk_upper_bound_ppm\":{},\"evidence_seqno\":{},\"overload_state\":\"{pressure_regime_label}\",\"degradation_active\":{degradation_active},\"overload_policy\":\"{overload_policy_label}\",\"overload_policy_count\":{overload_policy_count},\"pressure_score_milli\":{pressure_score_milli},\"pressure_raw_score_milli\":{pressure_raw_score_milli},\"risk_inputs\":{{\"requested_bytes\":{},\"bloom_negative\":{},\"is_write\":{},\"contention_hint\":{},\"addr_hint\":{},\"pressure_epoch\":{pressure_epoch},\"pressure_transition_count\":{pressure_transition_count}}},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                runtime_decision_trace_id.as_str(),
                 decision_id.as_u64(),
                 MEMBRANE_SCHEMA_VERSION,
                 mode_label,
@@ -4517,8 +4520,8 @@ impl RuntimeMathKernel {
             if card.decision.evidence_seqno > 0 {
                 let _ = writeln!(
                     &mut out,
-                    "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::{:06}::evidence\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_evidence_emitted\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision_path\":\"evidence->record_decision\",\"mode\":\"{mode_label}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::evidence\",\"healing_action\":{healing_action},\"errno\":0,\"latency_ns\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
-                    decision_id.as_u64(),
+                    "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":{},\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_evidence_emitted\",\"controller_id\":\"runtime_math_kernel.v1\",\"decision_path\":\"evidence->record_decision\",\"mode\":\"{mode_label}\",\"api_family\":\"{family_name}\",\"symbol\":\"runtime_math::evidence\",\"healing_action\":{healing_action},\"errno\":0,\"latency_ns\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                    runtime_evidence_trace_id.as_str(),
                     decision_id.as_u64(),
                     MEMBRANE_SCHEMA_VERSION,
                     card.estimated_cost_ns,
@@ -4527,40 +4530,54 @@ impl RuntimeMathKernel {
             }
         }
 
+        let pressure_trace_id = runtime_scope_trace_id("runtime_math::pressure", bead_id, run_id);
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::pressure\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_pressure_sensor\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::pressure_sensor\",\"decision_path\":\"pressure_sensor::observe\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"overload_state\":\"{pressure_regime_label}\",\"degradation_active\":{degradation_active},\"pressure_score_milli\":{pressure_score_milli},\"pressure_raw_score_milli\":{pressure_raw_score_milli},\"pressure_epoch\":{pressure_epoch},\"pressure_transition_count\":{pressure_transition_count},\"overload_policy\":\"{overload_policy_label}\",\"overload_policy_count\":{overload_policy_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_pressure_sensor\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::pressure_sensor\",\"decision_path\":\"pressure_sensor::observe\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"overload_state\":\"{pressure_regime_label}\",\"degradation_active\":{degradation_active},\"pressure_score_milli\":{pressure_score_milli},\"pressure_raw_score_milli\":{pressure_raw_score_milli},\"pressure_epoch\":{pressure_epoch},\"pressure_transition_count\":{pressure_transition_count},\"overload_policy\":\"{overload_policy_label}\",\"overload_policy_count\":{overload_policy_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            pressure_trace_id.as_str(),
             MEMBRANE_SCHEMA_VERSION
         );
         if overload_policy_tag != OVERLOAD_POLICY_NONE {
+            let overload_trace_id =
+                runtime_scope_trace_id("runtime_math::overload_policy", bead_id, run_id);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::overload-policy\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_overload_policy_applied\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::degradation_policy\",\"decision_path\":\"pressure_sensor::degradation_policy\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"overload_state\":\"{pressure_regime_label}\",\"degradation_active\":{degradation_active},\"overload_policy\":\"{overload_policy_label}\",\"overload_policy_count\":{overload_policy_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_overload_policy_applied\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::degradation_policy\",\"decision_path\":\"pressure_sensor::degradation_policy\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"overload_state\":\"{pressure_regime_label}\",\"degradation_active\":{degradation_active},\"overload_policy\":\"{overload_policy_label}\",\"overload_policy_count\":{overload_policy_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                overload_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION
             );
         }
 
         let dominant_family_name = family_name(diversity.dominant_family);
+        let reverse_round_selection_trace_id =
+            runtime_scope_trace_id("runtime_math::reverse_round::selection", bead_id, run_id);
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::reverse_round::selection\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"debug\",\"event\":\"runtime_reverse_round_math_selection\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::math_family_selection\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"active_family_count\":{},\"total_decisions\":{},\"dominant_family\":\"{dominant_family_name}\",\"dominant_family_share_ppm\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"debug\",\"event\":\"runtime_reverse_round_math_selection\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::math_family_selection\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"active_family_count\":{},\"total_decisions\":{},\"dominant_family\":\"{dominant_family_name}\",\"dominant_family_share_ppm\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            reverse_round_selection_trace_id.as_str(),
             MEMBRANE_SCHEMA_VERSION,
             diversity.active_family_count,
             diversity.total_decisions,
             diversity.dominant_family_share_ppm,
         );
+        let reverse_round_coverage_trace_id =
+            runtime_scope_trace_id("runtime_math::reverse_round::coverage", bead_id, run_id);
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::reverse_round::coverage\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_reverse_round_coverage_milestone\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::coverage_milestone\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"active_family_count\":{},\"milestone_target\":{},\"milestone_reached\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_reverse_round_coverage_milestone\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::coverage_milestone\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"active_family_count\":{},\"milestone_target\":{},\"milestone_reached\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            reverse_round_coverage_trace_id.as_str(),
             MEMBRANE_SCHEMA_VERSION,
             diversity.active_family_count,
             diversity.coverage_milestone_target,
             diversity.coverage_milestone_reached,
         );
         if let Some((event, level)) = diversity.state.event_and_level() {
+            let reverse_round_diversity_trace_id =
+                runtime_scope_trace_id("runtime_math::reverse_round::diversity", bead_id, run_id);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::reverse_round::diversity\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"{level}\",\"event\":\"{event}\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::diversity_constraints\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"dominant_family\":\"{dominant_family_name}\",\"dominant_family_share_ppm\":{},\"warn_threshold_ppm\":{},\"error_threshold_ppm\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"{level}\",\"event\":\"{event}\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::reverse_round\",\"decision_path\":\"reverse_round::diversity_constraints\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"dominant_family\":\"{dominant_family_name}\",\"dominant_family_share_ppm\":{},\"warn_threshold_ppm\":{},\"error_threshold_ppm\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                reverse_round_diversity_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION,
                 diversity.dominant_family_share_ppm,
                 diversity.warn_threshold_ppm,
@@ -4568,9 +4585,12 @@ impl RuntimeMathKernel {
             );
         }
 
+        let calibration_trace_id =
+            runtime_scope_trace_id("runtime_math::snapshot::calibration", bead_id, run_id);
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::calibration\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"debug\",\"event\":\"runtime_calibration\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::calibration\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{snapshot_capture_latency_ns},\"snapshot_capture_latency_ns\":{snapshot_capture_latency_ns},\"snapshot_validated_field_count\":{snapshot_validated_field_count},\"full_validation_trigger_ppm\":{},\"repair_trigger_ppm\":{},\"design_selected_probes\":{},\"design_budget_ns\":{},\"sampled_risk_bonus_ppm\":{},\"policy_hash_prefix\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"debug\",\"event\":\"runtime_calibration\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::calibration\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{snapshot_capture_latency_ns},\"snapshot_capture_latency_ns\":{snapshot_capture_latency_ns},\"snapshot_validated_field_count\":{snapshot_validated_field_count},\"full_validation_trigger_ppm\":{},\"repair_trigger_ppm\":{},\"design_selected_probes\":{},\"design_budget_ns\":{},\"sampled_risk_bonus_ppm\":{},\"policy_hash_prefix\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            calibration_trace_id.as_str(),
             MEMBRANE_SCHEMA_VERSION,
             snapshot.full_validation_trigger_ppm,
             snapshot.repair_trigger_ppm,
@@ -4580,9 +4600,11 @@ impl RuntimeMathKernel {
             policy_hash_prefix,
         );
 
+        let snapshot_trace_id = runtime_scope_trace_id("runtime_math::snapshot", bead_id, run_id);
         let _ = writeln!(
             &mut out,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_snapshot\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::state\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"decisions\":{},\"consistency_faults\":{},\"pareto_cumulative_regret_milli\":{},\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_snapshot\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::state\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"decisions\":{},\"consistency_faults\":{},\"pareto_cumulative_regret_milli\":{},\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"evidence_seqno\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+            snapshot_trace_id.as_str(),
             MEMBRANE_SCHEMA_VERSION,
             snapshot.decisions,
             snapshot.consistency_faults,
@@ -4592,34 +4614,45 @@ impl RuntimeMathKernel {
             snapshot.evidence_seqno,
         );
 
+        let snapshot_range_trace_id =
+            runtime_scope_trace_id("runtime_math::snapshot::range", bead_id, run_id);
         for (field, observed, min_allowed, max_allowed) in snapshot_violations {
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::snapshot::range\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_snapshot_field_out_of_range\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::validate_fields\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"field\":\"{field}\",\"observed\":{observed},\"min_allowed\":{min_allowed},\"max_allowed\":{max_allowed},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_snapshot_field_out_of_range\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"snapshot::validate_fields\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"field\":\"{field}\",\"observed\":{observed},\"min_allowed\":{min_allowed},\"max_allowed\":{max_allowed},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                snapshot_range_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION,
             );
         }
 
         if policy_load_state == POLICY_LOAD_STATE_LOADED {
+            let certificate_trace_id =
+                runtime_scope_trace_id("runtime_math::certificate", bead_id, run_id);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::certificate\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_certificate_loaded\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"pass\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"info\",\"event\":\"runtime_certificate_loaded\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"pass\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                certificate_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION,
                 policy_hash_prefix,
             );
         } else if policy_load_state == POLICY_LOAD_STATE_VERIFY_FAILED {
+            let certificate_trace_id =
+                runtime_scope_trace_id("runtime_math::certificate", bead_id, run_id);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::certificate\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"error\",\"event\":\"runtime_certificate_verification_failed\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"fail\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"error\",\"event\":\"runtime_certificate_verification_failed\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"certificate::verify\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"policy_hash_prefix\":{},\"verification\":\"fail\",\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                certificate_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION,
                 policy_hash_prefix,
             );
         }
 
         if snapshot.pareto_cap_enforcements > 0 || snapshot.pareto_exhausted_families > 0 {
+            let regret_trace_id = runtime_scope_trace_id("runtime_math::regret", bead_id, run_id);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::regret\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_regret_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"pareto::regret\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_regret_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"pareto::regret\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"pareto_cap_enforcements\":{},\"pareto_exhausted_families\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                regret_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION,
                 snapshot.pareto_cap_enforcements, snapshot.pareto_exhausted_families,
             );
@@ -4630,9 +4663,11 @@ impl RuntimeMathKernel {
             || snapshot.doob_max_drift > f64::EPSILON
             || snapshot.wasserstein_aggregate_distance > f64::EPSILON
         {
+            let drift_trace_id = runtime_scope_trace_id("runtime_math::drift", bead_id, run_id);
             let _ = writeln!(
                 &mut out,
-                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{bead}::{run}::drift\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_drift_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"drift::monitor\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"padic_drift_count\":{},\"equivariant_drift_count\":{},\"doob_max_drift\":{},\"wasserstein_aggregate_distance\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"warn\",\"event\":\"runtime_drift_alert\",\"controller_id\":\"runtime_math_kernel.v1\",\"mode\":\"{mode_label}\",\"api_family\":\"runtime_math\",\"symbol\":\"runtime_math::kernel\",\"decision_path\":\"drift::monitor\",\"healing_action\":null,\"errno\":0,\"latency_ns\":0,\"padic_drift_count\":{},\"equivariant_drift_count\":{},\"doob_max_drift\":{},\"wasserstein_aggregate_distance\":{},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/runtime_math/mod.rs\"]}}",
+                drift_trace_id.as_str(),
                 MEMBRANE_SCHEMA_VERSION,
                 snapshot.padic_drift_count,
                 snapshot.equivariant_drift_count,
@@ -4841,6 +4876,10 @@ fn decision_path(action: MembraneAction) -> &'static str {
         MembraneAction::Repair(_) => "risk->bandit->control->barrier->repair",
         MembraneAction::Deny => "risk->bandit->control->barrier->deny",
     }
+}
+
+fn runtime_scope_trace_id(scope: &'static str, bead_id: &str, run_id: &str) -> TraceId {
+    TraceId::new(format!("{scope}::{bead_id}::{run_id}"))
 }
 
 fn healing_action_json(action: MembraneAction) -> &'static str {
@@ -5755,8 +5794,8 @@ mod tests {
                 parsed
                     .get("trace_id")
                     .and_then(Value::as_str)
-                    .is_some_and(|trace_id| trace_id.contains("::")),
-                "trace_id must include scope separators"
+                    .is_some_and(|trace_id| trace_id.starts_with("runtime_math::")),
+                "trace_id must use canonical runtime_math scope"
             );
             assert_eq!(
                 parsed.get("bead_id").and_then(Value::as_str),
@@ -5813,6 +5852,15 @@ mod tests {
                             path.starts_with("risk->bandit->control->barrier->")
                         }),
                     "decision_path must include deterministic kernel pipeline prefix"
+                );
+                assert!(
+                    parsed
+                        .get("trace_id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|trace_id| {
+                            trace_id.starts_with("runtime_math::decision::")
+                        }),
+                    "runtime_decision rows must use canonical decision trace scope"
                 );
                 if decision_action == "Repair" {
                     assert!(
