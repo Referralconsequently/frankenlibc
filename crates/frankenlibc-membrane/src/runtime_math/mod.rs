@@ -5669,17 +5669,57 @@ mod tests {
             "bd-5vr.1",
             "framework-log",
         );
+        let rows: Vec<Value> = export
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<Value>(line).expect("framework log line must parse"))
+            .collect();
+        let runtime_decision_row = rows
+            .iter()
+            .find(|row| {
+                row.get("event")
+                    .and_then(Value::as_str)
+                    .is_some_and(|event| event == "runtime_decision")
+            })
+            .expect("framework export must include runtime_decision rows");
+        assert_eq!(runtime_decision_row["bead_id"].as_str(), Some("bd-5vr.1"));
+        assert_eq!(runtime_decision_row["scenario_id"].as_str(), Some("framework-log"));
+        assert_eq!(runtime_decision_row["schema_version"].as_str(), Some("1.0"));
+        assert_eq!(runtime_decision_row["api_family"].as_str(), Some("allocator"));
         assert!(
-            export.contains("\"event\":\"runtime_decision\""),
-            "framework export must include runtime_decision rows"
+            runtime_decision_row["trace_id"]
+                .as_str()
+                .is_some_and(|trace_id| trace_id.starts_with("runtime_math::decision::"))
+        );
+        assert_eq!(
+            runtime_decision_row["artifact_refs"]
+                .as_array()
+                .and_then(|refs| refs.first())
+                .and_then(Value::as_str),
+            Some("crates/frankenlibc-membrane/src/runtime_math/mod.rs")
+        );
+
+        let reverse_round_selection_row = rows
+            .iter()
+            .find(|row| {
+                row.get("event")
+                    .and_then(Value::as_str)
+                    .is_some_and(|event| event == "runtime_reverse_round_math_selection")
+            })
+            .expect("framework export must include reverse-round selection rows");
+        assert_eq!(reverse_round_selection_row["bead_id"].as_str(), Some("bd-5vr.1"));
+        assert_eq!(reverse_round_selection_row["scenario_id"].as_str(), Some("framework-log"));
+        assert_eq!(reverse_round_selection_row["schema_version"].as_str(), Some("1.0"));
+        assert_eq!(
+            reverse_round_selection_row["api_family"].as_str(),
+            Some("runtime_math")
         );
         assert!(
-            export.contains("\"event\":\"runtime_reverse_round_math_selection\""),
-            "framework export must include reverse-round selection rows"
-        );
-        assert!(
-            export.contains("\"bead_id\":\"bd-5vr.1\""),
-            "framework export must preserve bead id for traceability"
+            reverse_round_selection_row["trace_id"]
+                .as_str()
+                .is_some_and(|trace_id| {
+                    trace_id.starts_with("runtime_math::reverse_round::selection::")
+                })
         );
     }
 
