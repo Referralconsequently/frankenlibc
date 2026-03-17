@@ -6750,6 +6750,110 @@ mod tests {
     }
 
     #[test]
+    fn runtime_math_log_jsonl_exports_snapshot_field_range_violations() {
+        let kernel = RuntimeMathKernel::new();
+        kernel.cached_pressure_regime.store(99, Ordering::Relaxed);
+        kernel
+            .cached_pressure_score_milli
+            .store(200_000, Ordering::Relaxed);
+        kernel
+            .cached_pressure_raw_score_milli
+            .store(200_000, Ordering::Relaxed);
+        kernel.cached_overload_policy_tag.store(99, Ordering::Relaxed);
+
+        let jsonl = kernel.export_runtime_math_log_jsonl(
+            SafetyLevel::Strict,
+            "bd-epeg",
+            "snapshot-range-violations",
+        );
+
+        let violation_rows: Vec<Value> = jsonl
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<Value>(line).expect("runtime log line must parse"))
+            .filter(|row| {
+                row.get("event")
+                    .and_then(Value::as_str)
+                    .is_some_and(|event| event == "runtime_snapshot_field_out_of_range")
+            })
+            .collect();
+
+        assert_eq!(
+            violation_rows.len(),
+            4,
+            "expected one warning row per invalid snapshot field"
+        );
+
+        let mut seen_fields = BTreeSet::new();
+        for row in &violation_rows {
+            assert_eq!(row["bead_id"].as_str(), Some("bd-epeg"));
+            assert_eq!(
+                row["scenario_id"].as_str(),
+                Some("snapshot-range-violations")
+            );
+            assert_eq!(row["schema_version"].as_str(), Some("1.0"));
+            assert_eq!(row["level"].as_str(), Some("warn"));
+            assert_eq!(row["api_family"].as_str(), Some("runtime_math"));
+            assert_eq!(row["symbol"].as_str(), Some("runtime_math::kernel"));
+            assert_eq!(
+                row["decision_path"].as_str(),
+                Some("snapshot::validate_fields")
+            );
+            assert!(
+                row["trace_id"].as_str().is_some_and(|trace_id| {
+                    trace_id.starts_with("runtime_math::snapshot::range::")
+                }),
+                "snapshot violation trace_id must use canonical range scope"
+            );
+            assert_eq!(
+                row["artifact_refs"]
+                    .as_array()
+                    .and_then(|refs| refs.first())
+                    .and_then(Value::as_str),
+                Some("crates/frankenlibc-membrane/src/runtime_math/mod.rs")
+            );
+            let field = row["field"]
+                .as_str()
+                .expect("violation row must include field name");
+            seen_fields.insert(field.to_string());
+            match field {
+                "pressure_regime_code" => {
+                    assert_eq!(row["observed"].as_u64(), Some(99));
+                    assert_eq!(row["min_allowed"].as_f64(), Some(0.0));
+                    assert_eq!(
+                        row["max_allowed"].as_f64(),
+                        Some(f64::from(PRESSURE_REGIME_RECOVERY))
+                    );
+                }
+                "pressure_score_milli" | "pressure_raw_score_milli" => {
+                    assert_eq!(row["observed"].as_u64(), Some(200_000));
+                    assert_eq!(row["min_allowed"].as_f64(), Some(0.0));
+                    assert_eq!(row["max_allowed"].as_f64(), Some(100_000.0));
+                }
+                "overload_policy_tag" => {
+                    assert_eq!(row["observed"].as_u64(), Some(99));
+                    assert_eq!(row["min_allowed"].as_f64(), Some(0.0));
+                    assert_eq!(
+                        row["max_allowed"].as_f64(),
+                        Some(f64::from(OVERLOAD_POLICY_OVERLOADED_SAFE_FALLBACK))
+                    );
+                }
+                other => panic!("unexpected snapshot violation field {other}"),
+            }
+        }
+
+        assert_eq!(
+            seen_fields,
+            BTreeSet::from([
+                "overload_policy_tag".to_string(),
+                "pressure_raw_score_milli".to_string(),
+                "pressure_regime_code".to_string(),
+                "pressure_score_milli".to_string(),
+            ])
+        );
+    }
+
+    #[test]
     fn snapshot_literal_never_relocks_summary_mutexes() {
         let src = include_str!("mod.rs");
         let snapshot_fn_start = src
