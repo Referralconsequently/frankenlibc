@@ -5939,6 +5939,7 @@ mod tests {
 
         let jsonl =
             kernel.export_runtime_math_log_jsonl(SafetyLevel::Hardened, "bd-5vr.8", "smoke-1");
+        let snapshot = kernel.snapshot(SafetyLevel::Hardened);
         let lines: Vec<&str> = jsonl
             .lines()
             .filter(|line| !line.trim().is_empty())
@@ -6145,6 +6146,36 @@ mod tests {
         assert!(
             calibration_row["snapshot_capture_latency_ns"].as_u64().is_some(),
             "runtime_calibration row must include snapshot capture timing"
+        );
+        assert!(
+            calibration_row["snapshot_validated_field_count"]
+                .as_u64()
+                .is_some_and(|count| count == snapshot_validation_field_count() as u64),
+            "runtime_calibration row must report the validated snapshot field count"
+        );
+        assert_eq!(
+            calibration_row["full_validation_trigger_ppm"].as_u64(),
+            Some(u64::from(snapshot.full_validation_trigger_ppm))
+        );
+        assert_eq!(
+            calibration_row["repair_trigger_ppm"].as_u64(),
+            Some(u64::from(snapshot.repair_trigger_ppm))
+        );
+        assert_eq!(
+            calibration_row["design_selected_probes"].as_u64(),
+            Some(u64::from(snapshot.design_selected_probes))
+        );
+        assert_eq!(
+            calibration_row["design_budget_ns"].as_u64(),
+            Some(snapshot.design_budget_ns)
+        );
+        assert_eq!(
+            calibration_row["sampled_risk_bonus_ppm"].as_u64(),
+            Some(u64::from(snapshot.sampled_risk_bonus_ppm))
+        );
+        assert_eq!(
+            calibration_row["policy_hash_prefix"].as_u64(),
+            Some(snapshot.policy_hash_prefix)
         );
 
         let reverse_round_selection_row = parsed_rows
