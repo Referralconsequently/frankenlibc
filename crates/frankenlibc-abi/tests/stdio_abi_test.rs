@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use frankenlibc_abi::io_internal_abi::{
     _IO_fclose, _IO_fdopen, _IO_fflush, _IO_fgetpos, _IO_fgetpos64, _IO_fgets, _IO_file_close,
-    _IO_file_close_it, _IO_file_read, _IO_file_setbuf, _IO_file_sync, _IO_file_write,
+    _IO_file_close_it, _IO_file_overflow, _IO_file_read, _IO_file_seek, _IO_file_seekoff,
+    _IO_file_setbuf, _IO_file_stat, _IO_file_sync, _IO_file_underflow, _IO_file_write,
     _IO_file_xsputn, _IO_flush_all, _IO_fopen, _IO_fprintf, _IO_fputs, _IO_fread, _IO_fsetpos,
     _IO_fsetpos64, _IO_ftell, _IO_fwrite, _IO_printf, _IO_setbuffer, _IO_setvbuf, _IO_sprintf,
     _IO_sscanf, _IO_ungetc, _IO_vfprintf, _IO_vsprintf,
@@ -2363,6 +2364,38 @@ fn io_internal_file_close_it_closes_stream_natively() {
 
     assert_eq!(unsafe { _IO_file_close_it(stream) }, 0);
     assert_eq!(fs::read(&path).expect("close_it should flush data"), b"close-it");
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn io_internal_file_seek_stat_and_buffer_edges_use_native_stdio_paths() {
+    let path = temp_path("io_internal_file_seek_stat");
+    let _ = fs::remove_file(&path);
+    let path_c = path_cstring(&path);
+
+    let stream = unsafe { _IO_fopen(path_c.as_ptr(), c"w+".as_ptr()) };
+    assert!(!stream.is_null());
+
+    assert_eq!(unsafe { _IO_file_overflow(stream, b'A' as c_int) }, b'A' as c_int);
+    assert_eq!(unsafe { _IO_file_overflow(stream, b'B' as c_int) }, b'B' as c_int);
+    assert_eq!(unsafe { _IO_file_overflow(stream, libc::EOF) }, 0);
+
+    assert_eq!(unsafe { _IO_file_seek(stream, 1, libc::SEEK_SET) }, 1);
+    assert_eq!(unsafe { _IO_file_underflow(stream) }, b'B' as c_int);
+    assert_eq!(unsafe { fgetc(stream) }, b'B' as c_int);
+
+    assert_eq!(unsafe { _IO_file_seekoff(stream, 0, libc::SEEK_END, 0) }, 2);
+
+    let mut stat_buf = std::mem::MaybeUninit::<libc::stat>::zeroed();
+    assert_eq!(
+        unsafe { _IO_file_stat(stream, stat_buf.as_mut_ptr().cast::<c_void>()) },
+        0
+    );
+    let stat_buf = unsafe { stat_buf.assume_init() };
+    assert_eq!(stat_buf.st_size, 2);
+
+    assert_eq!(unsafe { _IO_file_close(stream) }, 0);
+    assert_eq!(fs::read(&path).expect("overflow writes should flush to disk"), b"AB");
     let _ = fs::remove_file(path);
 }
 

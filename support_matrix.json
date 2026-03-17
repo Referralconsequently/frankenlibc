@@ -16296,7 +16296,7 @@
     },
     {
       "symbol": "_IO_file_overflow",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16306,12 +16306,12 @@
     },
     {
       "symbol": "_IO_file_seek",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_file_seekoff",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16321,7 +16321,7 @@
     },
     {
       "symbol": "_IO_file_stat",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16331,7 +16331,7 @@
     },
     {
       "symbol": "_IO_file_underflow",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {

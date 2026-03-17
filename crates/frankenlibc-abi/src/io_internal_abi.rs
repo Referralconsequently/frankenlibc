@@ -387,10 +387,14 @@ pub unsafe extern "C" fn _IO_file_open(
 /// `_IO_file_overflow` — handle write buffer overflow.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_overflow(fp: *mut c_void, ch: c_int) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
-    match io_resolve!(c"_IO_file_overflow", Fn) {
-        Some(f) => unsafe { f(fp, ch) },
-        None => -1,
+    if ch == libc::EOF {
+        if unsafe { stdio_abi::fflush(fp) } == 0 {
+            0
+        } else {
+            libc::EOF
+        }
+    } else {
+        unsafe { stdio_abi::fputc(ch, fp) }
     }
 }
 
@@ -406,11 +410,10 @@ pub unsafe extern "C" fn _IO_file_read(fp: *mut c_void, buf: *mut c_void, n: isi
 /// `_IO_file_seek` — seek on underlying fd.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_seek(fp: *mut c_void, offset: i64, dir: c_int) -> i64 {
-    type Fn = unsafe extern "C" fn(*mut c_void, i64, c_int) -> i64;
-    match io_resolve!(c"_IO_file_seek", Fn) {
-        Some(f) => unsafe { f(fp, offset, dir) },
-        None => -1,
+    if unsafe { stdio_abi::fseeko(fp, offset, dir) } != 0 {
+        return -1;
     }
+    unsafe { stdio_abi::ftello(fp) }
 }
 
 /// `_IO_file_seekoff` — seek with mode flags.
@@ -419,13 +422,12 @@ pub unsafe extern "C" fn _IO_file_seekoff(
     fp: *mut c_void,
     offset: i64,
     dir: c_int,
-    mode: c_int,
+    _mode: c_int,
 ) -> i64 {
-    type Fn = unsafe extern "C" fn(*mut c_void, i64, c_int, c_int) -> i64;
-    match io_resolve!(c"_IO_file_seekoff", Fn) {
-        Some(f) => unsafe { f(fp, offset, dir, mode) },
-        None => -1,
+    if unsafe { stdio_abi::fseeko(fp, offset, dir) } != 0 {
+        return -1;
     }
+    unsafe { stdio_abi::ftello(fp) }
 }
 
 /// `_IO_file_setbuf` — set FILE buffer.
@@ -445,11 +447,11 @@ pub unsafe extern "C" fn _IO_file_setbuf(
 /// `_IO_file_stat` — stat the underlying fd.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_stat(fp: *mut c_void, st: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_file_stat", Fn) {
-        Some(f) => unsafe { f(fp, st) },
-        None => -1,
+    let fd = unsafe { stdio_abi::fileno(fp) };
+    if fd < 0 {
+        return -1;
     }
+    unsafe { crate::unistd_abi::fstat(fd, st.cast::<libc::stat>()) }
 }
 
 /// `_IO_file_sync` — synchronize FILE buffer with fd.
@@ -461,11 +463,11 @@ pub unsafe extern "C" fn _IO_file_sync(fp: *mut c_void) -> c_int {
 /// `_IO_file_underflow` — handle read buffer underflow.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_underflow(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_file_underflow", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
+    let ch = unsafe { stdio_abi::fgetc(fp) };
+    if ch != libc::EOF {
+        let _ = unsafe { stdio_abi::ungetc(ch, fp) };
     }
+    ch
 }
 
 /// `_IO_file_write` — write to underlying fd.

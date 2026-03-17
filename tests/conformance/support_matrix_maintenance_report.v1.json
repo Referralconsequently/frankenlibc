@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-3g4p",
-  "generated_at": "2026-03-17T05:46:43Z",
+  "generated_at": "2026-03-17T06:23:08Z",
   "summary": {
     "total_symbols": 3980,
     "status_validated": 3980,
@@ -16,31 +16,31 @@
   "coverage_dashboard": {
     "total_symbols": 3980,
     "status_counts": {
-      "Implemented": 3436,
+      "Implemented": 3441,
       "RawSyscall": 406,
-      "GlibcCallThrough": 138,
+      "GlibcCallThrough": 133,
       "Stub": 0
     },
     "status_share_pct": {
-      "Implemented": 86.3,
+      "Implemented": 86.5,
       "RawSyscall": 10.2,
-      "GlibcCallThrough": 3.5,
+      "GlibcCallThrough": 3.3,
       "Stub": 0.0
     },
-    "native_coverage_pct": 96.5
+    "native_coverage_pct": 96.7
   },
   "trend": {
     "baseline_report_path": "/data/projects/frankenlibc/tests/conformance/support_matrix_maintenance_report.v1.json",
     "baseline_loaded": true,
     "baseline_symbol_map_loaded": true,
     "status_count_delta": {
-      "GlibcCallThrough": -7,
-      "Implemented": 7,
+      "GlibcCallThrough": -5,
+      "Implemented": 5,
       "RawSyscall": 0,
       "Stub": 0
     },
-    "native_coverage_pct_delta": 0.13,
-    "reclassified_symbol_count": 7,
+    "native_coverage_pct_delta": 0.16,
+    "reclassified_symbol_count": 5,
     "new_symbol_count": 0,
     "removed_symbol_count": 0,
     "new_symbols": [],
@@ -56,10 +56,10 @@
     "reclassification_requires_conformance": {
       "status": "fail",
       "baseline_symbol_map_loaded": true,
-      "total_reclassified": 7,
+      "total_reclassified": 5,
       "violations": [
         {
-          "symbol": "_IO_file_close",
+          "symbol": "_IO_file_overflow",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -75,7 +75,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_close_it",
+          "symbol": "_IO_file_seek",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -91,7 +91,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_read",
+          "symbol": "_IO_file_seekoff",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -107,7 +107,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_setbuf",
+          "symbol": "_IO_file_stat",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -123,39 +123,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_sync",
-          "previous_status": "GlibcCallThrough",
-          "current_status": "Implemented",
-          "strict_fixture_count": 0,
-          "hardened_fixture_count": 0,
-          "strict_conformance": null,
-          "hardened_conformance": null,
-          "conformance_evidence_passed": false,
-          "missing_evidence": [
-            "missing_strict_fixture",
-            "missing_hardened_fixture",
-            "strict_conformance_not_passing",
-            "hardened_conformance_not_passing"
-          ]
-        },
-        {
-          "symbol": "_IO_file_write",
-          "previous_status": "GlibcCallThrough",
-          "current_status": "Implemented",
-          "strict_fixture_count": 0,
-          "hardened_fixture_count": 0,
-          "strict_conformance": null,
-          "hardened_conformance": null,
-          "conformance_evidence_passed": false,
-          "missing_evidence": [
-            "missing_strict_fixture",
-            "missing_hardened_fixture",
-            "strict_conformance_not_passing",
-            "hardened_conformance_not_passing"
-          ]
-        },
-        {
-          "symbol": "_IO_file_xsputn",
+          "symbol": "_IO_file_underflow",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -175,11 +143,11 @@
   },
   "status_distribution": {
     "GlibcCallThrough": {
-      "count": 138,
+      "count": 133,
       "fixture_linked": 4
     },
     "Implemented": {
-      "count": 3436,
+      "count": 3441,
       "fixture_linked": 146
     },
     "RawSyscall": {
@@ -423,14 +391,14 @@
     "_IO_file_init": "GlibcCallThrough",
     "_IO_file_jumps": "GlibcCallThrough",
     "_IO_file_open": "GlibcCallThrough",
-    "_IO_file_overflow": "GlibcCallThrough",
+    "_IO_file_overflow": "Implemented",
     "_IO_file_read": "Implemented",
-    "_IO_file_seek": "GlibcCallThrough",
-    "_IO_file_seekoff": "GlibcCallThrough",
+    "_IO_file_seek": "Implemented",
+    "_IO_file_seekoff": "Implemented",
     "_IO_file_setbuf": "Implemented",
-    "_IO_file_stat": "GlibcCallThrough",
+    "_IO_file_stat": "Implemented",
     "_IO_file_sync": "Implemented",
-    "_IO_file_underflow": "GlibcCallThrough",
+    "_IO_file_underflow": "Implemented",
     "_IO_file_write": "Implemented",
     "_IO_file_xsputn": "Implemented",
     "_IO_flockfile": "Implemented",
@@ -4373,7 +4341,7 @@
   },
   "reclassified_symbols": [
     {
-      "symbol": "_IO_file_close",
+      "symbol": "_IO_file_overflow",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4389,7 +4357,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_close_it",
+      "symbol": "_IO_file_seek",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4405,7 +4373,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_read",
+      "symbol": "_IO_file_seekoff",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4421,7 +4389,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_setbuf",
+      "symbol": "_IO_file_stat",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4437,39 +4405,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_sync",
-      "previous_status": "GlibcCallThrough",
-      "current_status": "Implemented",
-      "strict_fixture_count": 0,
-      "hardened_fixture_count": 0,
-      "strict_conformance": null,
-      "hardened_conformance": null,
-      "conformance_evidence_passed": false,
-      "missing_evidence": [
-        "missing_strict_fixture",
-        "missing_hardened_fixture",
-        "strict_conformance_not_passing",
-        "hardened_conformance_not_passing"
-      ]
-    },
-    {
-      "symbol": "_IO_file_write",
-      "previous_status": "GlibcCallThrough",
-      "current_status": "Implemented",
-      "strict_fixture_count": 0,
-      "hardened_fixture_count": 0,
-      "strict_conformance": null,
-      "hardened_conformance": null,
-      "conformance_evidence_passed": false,
-      "missing_evidence": [
-        "missing_strict_fixture",
-        "missing_hardened_fixture",
-        "strict_conformance_not_passing",
-        "hardened_conformance_not_passing"
-      ]
-    },
-    {
-      "symbol": "_IO_file_xsputn",
+      "symbol": "_IO_file_underflow",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
