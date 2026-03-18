@@ -389,10 +389,7 @@ evidence / metrics update
 pointer or failure returned
 ```
 
-Why it matters:
-
-- allocator surfaces are among the highest-risk parts of libc
-- temporal safety and ownership checks are meaningful here, not just decorative
+Allocator surfaces are among the highest-risk parts of libc, and temporal safety and ownership checks are meaningful here, not decorative.
 
 ### `memcpy` / string-family writes
 
@@ -412,10 +409,7 @@ hardened: clamp / truncate / deny
 native string kernel
 ```
 
-Why it matters:
-
-- this is where hardened-mode repair stops being abstract
-- string and memory APIs are both ubiquitous and dangerous
+String and memory APIs are both ubiquitous and dangerous; this is where hardened-mode repair stops being abstract.
 
 ### `fopen` / `fread` / `fwrite`
 
@@ -433,9 +427,7 @@ seek / flush / stat / internal _IO_* compatibility behavior
 evidence and support reports keep the claims honest
 ```
 
-Why it matters:
-
-- stdio and internal `_IO_*` surfaces are large enough that progress must be made incrementally and audited symbol by symbol
+The stdio and internal `_IO_*` surfaces are large enough that progress must be made incrementally and audited symbol by symbol.
 
 ## Common Commands
 
@@ -468,7 +460,7 @@ Typical ordering rationale:
 4. arena and integrity validation once plausibility is established
 5. bounds and policy checks once the object is believed to be real
 
-That structure exists to preserve three properties at once:
+The ordering preserves three properties:
 
 - fast paths stay fast
 - suspicious paths get deeper scrutiny
@@ -555,7 +547,7 @@ Why this boundary is attractive:
 - it is close enough to real behavior to matter, but abstract enough to instrument systematically
 - `LD_PRELOAD` gives an immediate deployment story for experiments
 
-That does not make libc a total solution. It makes libc a strategically valuable intervention point.
+Libc is not a total solution, but it is a strategically valuable intervention point.
 
 ## What FrankenLibC Is Not
 
@@ -570,7 +562,7 @@ To avoid the wrong mental model:
 
 ## Pointer-Safety Model
 
-The membrane’s pointer-safety story is really a composition of several checks, not one giant magic oracle.
+The membrane’s pointer-safety model is a composition of several checks, not a single oracle.
 
 | Concern | Mechanism |
 |---|---|
@@ -581,7 +573,7 @@ The membrane’s pointer-safety story is really a composition of several checks,
 | suspicious state transitions | policy classification and runtime decision routing |
 | unsafe-but-repairable behavior | deterministic healing actions |
 
-This matters because most real memory-unsafety stories are mixed failures, not single clean categories. A useful system needs ownership, temporal, integrity, and bounds reasoning to cooperate.
+Most real memory-unsafety incidents are mixed failures, not single clean categories. A useful system needs ownership, temporal, integrity, and bounds reasoning to cooperate.
 
 ## How The Transparent Safety Membrane Works
 
@@ -607,7 +599,7 @@ bounds / state checks
 Allow | Repair | Deny
 ```
 
-That classification is what makes strict vs hardened meaningful:
+The classification outcome determines strict vs hardened behavior:
 
 | Mode | Membrane behavior |
 |---|---|
@@ -637,7 +629,7 @@ FrankenLibC is unusually explicit about the algorithms it uses. Some of the impo
 | Runtime policy routing | `runtime_policy.rs` and membrane runtime math | Lets the boundary choose between fast/full/repair/deny styles of behavior |
 | Fixture-driven conformance | harness + `tests/conformance/fixtures` | Lets behavior claims be compared against host libc concretely |
 
-None of these are there for aesthetic reasons. Each one exists to solve a specific pressure point in libc replacement:
+Each of these solves a specific pressure point in libc replacement:
 
 - compatibility pressure
 - safety pressure
@@ -645,9 +637,9 @@ None of these are there for aesthetic reasons. Each one exists to solve a specif
 - observability pressure
 - staged-migration pressure
 
-## Runtime Math: What It Is And Why It Exists
+## Runtime Math Controllers
 
-The `runtime_math/` tree is one of the most distinctive parts of the project. It exists to encode runtime decision logic for validation depth, risk handling, admissibility, and control under pressure.
+The `runtime_math/` tree encodes runtime decision logic for validation depth, risk handling, admissibility, and control under pressure.
 
 Representative families already present in the repo:
 
@@ -659,11 +651,7 @@ Representative families already present in the repo:
 | Statistical drift / anomaly detection | `kernel_mmd.rs`, `wasserstein_drift.rs`, `matrix_concentration.rs`, `transfer_entropy.rs` |
 | Certified safety machinery | `hji_reachability.rs`, `sos_barrier.rs`, `sos_invariant.rs`, `mean_field_game.rs` |
 
-The README-friendly summary is:
-
-- offline proofs and synthesis can be heavyweight
-- runtime behavior must stay compact and deterministic
-- the codebase therefore ships controller kernels and evidence structures, not giant theorem provers in the hot path
+Offline proofs and synthesis can be heavyweight, but runtime behavior must stay compact and deterministic. The codebase ships controller kernels and evidence structures, not theorem provers in the hot path.
 
 ## Replacement Strategy
 
@@ -758,7 +746,7 @@ This table is intentionally qualitative. Exact numeric truth still belongs in th
 
 ## Verification Model
 
-FrankenLibC is more than a library build. The project is organized around verification artifacts:
+The project is organized around verification artifacts:
 
 - `support_matrix.json`: per-symbol status taxonomy
 - `tests/conformance/support_matrix_maintenance_report.v1.json`: canonical maintenance snapshot
@@ -766,7 +754,7 @@ FrankenLibC is more than a library build. The project is organized around verifi
 - `tests/runtime_math/golden/`: runtime math snapshot goldens
 - `scripts/check_*.sh`: drift, closure, smoke, and policy gates
 
-That verification stack exists to answer different questions:
+Each artifact or gate answers a specific question:
 
 | Question | Artifact or gate |
 |---|---|
@@ -835,7 +823,7 @@ bash scripts/check_release_gate.sh
 
 ## Verification Artifact Catalog
 
-One of the easiest ways to get lost in this repo is to see many reports without knowing which ones answer which questions. This table is the shortcut.
+The repo has many report artifacts. This table maps them to the questions they answer.
 
 | Artifact | Role |
 |---|---|
@@ -853,7 +841,7 @@ The project artifacts fall into three categories:
 - evidence about what happened
 - gates that compare the two
 
-That distinction helps when reading the repo.
+Keeping those categories separate helps when reading the repo.
 
 ## Artifact Matrix
 
@@ -886,11 +874,9 @@ smoke / fixture / maintenance evidence
 release and closure reconciliation
 ```
 
-That lifecycle is why the repo has both code and many report/gate scripts. Without that loop, a project like this drifts into self-deception quickly.
+Without that loop, a project like this drifts into self-deception quickly.
 
 ## Road To Standalone Replace
-
-The README now makes the interpose-vs-replace distinction explicit, but it is worth spelling out the progression more concretely.
 
 ## Interpose Artifact vs Replace Artifact
 
@@ -1131,7 +1117,7 @@ Each size class is backed by **64 KB slabs**, and every individual allocation ca
 
 Each thread maintains a **magazine-based cache** with a LIFO stack of free objects per size class:
 
-- **64 objects per class per thread** -- up to **2,048 cached objects** per thread across all 32 classes
+- **64 objects per class per thread**, up to **2,048 cached objects** per thread across all 32 classes
 - Thread-local alloc/free stays entirely lock-free until a magazine overflows or drains
 - Overflow spills back to the sharded central allocator
 
@@ -1181,7 +1167,7 @@ Stdio buffering follows POSIX semantics with three modes:
 | Line buffered | `_IOLBF` (1) | Flush on newline (`\n`) |
 | Unbuffered | `_IONBF` (2) | No buffering; immediate write-through |
 
-The default buffer size is **8192 bytes** (`BUFSIZ`). The implementation enforces POSIX's requirement that `setvbuf` cannot be called after I/O has started on a stream -- mode is monotonically locked after the first operation.
+The default buffer size is **8192 bytes** (`BUFSIZ`). The implementation enforces POSIX's requirement that `setvbuf` cannot be called after I/O has started on a stream; mode is monotonically locked after the first operation.
 
 Line-buffered writes use a reverse scan (`rposition`) to find the last newline, flushing through that point and retaining the remainder. The `unget()` path supports pushing a single byte back for `ungetc` semantics.
 
@@ -1279,7 +1265,7 @@ The ownership bloom filter in `bloom.rs` provides O(1) "is this pointer ours?" p
 | Bit storage | Atomic `u64` array for thread-safe concurrent access |
 | False negative rate | **0.0%** -- if a pointer was inserted, the bloom filter will always confirm it |
 
-The bloom filter sits early in the validation pipeline specifically because it is fast enough to reject most non-owned pointers before touching the arena or fingerprint logic.
+The bloom filter sits early in the validation pipeline because it can reject most non-owned pointers before touching the arena or fingerprint logic.
 
 ### Safety-State Lattice Structure
 
@@ -1302,7 +1288,7 @@ Readable (5)  Writable (4)
 - **Join** (new evidence arrives): always moves toward the more restrictive conclusion
 - **Meet** (what is known to be safe): always moves toward the most permissive valid conclusion
 - Both operations are commutative, associative, and idempotent
-- State transitions are **monotonically downward** on new negative evidence -- once a pointer is classified as `Freed`, it cannot return to `Valid`
+- State transitions are **monotonically downward** on new negative evidence; once a pointer is classified as `Freed`, it cannot return to `Valid`
 
 ### Galois Connection
 
@@ -1369,7 +1355,7 @@ The verification harness (`cargo run -p frankenlibc-harness --bin harness`) supp
 | `errno-edge-report` | Errno and edge-case prioritization | `errno_edge_report.current.v1.json` |
 | `verify-membrane` | Strict/hardened healing oracle verification | JSON healing evidence |
 
-The harness is designed to answer specific engineering questions rather than just "pass/fail." Each subcommand produces structured artifacts that can be diffed, tracked in version control, or consumed by downstream gates.
+Each subcommand produces structured artifacts that can be diffed, tracked in version control, or consumed by downstream gates.
 
 ## Test And Fixture Infrastructure
 
@@ -1451,7 +1437,7 @@ The `scripts/` directory contains **148 shell scripts** organized by purpose:
 | `check_packaging.sh` | Packaging artifact correctness |
 | `snapshot_gate.sh` | Runtime math golden snapshot integrity |
 
-This script infrastructure reflects the project's core belief that libc replacement work must be evidence-driven. Every claim about the system -- symbol ownership, conformance, performance, security -- has a corresponding machine-checkable gate.
+Every claim about the system (symbol ownership, conformance, performance, security) has a corresponding machine-checkable gate.
 
 ## Concurrency Primitives In The Membrane
 
@@ -1480,6 +1466,285 @@ The project is explicit about which formal properties it claims and at what conf
 | Healing completeness | Every libc function has defined healing for every class of invalid input | Enforced by policy table coverage |
 | SOS certificate validity | Fragmentation, thread safety, and size-class invariants | Verified at build time via Cholesky decomposition |
 | Memory model barrier coverage | Minimum atomic site counts per source file | Enforced at build time by `build.rs` audit |
+
+## Threading: Futex-Backed Synchronization
+
+The pthread implementation in `crates/frankenlibc-core/src/pthread/` is a clean-room futex-backed design, not a wrapper around glibc's NPTL.
+
+### Mutex
+
+Three mutex types are supported: `NORMAL` (0), `RECURSIVE` (1), and `ERRORCHECK` (2). Each mutex is modeled as a five-state contract machine:
+
+| State | Meaning |
+|---|---|
+| `Uninitialized` | Not yet initialized |
+| `Unlocked` | Initialized, no owner |
+| `LockedBySelf` | Current thread holds the lock |
+| `LockedByOther` | Another thread holds the lock |
+| `Destroyed` | Post-destroy, all operations fail |
+
+The fast path is a single CAS on the uncontended case. When contended, the implementation classifies the wait via bounded spin before falling through to `FUTEX_WAIT` / `FUTEX_WAKE` with `FUTEX_PRIVATE_FLAG` (0x80). Unlock always wakes at least one waiter. Error reporting follows POSIX: `EBUSY` on double-init, `EPERM` on unlock-by-other, `EDEADLK` on recursive `ERRORCHECK` lock.
+
+### Condition Variables
+
+Condvars use a 20-byte internal layout (fits within the 48-byte `pthread_cond_t` on x86_64). Internal state consists of a sequence counter, associated mutex pointer, and waiter count.
+
+Two clock modes are supported: `CLOCK_REALTIME` (default) and `CLOCK_MONOTONIC`. Timed waits use `FUTEX_WAIT_BITSET` with `FUTEX_BITSET_MATCH_ANY` (0xFFFF_FFFF) and `FUTEX_CLOCK_REALTIME` (256). Signal increments the sequence counter and wakes one waiter; broadcast wakes all.
+
+### Read-Write Locks
+
+Three preference modes: `PREFER_READER_NP` (0, default), `PREFER_WRITER_NP` (1), and `PREFER_WRITER_NONRECURSIVE_NP` (2). Unknown kinds are sanitized to the default.
+
+## Runtime Policy Engine
+
+Every ABI entrypoint consults `runtime_policy::decide()` before doing real work. The policy engine is where mode semantics, membrane decisions, and runtime math come together.
+
+### Mode Resolution
+
+The process-wide mode is resolved exactly once from `FRANKENLIBC_MODE`:
+
+| Env value | Resolved mode |
+|---|---|
+| `hardened`, `repair`, `tsm`, `full` | Hardened |
+| anything else (including unset) | Strict |
+
+Resolution uses a compare-and-swap state machine: `UNRESOLVED` (0) -> `RESOLVING` (255) -> `STRICT` (1) / `HARDENED` (2) / `OFF` (3). Reentrant calls during resolution return a passthrough decision so the process can finish initializing.
+
+### The decide() Call
+
+```text
+decide(family, ptr_or_addr, size, is_startup, is_null_likely, context_flags)
+  -> (RuntimeKernelSnapshot, RuntimeDecision)
+```
+
+`ApiFamily` classifies the call site: `Process`, `Memory`, `String`, `Alloc`, `Stdio`, `Socket`, `Thread`, `Signal`, and others. The returned `RuntimeDecision` contains a `MembraneAction` (`Allow`, `Check`, `Deny`, or a specific healing directive) and a `ValidationProfile` indicating how deep the membrane should inspect.
+
+After the call completes, `observe(family, profile, latency, denied)` feeds the outcome back into the runtime math kernel for sequential monitoring and threshold adjustment.
+
+## Conformal Risk Engine
+
+The standalone risk engine in `crates/frankenlibc-membrane/src/risk_engine.rs` implements online conformal risk control for adaptive validation depth.
+
+### Nonconformity Scoring
+
+Every pointer or region is scored along three axes:
+
+| Axis | Score contribution |
+|---|---|
+| Alignment deviation | `(6 - alignment) * 33` (range 0--198) |
+| Size anomaly | zero -> 200, >1 MB -> 250, >64 KB -> 150, small -> leading zeros |
+| Pointer entropy | Unusual bit-count -> 200, otherwise 0 |
+
+The final score is capped at 1000. Scores below `fast_threshold` skip expensive validation entirely; scores above `full_threshold` trigger exhaustive checks.
+
+### Calibration
+
+The engine maintains a 256-entry circular buffer of recent scores. Thresholds are calibrated as quantiles of this empirical distribution:
+
+- `fast_threshold`: the (1 - alpha) quantile, where alpha defaults to 0.01 (1% target false-skip rate)
+- `full_threshold`: a higher quantile for triggering deep inspection
+
+An e-process monitor accumulates evidence on the log scale. When the e-process exceeds 10.0, the engine enters alarm mode and forces full validation on every call until the evidence subsides. Recalibration happens periodically based on call volume.
+
+## Thompson Sampling Check Oracle
+
+The check oracle in `crates/frankenlibc-membrane/src/check_oracle.rs` uses Thompson sampling to learn the optimal ordering of validation stages at runtime.
+
+### Validation Stages
+
+| Stage | Cost | Can reject early? | Can accept early? |
+|---|---|---|---|
+| Null | 1 ns | yes | no |
+| TlsCache | 5 ns | no | yes |
+| Bloom | 10 ns | yes | no |
+| Arena | 30 ns | yes | no |
+| Fingerprint | 20 ns | yes | no |
+| Canary | 10 ns | yes | no |
+| Bounds | 5 ns | no | no |
+
+### Adaptive Ordering
+
+Each stage maintains a Beta(alpha, beta) distribution initialized to Beta(1,1) (uniform prior). After each validation call, the stage that caused early termination gets its alpha incremented (success); stages that ran but did not terminate get beta incremented (failure).
+
+Every 128 calls, the oracle recomputes the optimal ordering by sampling from each stage's posterior and ranking by expected information gain per nanosecond. The ordering is packed into a single `u64` (4 bits per stage) for cache-friendly storage.
+
+Over time, the oracle converges to an ordering that puts the cheapest high-rejection stages first, minimizing expected validation latency for the observed workload.
+
+## Healing Oracle
+
+The healing oracle in `crates/frankenlibc-harness/src/healing_oracle.rs` verifies hardened-mode repairs by deliberately triggering unsafe conditions and checking that the membrane handles them correctly.
+
+### Test Matrix
+
+Seven categories of unsafe behavior are tested:
+
+| Condition | What it triggers | Expected healing action |
+|---|---|---|
+| `NullPointer` | Null dereference through libc | `ReturnSafeDefault` |
+| `UseAfterFree` | Read/write after free | `ReturnSafeDefault` |
+| `DoubleFree` | Free the same pointer twice | `IgnoreDoubleFree` |
+| `BufferOverflow` | Write past allocation boundary | `TruncateWithNull` (e.g. requested=64, truncated=63) |
+| `ForeignFree` | Free a pointer not from our allocator | `IgnoreForeignFree` |
+| `BoundsExceeded` | Size argument exceeds allocation | `ClampSize` (e.g. requested=4096, clamped=1024) |
+| `ReallocFreed` | Realloc a previously freed pointer | `ReallocAsMalloc` (e.g. size=256) |
+
+The oracle runs 14 test cases across `string` (strlen, strcmp, strcpy, strncpy, memmove, memcpy) and `malloc` (free, cfree, realloc, reallocarray) families, in both strict and hardened modes. Results are emitted as JSON with a per-case breakdown of expected vs. observed healing actions.
+
+## Process Startup
+
+`__libc_start_main` runs before `main()` and controls process initialization, making it a high-value target for validation. FrankenLibC's implementation in `startup_abi.rs` uses a multi-checkpoint validation envelope.
+
+### Startup Sequence
+
+```text
+1. membrane gate           -- runtime_policy::decide(ApiFamily::Process)
+2. validate main pointer   -- null check, EINVAL + Deny on failure
+3. validate argv pointer   -- null check, EINVAL + Deny on failure
+4. scan argv vector        -- count entries up to MAX_STARTUP_SCAN, detect unterminated
+5. validate argc bound     -- argv_count >= normalized_argc
+6. scan envp vector        -- same count validation
+7. scan auxv vector        -- parse key/value pairs, detect truncation
+8. classify secure mode    -- via classify_secure_mode(&auxv_pairs)
+9. call init hook
+10. call main(argc, argv, envp)
+11. call fini hook
+12. call rtld_fini hook
+```
+
+If validation fails at any checkpoint, the startup policy decides whether to deny (abort) or fall back to the host glibc's `__libc_start_main` via `dlvsym_next()`, trying version symbols `GLIBC_2.34`, `GLIBC_2.2.5`, and `GLIBC_2.17` in priority order.
+
+Program name globals (`program_invocation_name`, `__progname`) are stored as `AtomicPtr` values extracted from `argv[0]`.
+
+## setjmp/longjmp: Guarded Non-Local Jumps
+
+`setjmp` and `longjmp` are inherently unsafe at the ABI level. FrankenLibC's implementation adds guard metadata to make corruption and misuse detectable.
+
+### Jump Buffer Layout
+
+The 128-byte `JmpBuf` (16 x `u64`) reserves the first six slots for membrane metadata:
+
+| Slot | Content |
+|---|---|
+| 0 | Magic: `0x4652414E4B454E31` (ASCII "FRANKEN1") |
+| 1 | Context ID (unique per capture) |
+| 2 | Generation (re-entrance counter) |
+| 3 | Owner thread ID |
+| 4 | Mode tag (`0x5354524943540001` for strict, `0x4841524445450002` for hardened) |
+| 5 | Guard (rotated XOR checksum of slots 0--4) |
+
+### Validation Before longjmp
+
+Before restoring, `phase1_longjmp_restore()` checks:
+
+1. Magic and non-zero metadata (catches uninitialized buffers)
+2. Mode tag matches current process mode
+3. Current thread owns the buffer (catches cross-thread longjmp)
+4. Guard checksum validates (catches buffer corruption)
+
+Failure produces a typed error (`UninitializedContext`, `ForeignContext`, `CorruptedContext`, `ModeMismatch`) rather than silent undefined behavior.
+
+POSIX requires that `longjmp(env, 0)` behaves as if `setjmp` returned 1. The implementation normalizes this before the restore path.
+
+## DNS Resolver: Numeric-First, File-Based
+
+The resolver in `crates/frankenlibc-core/src/resolv/` takes a conservative bootstrap approach: no network I/O, no NSS plugins, no recursive resolution.
+
+### Resolution Order
+
+1. Parse the address as IPv4 or IPv6 literal (returns immediately if it is one)
+2. Search `/etc/hosts` for a matching hostname or alias
+3. Search `/etc/services` for port/protocol mapping
+4. If none match, return `EAI_NONAME` (-2)
+
+Network-based DNS resolution is explicitly out of scope for the bootstrap resolver. This is a deliberate design choice: the resolver that runs inside libc itself should not open sockets or depend on external services during early process initialization. A full NSS/DNS backend is a future milestone.
+
+## errno In Rust
+
+Thread-local `errno` is easy to get wrong. The implementation in `crates/frankenlibc-core/src/errno/` uses Rust's `thread_local!` with a `Cell<i32>`:
+
+- `__errno_location()` returns a pointer to the current thread's errno cell
+- `get_errno()` / `set_errno()` for internal Rust code
+- 50+ standard error constants (EPERM, ENOENT, EINTR, EIO, ENOMEM, EACCES, EINVAL, EDEADLK, ENOSYS, EOVERFLOW, etc.)
+- `strerror_message()` does a static string lookup; unmapped codes return "Unknown error"
+
+errno is per-thread state that C programs expect to survive across function calls. A global instead of thread-local implementation, or one that is not stable across FFI boundaries, will break real programs.
+
+## Smoke Test Harness
+
+The smoke test (`scripts/ld_preload_smoke.sh`) verifies that real programs work under interposition. It runs actual binaries and compares their behavior against a baseline.
+
+### Programs Tested
+
+| Category | Examples |
+|---|---|
+| Coreutils | `/bin/ls -la /tmp`, `/bin/cat /etc/hosts`, `/bin/echo`, `/usr/bin/env`, `/bin/sort`, `/usr/bin/wc` |
+| Integration fixtures | `tests/integration/link_test.c` (compiled and run) |
+| Dynamic runtimes | `python3 -c 'print(1)'`, `busybox uname -a` |
+| Optional services | `sqlite3 :memory:`, `redis-cli --version`, `nginx -v` |
+| Stress | Repeated iterations of the above (configurable, default 5) |
+
+### Failure Classification
+
+Each test case produces a classified failure signature:
+
+| Signature | Meaning |
+|---|---|
+| `startup_timeout` | Process did not exit within `TIMEOUT_SECONDS` (rc 124/125) |
+| `startup_segv` | Segmentation fault (signal 11) |
+| `startup_abort` | Abort (signal 6) |
+| `startup_symbol_lookup_error` | Missing or incompatible symbol |
+| `startup_loader_missing_library` | Dynamic library not found |
+| `startup_glibc_version_mismatch` | Version symbol mismatch |
+| `startup_strict_parity_mismatch` | Baseline and preload outputs differ |
+| `startup_perf_regression` | Latency ratio exceeds budget (default: 2x) |
+| `startup_valgrind_error` | Valgrind detected memory errors |
+
+Each case collects baseline and preload stdout/stderr, a metadata bundle (mode, exit code, failure signature, `/proc/self/maps`), and latency measurements in nanoseconds with a computed latency ratio.
+
+## Support Matrix Structure
+
+The `support_matrix.json` file is the machine-readable source of truth for the project's implementation claims. Its structure:
+
+```json
+{
+  "version": 2,
+  "total_exported": 3980,
+  "taxonomy": {
+    "Implemented": "Native Rust, no host libc dependency",
+    "RawSyscall": "Direct syscall marshaling",
+    "GlibcCallThrough": "Delegates to host glibc",
+    "Stub": "Deterministic failure contract"
+  },
+  "symbols": [
+    {
+      "symbol": "_Exit",
+      "status": "RawSyscall",
+      "module": "unistd_abi",
+      "perf_class": "O1",
+      "strict_semantics": true,
+      "hardened_semantics": true,
+      "default_stub": false
+    }
+  ]
+}
+```
+
+Every exported symbol has a classification, an owning ABI module, a performance class, and boolean flags for strict and hardened semantic coverage. The maintenance scripts compare this file against the actual symbols in the compiled `.so` and flag any drift as a build failure.
+
+## How LD_PRELOAD Interposition Works
+
+For readers unfamiliar with the mechanism: `LD_PRELOAD` tells the Linux dynamic linker to load a shared library before any others. When a program calls `malloc`, `strlen`, or any libc function, the linker resolves the symbol to FrankenLibC's implementation first. The original glibc symbols are still available via `dlsym(RTLD_NEXT, ...)` for call-through paths.
+
+FrankenLibC is usable today without relinking anything: same binary, same kernel, same file system, different libc implementation behind the ABI boundary.
+
+Limitations of interposition:
+
+- Functions called internally within glibc (where the linker has already bound the symbol) are not intercepted
+- Some startup-critical paths run before `LD_PRELOAD` takes effect
+- `LD_PRELOAD` is ignored for setuid/setgid binaries (kernel security policy)
+- The interpose library must export symbols with the correct version tags to match what binaries expect
+
+The version script (`crates/frankenlibc-abi/version_scripts/libc.map`) handles the last point by exporting symbols under the `GLIBC_2.2.5` version tag, which is what most dynamically linked Linux binaries expect.
 
 ## About Contributions
 
