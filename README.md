@@ -509,47 +509,39 @@ High-signal variables:
 ## Architecture
 
 ```text
-        C process
+                  C process
+                      |
+                      v
+    +--------------------------------------------+
+    | glibc-shaped extern "C" ABI                |
+    | crates/frankenlibc-abi                     |
+    +--------------------------------------------+
+                      |
+                      v
+    +--------------------------------------------+
+    | Transparent Safety Membrane                |
+    | crates/frankenlibc-membrane                |
+    |                                            |
+    | null -> tls -> bloom -> arena              |
+    |      -> fingerprint -> canary              |
+    |      -> bounds -> policy                   |
+    +--------------------------------------------+
+                      |
+            +---------+---------+
+            |                   |
+            v                   v
+    +------------------+  +----------------------+
+    | Native Rust      |  | Raw syscall veneers  |
+    | kernels          |  | mostly unistd/io/... |
+    | frankenlibc-core |  +----------------------+
+    +------------------+
             |
             v
-    +---------------------------+
-    | glibc-shaped extern "C"   |
-    | ABI                       |
-    | crates/frankenlibc-abi    |
-    +---------------------------+
-            |
-            v
-    +---------------------------+
-    | Transparent Safety        |
-    | Membrane                  |
-    | crates/frankenlibc-       |
-    | membrane                  |
-    |                           |
-    | null -> tls -> bloom      |
-    |      -> arena             |
-    |      -> fingerprint       |
-    |      -> canary            |
-    |      -> bounds            |
-    |      -> policy            |
-    +---------------------------+
-            |
-            +------------------+------------------+
-            |                                     |
-            v                                     v
-    +----------------------+           +----------------------+
-    | Native Rust kernels  |           | Raw syscall veneers  |
-    | crates/frankenlibc-  |           | mostly unistd/io/... |
-    | core                 |           |                      |
-    +----------------------+           +----------------------+
-            |
-            v
-    +---------------------------+
-    | Verification and          |
-    | evidence                  |
-    | crates/frankenlibc-       |
-    | harness                   |
-    | tests/, scripts/, reports |
-    +---------------------------+
+    +--------------------------------------------+
+    | Verification and evidence                  |
+    | crates/frankenlibc-harness                 |
+    | tests/, scripts/, reports                  |
+    +--------------------------------------------+
 ```
 
 ## Why libc Is the Choke Point

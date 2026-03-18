@@ -227,15 +227,15 @@ C caller → extern "C" ABI boundary → TSM Validation Pipeline → Safe Rust C
                      ┌────────────────────┤
                      ▼                    ▼
               Validation Pipeline    Self-Healing Engine
-              ┌──────────────┐      ┌───────────────────┐
-              │ null check   │      │ ClampSize          │
-              │ TLS cache    │      │ TruncateWithNull   │
-              │ bloom filter │      │ IgnoreDoubleFree   │
-              │ arena lookup │      │ IgnoreForeignFree  │
-              │ fingerprint  │      │ ReallocAsMalloc    │
-              │ canary check │      │ ReturnSafeDefault  │
-              │ bounds check │      │ UpgradeToSafeVariant│
-              └──────────────┘      └───────────────────┘
+              ┌──────────────┐      ┌────────────────────────┐
+              │ null check   │      │ ClampSize              │
+              │ TLS cache    │      │ TruncateWithNull       │
+              │ bloom filter │      │ IgnoreDoubleFree       │
+              │ arena lookup │      │ IgnoreForeignFree      │
+              │ fingerprint  │      │ ReallocAsMalloc        │
+              │ canary check │      │ ReturnSafeDefault      │
+              │ bounds check │      │ UpgradeToSafeVariant   │
+              └──────────────┘      └────────────────────────┘
 ```
 
 ### Workspace Structure
