@@ -479,50 +479,70 @@ pub unsafe extern "C" fn getaddrinfo(
     let family = hints_ref.map(|h| h.ai_family).unwrap_or(libc::AF_UNSPEC);
     let host_text = node_cstr.and_then(|c| c.to_str().ok());
 
-    let ai_ptr = match host_text {
+    let mut nodes = Vec::new();
+
+    match host_text {
         Some(text) => {
             if let Ok(v4) = text.parse::<Ipv4Addr>() {
-                // SAFETY: allocation helper returns ownership pointer.
-                unsafe { build_addrinfo_v4(v4, port, hints_ref) }
+                nodes.push(unsafe { build_addrinfo_v4(v4, port, hints_ref) });
             } else if let Ok(v6) = text.parse::<Ipv6Addr>() {
-                // SAFETY: allocation helper returns ownership pointer.
-                unsafe { build_addrinfo_v6(v6, port, hints_ref) }
-            } else if let Some(hosts_addr) = resolve_hosts_subset(text, family) {
-                match hosts_addr {
-                    // SAFETY: allocation helper returns ownership pointer.
-                    HostsAddress::V4(v4) => unsafe { build_addrinfo_v4(v4, port, hints_ref) },
-                    // SAFETY: allocation helper returns ownership pointer.
-                    HostsAddress::V6(v6) => unsafe { build_addrinfo_v6(v6, port, hints_ref) },
-                }
-            } else if repair {
-                global_healing_policy().record(&HealingAction::ReturnSafeDefault);
-                // SAFETY: allocation helper returns ownership pointer.
-                unsafe { build_addrinfo_v4(Ipv4Addr::LOCALHOST, port, hints_ref) }
+                nodes.push(unsafe { build_addrinfo_v6(v6, port, hints_ref) });
             } else {
-                record_resolver_stage_outcome(
-                    &ordering,
-                    aligned,
-                    recent_page,
-                    Some(stage_index(&ordering, CheckStage::Bounds)),
-                );
-                runtime_policy::observe(ApiFamily::Resolver, decision.profile, 25, true);
-                return libc::EAI_NONAME;
+                // Check /etc/hosts for all matches (subset only)
+                let content = std::fs::read("/etc/hosts").unwrap_or_default();
+                let candidates = frankenlibc_core::resolv::lookup_hosts(&content, text.as_bytes());
+                for candidate in candidates {
+                    if let Ok(c_text) = core::str::from_utf8(&candidate) {
+                        if (family == libc::AF_UNSPEC || family == libc::AF_INET)
+                            && let Ok(v4) = c_text.parse::<Ipv4Addr>()
+                        {
+                            nodes.push(unsafe { build_addrinfo_v4(v4, port, hints_ref) });
+                        } else if (family == libc::AF_UNSPEC || family == libc::AF_INET6)
+                            && let Ok(v6) = c_text.parse::<Ipv6Addr>()
+                        {
+                            nodes.push(unsafe { build_addrinfo_v6(v6, port, hints_ref) });
+                        }
+                    }
+                }
+            }
+
+            if nodes.is_empty() {
+                if repair {
+                    global_healing_policy().record(&HealingAction::ReturnSafeDefault);
+                    nodes.push(unsafe { build_addrinfo_v4(Ipv4Addr::LOCALHOST, port, hints_ref) });
+                } else {
+                    record_resolver_stage_outcome(
+                        &ordering,
+                        aligned,
+                        recent_page,
+                        Some(stage_index(&ordering, CheckStage::Bounds)),
+                    );
+                    runtime_policy::observe(ApiFamily::Resolver, decision.profile, 25, true);
+                    return libc::EAI_NONAME;
+                }
             }
         }
         None => match family {
             libc::AF_INET6 => {
-                // SAFETY: allocation helper returns ownership pointer.
-                unsafe { build_addrinfo_v6(Ipv6Addr::UNSPECIFIED, port, hints_ref) }
+                nodes.push(unsafe { build_addrinfo_v6(Ipv6Addr::UNSPECIFIED, port, hints_ref) });
+            }
+            libc::AF_INET => {
+                nodes.push(unsafe { build_addrinfo_v4(Ipv4Addr::UNSPECIFIED, port, hints_ref) });
             }
             _ => {
-                // SAFETY: allocation helper returns ownership pointer.
-                unsafe { build_addrinfo_v4(Ipv4Addr::UNSPECIFIED, port, hints_ref) }
+                nodes.push(unsafe { build_addrinfo_v4(Ipv4Addr::UNSPECIFIED, port, hints_ref) });
+                nodes.push(unsafe { build_addrinfo_v6(Ipv6Addr::UNSPECIFIED, port, hints_ref) });
             }
         },
-    };
+    }
+
+    // Chain the nodes together.
+    for i in 0..nodes.len().saturating_sub(1) {
+        unsafe { (*nodes[i]).ai_next = nodes[i + 1] };
+    }
 
     // SAFETY: output pointer is non-null and writable.
-    unsafe { *res = ai_ptr };
+    unsafe { *res = nodes[0] };
     record_resolver_stage_outcome(&ordering, aligned, recent_page, None);
     runtime_policy::observe(ApiFamily::Resolver, decision.profile, 25, false);
     0
@@ -975,7 +995,16 @@ pub unsafe extern "C" fn gethostbyaddr(
     len: libc::socklen_t,
     af: c_int,
 ) -> *mut c_void {
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Resolver, addr as usize, len as usize, true, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_h_errnop(ptr::null_mut(), NO_RECOVERY_ERRNO) };
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 18, true);
+        return ptr::null_mut();
+    }
+
     if addr.is_null() {
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 5, true);
         return ptr::null_mut();
     }
 
@@ -1007,7 +1036,15 @@ pub unsafe extern "C" fn gethostbyaddr(
 /// POSIX `getservbyname` — look up a service by name in /etc/services.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getservbyname(name: *const c_char, proto: *const c_char) -> *mut c_void {
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Resolver, name as usize, 0, true, name.is_null(), 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
+        return ptr::null_mut();
+    }
+
     if name.is_null() {
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 5, true);
         return ptr::null_mut();
     }
 
@@ -1070,6 +1107,13 @@ pub unsafe extern "C" fn getservbyname(name: *const c_char, proto: *const c_char
 /// POSIX `getservbyport` — look up a service by port number in /etc/services.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getservbyport(port: c_int, proto: *const c_char) -> *mut c_void {
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Resolver, proto as usize, 0, true, proto.is_null(), 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
+        return ptr::null_mut();
+    }
+
     let port_host = u16::from_be(port as u16);
 
     let proto_filter = if proto.is_null() {
@@ -1118,7 +1162,15 @@ pub unsafe extern "C" fn getservbyport(port: c_int, proto: *const c_char) -> *mu
 /// POSIX `getprotobyname` — look up a protocol by name in /etc/protocols.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getprotobyname(name: *const c_char) -> *mut c_void {
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Resolver, name as usize, 0, true, name.is_null(), 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
+        return ptr::null_mut();
+    }
+
     if name.is_null() {
+        runtime_policy::observe(ApiFamily::Resolver, decision.profile, 5, true);
         return ptr::null_mut();
     }
 

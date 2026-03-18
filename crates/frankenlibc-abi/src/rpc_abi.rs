@@ -1184,7 +1184,11 @@ pub unsafe extern "C" fn xdr_array(
         return XDR_FALSE;
     }
     let target = if op == XDR_DECODE && unsafe { (*arrp).is_null() } {
-        let buf = unsafe { libc::calloc(c as usize, elsize as usize) as *mut c_char };
+        let total_bytes = match (c as usize).checked_mul(elsize as usize) {
+            Some(b) => b,
+            None => return XDR_FALSE,
+        };
+        let buf = unsafe { libc::calloc(1, total_bytes) as *mut c_char };
         if buf.is_null() {
             return XDR_FALSE;
         }

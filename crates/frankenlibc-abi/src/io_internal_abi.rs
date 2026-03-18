@@ -40,7 +40,7 @@ macro_rules! io_resolve {
 // ---------------------------------------------------------------------------
 
 // Sentinel value indicating \"not yet resolved\".
-const UNRESOLVED: *mut c_void = 1 as *mut c_void;
+const UNRESOLVED: *mut c_void = std::ptr::dangling_mut::<c_void>();
 
 fn resolve_global(name: &std::ffi::CStr, slot: &AtomicPtr<c_void>) -> *mut c_void {
     let mut ptr = slot.load(Ordering::Acquire);

@@ -28,8 +28,6 @@ struct JumpRegistryEntry {
     env: JmpBuf,
     capture_mode: SafetyLevel,
     savemask: bool,
-    context_id: u64,
-    generation: u64,
 }
 
 fn registry() -> &'static Mutex<HashMap<usize, JumpRegistryEntry>> {
@@ -69,8 +67,6 @@ fn capture_env(env_addr: usize, mode: SafetyLevel, savemask: bool) -> Result<c_i
         env: jump_env.clone(),
         capture_mode: mode,
         savemask,
-        context_id: capture.context_id,
-        generation: capture.generation,
     };
 
     // Synchronize the captured metadata to the C caller's buffer.
@@ -94,8 +90,6 @@ fn restore_env(env_addr: usize, val: c_int, mode: SafetyLevel) -> Result<(i32, b
     unsafe {
         std::ptr::copy_nonoverlapping(env_addr as *const u8, mem_bytes.as_mut_ptr(), 128);
     }
-    let mem_env = JmpBuf::from_bytes(&mem_bytes);
-
     let entry = {
         let guard = registry().lock().unwrap_or_else(|e| e.into_inner());
         guard.get(&env_addr).cloned()

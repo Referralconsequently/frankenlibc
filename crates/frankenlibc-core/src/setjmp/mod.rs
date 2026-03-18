@@ -286,6 +286,18 @@ mod tests {
     }
 
     #[test]
+    fn jmpbuf_serialization_roundtrip() {
+        let mut env = JmpBuf::default();
+        phase1_setjmp_capture(&mut env, Phase1Mode::Hardened);
+        let bytes = env.to_bytes();
+        let env2 = JmpBuf::from_bytes(&bytes);
+        assert_eq!(env.context_id(), env2.context_id());
+        assert_eq!(env.generation(), env2.generation());
+        assert_eq!(env.owner_thread(), env2.owner_thread());
+        assert_eq!(env.guard(), env2.guard());
+    }
+
+    #[test]
     fn jmpbuf_layout_is_stable_for_placeholder_contract() {
         assert_eq!(
             std::mem::size_of::<JmpBuf>(),
