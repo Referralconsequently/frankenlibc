@@ -165,62 +165,49 @@ pub unsafe extern "C" fn _IO_default_finish(fp: *mut c_void, dummy: c_int) {
     }
 }
 
-/// `_IO_default_pbackfail` — default putback failure handler.
+/// `_IO_default_pbackfail` — default putback failure handler via native ungetc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_default_pbackfail(fp: *mut c_void, ch: c_int) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
-    match io_resolve!(c"_IO_default_pbackfail", Fn) {
-        Some(f) => unsafe { f(fp, ch) },
-        None => -1,
+    if ch == libc::EOF {
+        return libc::EOF;
     }
+    unsafe { stdio_abi::ungetc(ch, fp) }
 }
 
-/// `_IO_default_uflow` — default underflow-then-advance.
+/// `_IO_default_uflow` — default underflow-then-advance via native fgetc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_default_uflow(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_default_uflow", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fgetc(fp) }
 }
 
-/// `_IO_default_xsgetn` — default multi-byte read.
+/// `_IO_default_xsgetn` — default multi-byte read via native fread.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_default_xsgetn(fp: *mut c_void, buf: *mut c_void, n: usize) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void, usize) -> usize;
-    match io_resolve!(c"_IO_default_xsgetn", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => 0,
-    }
+    unsafe { stdio_abi::fread(buf, 1, n, fp) }
 }
 
-/// `_IO_default_xsputn` — default multi-byte write.
+/// `_IO_default_xsputn` — default multi-byte write via native fwrite.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_default_xsputn(
     fp: *mut c_void,
     buf: *const c_void,
     n: usize,
 ) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> usize;
-    match io_resolve!(c"_IO_default_xsputn", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => 0,
-    }
+    unsafe { stdio_abi::fwrite(buf, 1, n, fp) }
 }
 
 // ---------------------------------------------------------------------------
 // Core I/O operations
 // ---------------------------------------------------------------------------
 
-/// `_IO_do_write` — flush write buffer to fd.
+/// `_IO_do_write` — flush write buffer to fd via native fwrite.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_do_write(fp: *mut c_void, buf: *const c_char, n: usize) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_char, usize) -> c_int;
-    match io_resolve!(c"_IO_do_write", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => -1,
+    if n == 0 {
+        return 0;
     }
+    let written = unsafe { stdio_abi::fwrite(buf as *const c_void, 1, n, fp) };
+    if written < n { -1 } else { 0 }
 }
 
 /// `_IO_doallocbuf` — allocate FILE internal buffer.
@@ -1134,13 +1121,12 @@ pub unsafe extern "C" fn _IO_str_underflow(fp: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// `_IO_switch_to_get_mode` — switch FILE to read mode.
+///
+/// Flushes pending writes so the stream is ready for reading.
+/// Native approximation via `fflush`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_switch_to_get_mode(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_switch_to_get_mode", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fflush(fp) }
 }
 
 /// `_IO_switch_to_main_wget_area` — switch to main wide get area.

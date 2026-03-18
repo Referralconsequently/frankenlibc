@@ -7704,7 +7704,7 @@ pub unsafe extern "C" fn getmntent(stream: *mut c_void) -> *mut c_void {
 
         // Skip comments and blank lines
         let trimmed = ms.line_buf.iter().position(|&b| b != b' ' && b != b'\t');
-        if trimmed.map_or(true, |i| ms.line_buf[i] == b'#') {
+        if trimmed.is_none_or(|i| ms.line_buf[i] == b'#') {
             continue;
         }
 
@@ -7861,7 +7861,7 @@ pub unsafe extern "C" fn getmntent_r(
         }
         // Skip comments and blank lines
         let first = ms.line_buf.iter().position(|&b| b != b' ' && b != b'\t');
-        if first.map_or(true, |i| ms.line_buf[i] == b'#') {
+        if first.is_none_or(|i| ms.line_buf[i] == b'#') {
             continue;
         }
 

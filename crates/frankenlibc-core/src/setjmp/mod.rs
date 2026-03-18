@@ -89,6 +89,35 @@ pub struct JmpBuf {
 }
 
 impl JmpBuf {
+    /// Serialize the jump buffer to a raw byte array for C ABI compatibility.
+    pub fn to_bytes(&self) -> [u8; JMPBUF_REGISTER_COUNT * 8] {
+        let mut bytes = [0u8; JMPBUF_REGISTER_COUNT * 8];
+        for i in 0..JMPBUF_REGISTER_COUNT {
+            bytes[i * 8..(i + 1) * 8].copy_from_slice(&self._registers[i].to_le_bytes());
+        }
+        bytes
+    }
+
+    /// Deserialize from a raw byte array.
+    pub fn from_bytes(bytes: &[u8; JMPBUF_REGISTER_COUNT * 8]) -> Self {
+        let mut registers = [0u64; JMPBUF_REGISTER_COUNT];
+        for i in 0..JMPBUF_REGISTER_COUNT {
+            registers[i] = u64::from_le_bytes([
+                bytes[i * 8],
+                bytes[i * 8 + 1],
+                bytes[i * 8 + 2],
+                bytes[i * 8 + 3],
+                bytes[i * 8 + 4],
+                bytes[i * 8 + 5],
+                bytes[i * 8 + 6],
+                bytes[i * 8 + 7],
+            ]);
+        }
+        Self {
+            _registers: registers,
+        }
+    }
+
     fn context_id(&self) -> u64 {
         self._registers[REG_CONTEXT_ID]
     }

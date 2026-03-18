@@ -755,10 +755,10 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
     let handle_ptr = thread as *mut ThreadHandle;
 
     // Self-join detection: compare handles directly for O(1) reliability.
-    if let Some(my_handle) = core_handle_for_tid(core_self_tid()) {
-        if handle_ptr == my_handle {
-            return libc::EDEADLK;
-        }
+    if let Some(my_handle) = core_handle_for_tid(core_self_tid())
+        && handle_ptr == my_handle
+    {
+        return libc::EDEADLK;
     }
 
     // Verify this is a valid managed thread handle that we know about.

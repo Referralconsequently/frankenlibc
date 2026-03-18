@@ -66,12 +66,18 @@ fn capture_env(env_addr: usize, mode: SafetyLevel, savemask: bool) -> Result<c_i
     let mut jump_env = JmpBuf::default();
     let capture = phase1_setjmp_capture(&mut jump_env, safety_to_phase1(mode));
     let entry = JumpRegistryEntry {
-        env: jump_env,
+        env: jump_env.clone(),
         capture_mode: mode,
         savemask,
         context_id: capture.context_id,
         generation: capture.generation,
     };
+
+    // Synchronize the captured metadata to the C caller's buffer.
+    let bytes = jump_env.to_bytes();
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), env_addr as *mut u8, bytes.len());
+    }
 
     let mut guard = registry().lock().unwrap_or_else(|e| e.into_inner());
     guard.insert(env_addr, entry);
@@ -83,16 +89,28 @@ fn restore_env(env_addr: usize, val: c_int, mode: SafetyLevel) -> Result<(i32, b
         return Err(errno::EFAULT);
     }
 
+    // Load the jump buffer from C memory to check for tampering or copying.
+    let mut mem_bytes = [0u8; 128]; // JMPBUF_REGISTER_COUNT * 8
+    unsafe {
+        std::ptr::copy_nonoverlapping(env_addr as *const u8, mem_bytes.as_mut_ptr(), 128);
+    }
+    let mem_env = JmpBuf::from_bytes(&mem_bytes);
+
     let entry = {
         let guard = registry().lock().unwrap_or_else(|e| e.into_inner());
         guard.get(&env_addr).cloned()
     }
     .ok_or(errno::EINVAL)?;
 
-    if entry.capture_mode != mode {
-        return Err(errno::EINVAL);
+    // Core validation: the metadata in the C buffer must match our registry.
+    // If they mismatch, the buffer was tampered with or we are at the wrong address.
+    // We use a private helper or accessor in core to get this metadata safely.
+    // (Note: env.context_id() is private in core, but we can compare to_bytes).
+    if entry.env.to_bytes() != mem_bytes {
+        return Err(errno::EFAULT);
     }
-    if entry.context_id == 0 || entry.generation == 0 {
+
+    if entry.capture_mode != mode {
         return Err(errno::EINVAL);
     }
 
