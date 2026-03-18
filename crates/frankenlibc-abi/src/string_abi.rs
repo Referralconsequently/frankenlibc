@@ -1804,9 +1804,7 @@ pub unsafe extern "C" fn strncat(dst: *mut c_char, src: *const c_char, n: usize)
                         }
                         *dst.add(dst_len.saturating_add(copy_payload)) = 0;
                         let hit_src_alloc_bound = !src_terminated
-                            && src_bound.is_some()
-                            && src_bound.unwrap() < n
-                            && src_len == src_bound.unwrap();
+                            && src_bound.is_some_and(|b| b < n && src_len == b);
                         let truncated = hit_src_alloc_bound || copy_payload < src_len;
                         if truncated {
                             record_truncation(n.saturating_add(1), copy_payload);
@@ -1823,9 +1821,7 @@ pub unsafe extern "C" fn strncat(dst: *mut c_char, src: *const c_char, n: usize)
                     }
                     *dst.add(dst_len.saturating_add(src_len)) = 0;
                     let hit_src_alloc_bound = !src_terminated
-                        && src_bound.is_some()
-                        && src_bound.unwrap() < n
-                        && src_len == src_bound.unwrap();
+                        && src_bound.is_some_and(|b| b < n && src_len == b);
                     let truncated = hit_src_alloc_bound;
                     if truncated {
                         record_truncation(n.saturating_add(1), src_len);

@@ -533,7 +533,11 @@ mod tests {
         }
 
         // Adverse events never decrease the state
-        let adverse = [DecisionEvent::SoftAnomaly, DecisionEvent::HardViolation, DecisionEvent::Timeout];
+        let adverse = [
+            DecisionEvent::SoftAnomaly,
+            DecisionEvent::HardViolation,
+            DecisionEvent::Timeout,
+        ];
         for &state in &all_states {
             for &event in &adverse {
                 let t = transition(state, event);
@@ -603,9 +607,18 @@ mod tests {
 
         // Run the same event sequence in both modes
         let test_sequences: Vec<Vec<DecisionEvent>> = vec![
-            vec![DecisionEvent::SoftAnomaly, DecisionEvent::CheckPass, DecisionEvent::CheckPass, DecisionEvent::CheckPass],
+            vec![
+                DecisionEvent::SoftAnomaly,
+                DecisionEvent::CheckPass,
+                DecisionEvent::CheckPass,
+                DecisionEvent::CheckPass,
+            ],
             vec![DecisionEvent::HardViolation, DecisionEvent::RepairComplete],
-            vec![DecisionEvent::SoftAnomaly, DecisionEvent::Timeout, DecisionEvent::RepairComplete],
+            vec![
+                DecisionEvent::SoftAnomaly,
+                DecisionEvent::Timeout,
+                DecisionEvent::RepairComplete,
+            ],
             events.to_vec(),
         ];
 

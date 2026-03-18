@@ -2993,11 +2993,14 @@ pub unsafe extern "C" fn ftw(
     func: Option<unsafe extern "C" fn(*const c_char, *const libc::stat, c_int) -> c_int>,
     nopenfd: c_int,
 ) -> c_int {
-    if dirpath.is_null() || func.is_none() {
+    let Some(callback) = func else {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return -1;
+    };
+    if dirpath.is_null() {
         unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
-    let callback = func.unwrap();
     let max_fd = if nopenfd < 1 { 1 } else { nopenfd as usize };
 
     // Adapter: ftw callback to nftw-style internal walk.
@@ -3106,11 +3109,14 @@ pub unsafe extern "C" fn nftw(
     nopenfd: c_int,
     flags: c_int,
 ) -> c_int {
-    if dirpath.is_null() || func.is_none() {
+    let Some(callback) = func else {
+        unsafe { set_abi_errno(errno::EINVAL) };
+        return -1;
+    };
+    if dirpath.is_null() {
         unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
-    let callback = func.unwrap();
     let max_fd = if nopenfd < 1 { 1 } else { nopenfd as usize };
 
     unsafe { nftw_walk_dir(dirpath, callback, max_fd, flags, 0, 0) }
@@ -7698,7 +7704,7 @@ pub unsafe extern "C" fn getmntent(stream: *mut c_void) -> *mut c_void {
 
         // Skip comments and blank lines
         let trimmed = ms.line_buf.iter().position(|&b| b != b' ' && b != b'\t');
-        if trimmed.is_none() || ms.line_buf[trimmed.unwrap()] == b'#' {
+        if trimmed.map_or(true, |i| ms.line_buf[i] == b'#') {
             continue;
         }
 
@@ -7855,7 +7861,7 @@ pub unsafe extern "C" fn getmntent_r(
         }
         // Skip comments and blank lines
         let first = ms.line_buf.iter().position(|&b| b != b' ' && b != b'\t');
-        if first.is_none() || ms.line_buf[first.unwrap()] == b'#' {
+        if first.map_or(true, |i| ms.line_buf[i] == b'#') {
             continue;
         }
 
@@ -11329,11 +11335,14 @@ pub unsafe extern "C" fn fts_read(ftsp: *mut c_void) -> *mut FTSENT {
     stream.current = Some(owned);
 
     // Fix up self-referential pointer after move
-    let current = stream.current.as_mut().unwrap();
-    current.ftsent.fts_statp = &mut current.stat_buf;
-    current.ftsent.fts_path = current.path_buf.as_ptr() as *mut c_char;
-    current.ftsent.fts_accpath = current.ftsent.fts_path;
-    &mut current.ftsent as *mut FTSENT
+    if let Some(current) = stream.current.as_mut() {
+        current.ftsent.fts_statp = &mut current.stat_buf;
+        current.ftsent.fts_path = current.path_buf.as_ptr() as *mut c_char;
+        current.ftsent.fts_accpath = current.ftsent.fts_path;
+        &mut current.ftsent as *mut FTSENT
+    } else {
+        std::ptr::null_mut()
+    }
 }
 
 /// `fts_children` — return linked list of entries in current directory.

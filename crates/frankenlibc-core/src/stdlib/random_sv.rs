@@ -77,7 +77,7 @@ static INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 
 fn ensure_init() {
     if !INITIALIZED.load(std::sync::atomic::Ordering::Acquire) {
-        let mut state = GLOBAL.lock().unwrap();
+        let mut state = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
         if !INITIALIZED.load(std::sync::atomic::Ordering::Relaxed) {
             state.seed(1);
             INITIALIZED.store(true, std::sync::atomic::Ordering::Release);
@@ -88,13 +88,13 @@ fn ensure_init() {
 /// `random()` — return a pseudo-random number in [0, 2^31-1].
 pub fn random() -> i64 {
     ensure_init();
-    let mut state = GLOBAL.lock().unwrap();
+    let mut state = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     state.next() as i64
 }
 
 /// `srandom()` — seed the random number generator.
 pub fn srandom(seed: u32) {
-    let mut state = GLOBAL.lock().unwrap();
+    let mut state = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     state.seed(seed);
     INITIALIZED.store(true, std::sync::atomic::Ordering::Release);
 }
@@ -116,7 +116,7 @@ pub fn initstate(seed: u32, state_buf: &mut [u8]) -> usize {
     if state_buf.len() < 8 {
         return 0;
     }
-    let mut state = GLOBAL.lock().unwrap();
+    let mut state = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     // Save a token for the old state (we return table[1] as a simple fingerprint).
     let old_token = state.table[1] as usize;
     state.seed(seed);
@@ -140,7 +140,7 @@ pub fn setstate(state_buf: &[u8]) -> usize {
     if state_buf.len() < 8 {
         return 0;
     }
-    let mut state = GLOBAL.lock().unwrap();
+    let mut state = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     let old_token = state.table[1] as usize;
     // Restore internal state from the user buffer using safe deserialization.
     let words_to_copy = state_buf.len().min(STATE_SIZE * 4) / 4;

@@ -180,7 +180,7 @@ fn table_register(tid: i32, values_ptr: *mut u64) {
 ///
 /// Returns a raw pointer to `[u64; PTHREAD_KEYS_MAX]`, or null if not found.
 /// **Allocation-free.**
-fn table_lookup(tid: i32) -> *mut u64 {
+pub(crate) fn table_lookup(tid: i32) -> *mut u64 {
     if tid <= 0 {
         return core::ptr::null_mut();
     }

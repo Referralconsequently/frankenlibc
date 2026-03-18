@@ -678,7 +678,7 @@ mod tests {
     #[test]
     fn proof_generation_strict_monotonicity() {
         let arena = AllocationArena::new();
-        let mut prev_gen = 0u32;
+        let mut prev_gen = 0u64;
 
         for _ in 0..50 {
             let ptr = arena.allocate(64).expect("alloc");
@@ -769,11 +769,7 @@ mod tests {
         let shard = arena.shards[shard_idx].lock();
 
         // For entries in this shard's quarantine, verify FIFO
-        let shard_entries: Vec<usize> = shard
-            .quarantine
-            .iter()
-            .map(|e| e.user_base)
-            .collect();
+        let shard_entries: Vec<usize> = shard.quarantine.iter().map(|e| e.user_base).collect();
         let our_entries: Vec<usize> = free_order
             .iter()
             .filter(|a| shard_entries.contains(a))

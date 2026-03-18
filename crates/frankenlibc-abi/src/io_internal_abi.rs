@@ -39,15 +39,18 @@ macro_rules! io_resolve {
 // Global variable symbols (exported as static AtomicPtr, lazily resolved)
 // ---------------------------------------------------------------------------
 
-// Sentinel value indicating "not yet resolved" (distinct from null, which means "not found").
-const UNRESOLVED: *mut c_void = std::ptr::dangling_mut::<c_void>();
+// Sentinel value indicating \"not yet resolved\".
+const UNRESOLVED: *mut c_void = 1 as *mut c_void;
 
 fn resolve_global(name: &std::ffi::CStr, slot: &AtomicPtr<c_void>) -> *mut c_void {
     let mut ptr = slot.load(Ordering::Acquire);
     if ptr == UNRESOLVED {
-        ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, name.as_ptr()) };
-        // If dlsym returns null, the symbol wasn't found — store null.
-        slot.store(ptr, Ordering::Release);
+        let resolved = unsafe { libc::dlsym(libc::RTLD_NEXT, name.as_ptr()) };
+        // Use compare_exchange to ensure only one thread stores the result.
+        match slot.compare_exchange(UNRESOLVED, resolved, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => ptr = resolved,
+            Err(current) => ptr = current,
+        }
     }
     ptr
 }
@@ -131,8 +134,8 @@ pub unsafe extern "C" fn _IO_adjust_wcolumn(
     for i in 0..count as usize {
         let wch = unsafe { *wchars.add(i) } as u32;
         match wch {
-            0x0A | 0x0D => c = 0,       // '\n' | '\r'
-            0x09 => c = (c + 8) & !7,   // '\t'
+            0x0A | 0x0D => c = 0,     // '\n' | '\r'
+            0x09 => c = (c + 8) & !7, // '\t'
             _ => c += 1,
         }
     }
@@ -227,6 +230,46 @@ pub unsafe extern "C" fn _IO_doallocbuf(fp: *mut c_void) {
     if let Some(f) = io_resolve!(c"_IO_doallocbuf", Fn) {
         unsafe { f(fp) }
     }
+}
+
+/// `_IO_getc` — internal getc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _IO_getc(fp: *mut c_void) -> c_int {
+    unsafe { stdio_abi::fgetc(fp) }
+}
+
+/// `_IO_putc` — internal putc.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _IO_putc(ch: c_int, fp: *mut c_void) -> c_int {
+    unsafe { stdio_abi::fputc(ch, fp) }
+}
+
+/// `_IO_feof` — internal feof.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _IO_feof(fp: *mut c_void) -> c_int {
+    unsafe { stdio_abi::feof(fp) }
+}
+
+/// `_IO_ferror` — internal ferror.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _IO_ferror(fp: *mut c_void) -> c_int {
+    unsafe { stdio_abi::ferror(fp) }
+}
+
+/// `_IO_fileno` — internal fileno.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _IO_fileno(fp: *mut c_void) -> c_int {
+    unsafe { stdio_abi::fileno(fp) }
+}
+
+/// `_IO_peekc_locked` — internal peek character.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn _IO_peekc_locked(fp: *mut c_void) -> c_int {
+    let ch = unsafe { stdio_abi::fgetc(fp) };
+    if ch != libc::EOF {
+        let _ = unsafe { stdio_abi::ungetc(ch, fp) };
+    }
+    ch
 }
 
 // ---------------------------------------------------------------------------
@@ -411,14 +454,20 @@ pub unsafe extern "C" fn _IO_file_open(
 /// `_IO_file_overflow` — handle write buffer overflow.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_overflow(fp: *mut c_void, ch: c_int) -> c_int {
+    // Flush the stream to make room.
+    if unsafe { stdio_abi::fflush(fp) } != 0 {
+        return libc::EOF;
+    }
     if ch == libc::EOF {
-        if unsafe { stdio_abi::fflush(fp) } == 0 {
-            0
+        0
+    } else {
+        // Write the extra character directly to the now-empty buffer or fd.
+        let byte = ch as u8;
+        if unsafe { stdio_abi::fwrite((&byte) as *const u8 as *const c_void, 1, 1, fp) } == 1 {
+            ch
         } else {
             libc::EOF
         }
-    } else {
-        unsafe { stdio_abi::fputc(ch, fp) }
     }
 }
 
@@ -645,14 +694,37 @@ pub unsafe extern "C" fn _IO_getline_info(
     count
 }
 
-/// `_IO_gets` — internal gets (deprecated but exported).
+/// `_IO_gets` — internal gets (deprecated but exported, native implementation).
+///
+/// Reads from stdin until newline or EOF into `buf`.
+/// HARDENED: Clamped to 16 MiB to prevent literal infinite overflow, though still
+/// inherently unsafe as per POSIX/C11.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_gets(buf: *mut c_char) -> *mut c_char {
-    type Fn = unsafe extern "C" fn(*mut c_char) -> *mut c_char;
-    match io_resolve!(c"_IO_gets", Fn) {
-        Some(f) => unsafe { f(buf) },
-        None => std::ptr::null_mut(),
+    if buf.is_null() {
+        return std::ptr::null_mut();
     }
+    let mut pos: usize = 0;
+    const MAX_GETS: usize = 16 * 1024 * 1024;
+    loop {
+        if pos >= MAX_GETS {
+            break;
+        }
+        let ch = unsafe { stdio_abi::getchar() };
+        if ch == libc::EOF {
+            if pos == 0 {
+                return std::ptr::null_mut();
+            }
+            break;
+        }
+        if ch == b'\n' as c_int {
+            break;
+        }
+        unsafe { *buf.add(pos) = ch as c_char };
+        pos += 1;
+    }
+    unsafe { *buf.add(pos) = 0 };
+    buf
 }
 
 // ---------------------------------------------------------------------------
@@ -898,14 +970,10 @@ pub unsafe extern "C" fn _IO_proc_open(
     }
 }
 
-/// `_IO_proc_close` — close a process pipe.
+/// `_IO_proc_close` — close a process pipe via native pclose.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_proc_close(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_proc_close", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::pclose(fp) }
 }
 
 // ---------------------------------------------------------------------------

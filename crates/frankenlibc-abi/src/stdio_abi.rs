@@ -1778,7 +1778,7 @@ pub(crate) fn count_printf_args(segments: &[FormatSegment<'_>]) -> usize {
                 needed += 1;
             }
             match spec.conversion {
-                b'%' => {}
+                b'%' | b'm' => {}
                 _ => needed += 1,
             }
         }
@@ -1802,7 +1802,7 @@ macro_rules! extract_va_args {
                     _idx += 1;
                 }
                 match spec.conversion {
-                    b'%' => {}
+                    b'%' | b'm' => {}
                     b'f' | b'F' | b'e' | b'E' | b'g' | b'G' | b'a' | b'A' => {
                         if _idx < $extract_count {
                             $buf[_idx] = unsafe { $args.arg::<f64>() }.to_bits();
@@ -1872,6 +1872,19 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                 // Consume one argument for the conversion.
                 match spec.conversion {
                     b'%' => buf.push(b'%'),
+                    b'm' => {
+                        let e = unsafe { *crate::errno_abi::__errno_location() };
+                        let mut err_buf = [0u8; 256];
+                        let rc = unsafe {
+                            libc::strerror_r(e, err_buf.as_mut_ptr() as *mut c_char, err_buf.len())
+                        };
+                        if rc == 0 {
+                            let msg = unsafe { CStr::from_ptr(err_buf.as_ptr() as *const c_char) };
+                            format_str(msg.to_bytes(), &resolved_spec, &mut buf);
+                        } else {
+                            buf.extend_from_slice(b"Unknown error");
+                        }
+                    }
                     b'n' => {
                         // %n: store count of bytes written so far.
                         // Respects length modifier: %hhn→i8, %hn→i16,
@@ -2352,7 +2365,7 @@ pub(crate) unsafe fn vprintf_extract_args(
                 idx += 1;
             }
             match spec.conversion {
-                b'%' => {}
+                b'%' | b'm' => {}
                 b'f' | b'F' | b'e' | b'E' | b'g' | b'G' | b'a' | b'A' => {
                     if idx < extract_count {
                         buf[idx] =

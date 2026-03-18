@@ -10,7 +10,7 @@
 //! - Size metadata for bounds checking (supports allocations >4GiB)
 
 /// Size of the fingerprint header prepended to allocations.
-pub const FINGERPRINT_SIZE: usize = 20;
+pub const FINGERPRINT_SIZE: usize = 24;
 
 /// Size of the trailing canary appended to allocations.
 pub const CANARY_SIZE: usize = 8;
@@ -25,7 +25,7 @@ pub struct AllocationFingerprint {
     /// SipHash-2-4 of (base_address, size, generation, secret).
     pub hash: u64,
     /// Generation counter for temporal safety.
-    pub generation: u32,
+    pub generation: u64,
     /// Allocation size in bytes (user-requested, not including overhead).
     pub size: u64,
 }
@@ -33,7 +33,7 @@ pub struct AllocationFingerprint {
 impl AllocationFingerprint {
     /// Compute a fingerprint for the given allocation parameters.
     #[must_use]
-    pub fn compute(base_addr: usize, size: u64, generation: u32) -> Self {
+    pub fn compute(base_addr: usize, size: u64, generation: u64) -> Self {
         let hash = sip_hash_2_4(base_addr, size, generation);
         Self {
             hash,
@@ -54,8 +54,8 @@ impl AllocationFingerprint {
     pub fn to_bytes(&self) -> [u8; FINGERPRINT_SIZE] {
         let mut buf = [0u8; FINGERPRINT_SIZE];
         buf[0..8].copy_from_slice(&self.hash.to_le_bytes());
-        buf[8..12].copy_from_slice(&self.generation.to_le_bytes());
-        buf[12..20].copy_from_slice(&self.size.to_le_bytes());
+        buf[8..16].copy_from_slice(&self.generation.to_le_bytes());
+        buf[16..24].copy_from_slice(&self.size.to_le_bytes());
         buf
     }
 
@@ -65,9 +65,11 @@ impl AllocationFingerprint {
         let hash = u64::from_le_bytes([
             buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
         ]);
-        let generation = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        let generation = u64::from_le_bytes([
+            buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+        ]);
         let size = u64::from_le_bytes([
-            buf[12], buf[13], buf[14], buf[15], buf[16], buf[17], buf[18], buf[19],
+            buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
         ]);
         Self {
             hash,
@@ -177,7 +179,7 @@ fn init_keys() -> (u64, u64) {
 ///
 /// Uses a runtime-initialized secret key for collision resistance
 /// and allocation integrity.
-fn sip_hash_2_4(addr: usize, size: u64, generation: u32) -> u64 {
+fn sip_hash_2_4(addr: usize, size: u64, generation: u64) -> u64 {
     let (k0, k1) = init_keys();
 
     let mut v0: u64 = k0 ^ 0x736f_6d65_7073_6575;
@@ -188,7 +190,7 @@ fn sip_hash_2_4(addr: usize, size: u64, generation: u32) -> u64 {
     // Pack inputs into a 192-bit message (3 words)
     let m0 = addr as u64;
     let m1 = size;
-    let m2 = generation as u64;
+    let m2 = generation;
 
     // Process m0
     v3 ^= m0;
@@ -310,7 +312,7 @@ mod tests {
         // Vary all three input dimensions systematically
         let addrs: &[usize] = &[0, 1, 0x1000, 0xDEAD_BEEF, 0x7FFF_FFFF_FFFF, usize::MAX];
         let sizes: &[u64] = &[0, 1, 64, 256, 4096, u64::MAX];
-        let gens: &[u32] = &[0, 1, 2, 100, u32::MAX - 1, u32::MAX];
+        let gens: &[u64] = &[0, 1, 2, 100, u64::MAX - 1, u64::MAX];
 
         let mut count = 0u64;
         for &addr in addrs {
@@ -353,7 +355,7 @@ mod tests {
         for &addr in addrs {
             for &size in sizes {
                 let mut prev_hashes = std::collections::HashSet::new();
-                for generation in 0..1000u32 {
+                for generation in 0..1000u64 {
                     let fp = AllocationFingerprint::compute(addr, size, generation);
                     let is_new = prev_hashes.insert(fp.hash);
                     assert!(
@@ -442,9 +444,9 @@ mod tests {
     #[test]
     fn proof_fingerprint_serialization_bijection() {
         let test_cases = [
-            (0x1000usize, 256u64, 1u32),
+            (0x1000usize, 256u64, 1u64),
             (0, 0, 0),
-            (usize::MAX, u64::MAX, u32::MAX),
+            (usize::MAX, u64::MAX, u64::MAX),
             (0xDEAD_BEEF, 4096, 42),
             (1, 1, 1),
         ];
@@ -453,7 +455,10 @@ mod tests {
             let fp = AllocationFingerprint::compute(addr, size, generation);
             let bytes = fp.to_bytes();
             let fp2 = AllocationFingerprint::from_bytes(&bytes);
-            assert_eq!(fp, fp2, "Round-trip failed for ({addr:#x}, {size}, {generation})");
+            assert_eq!(
+                fp, fp2,
+                "Round-trip failed for ({addr:#x}, {size}, {generation})"
+            );
         }
 
         // Distinct fingerprints → distinct bytes

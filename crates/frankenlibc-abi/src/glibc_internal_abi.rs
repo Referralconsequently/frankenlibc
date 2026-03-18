@@ -2853,7 +2853,7 @@ pub unsafe extern "C" fn inet_nsap_ntoa(
 ) -> *mut c_char {
     static NSAP_BUF: std::sync::Mutex<[u8; 512]> = std::sync::Mutex::new([0u8; 512]);
     let dst = if buf.is_null() {
-        let mut b = NSAP_BUF.lock().unwrap();
+        let mut b = NSAP_BUF.lock().unwrap_or_else(|e| e.into_inner());
         b.as_mut_ptr() as *mut c_char
     } else {
         buf
@@ -5926,8 +5926,8 @@ pub unsafe extern "C" fn re_comp(pattern: *const c_char) -> *mut c_char {
     if pattern.is_null() {
         return std::ptr::null_mut();
     }
-    let mut buf = RE_COMPILED_BUF.lock().unwrap();
-    let mut err = RE_ERROR_BUF.lock().unwrap();
+    let mut buf = RE_COMPILED_BUF.lock().unwrap_or_else(|e| e.into_inner());
+    let mut err = RE_ERROR_BUF.lock().unwrap_or_else(|e| e.into_inner());
     let regex_ptr = buf.as_mut_ptr() as *mut c_void;
     let rc = unsafe { super::string_abi::regcomp(regex_ptr, pattern, 0) };
     if rc == 0 {
@@ -5944,7 +5944,7 @@ pub unsafe extern "C" fn re_exec(string: *const c_char) -> c_int {
     if string.is_null() {
         return 0;
     }
-    let buf = RE_COMPILED_BUF.lock().unwrap();
+    let buf = RE_COMPILED_BUF.lock().unwrap_or_else(|e| e.into_inner());
     let regex_ptr = buf.as_ptr() as *const c_void;
     let rc = unsafe { super::string_abi::regexec(regex_ptr, string, 0, std::ptr::null_mut(), 0) };
     if rc == 0 { 1 } else { 0 }

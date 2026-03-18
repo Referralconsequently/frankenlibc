@@ -24,12 +24,12 @@ use frankenlibc_core::pthread::tls::{
 };
 use frankenlibc_core::pthread::{
     CondvarData, PTHREAD_COND_CLOCK_REALTIME, THREAD_DETACHED, THREAD_FINISHED, THREAD_JOINED,
-    THREAD_RUNNING, THREAD_STARTING, ThreadHandle, condvar_broadcast as core_condvar_broadcast,
+    ThreadHandle, condvar_broadcast as core_condvar_broadcast,
     condvar_destroy as core_condvar_destroy, condvar_init as core_condvar_init,
     condvar_signal as core_condvar_signal, condvar_timedwait as core_condvar_timedwait,
     condvar_wait as core_condvar_wait, create_thread as core_create_thread,
-    detach_thread as core_detach_thread, join_thread as core_join_thread,
-    self_tid as core_self_tid,
+    detach_thread as core_detach_thread, handle_for_tid as core_handle_for_tid,
+    join_thread as core_join_thread, self_tid as core_self_tid,
 };
 use frankenlibc_membrane::check_oracle::CheckStage;
 use frankenlibc_membrane::runtime_math::ApiFamily;
@@ -559,16 +559,11 @@ fn native_pthread_self() -> libc::pthread_t {
     }
     let tid = core_self_tid();
     if tid > 0 {
-        let registry = THREAD_HANDLE_REGISTRY
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        for &handle_raw in registry.values() {
-            let handle_ptr = handle_raw as *mut ThreadHandle;
-            // SAFETY: registry only stores live handles from `core_create_thread`.
-            let handle_tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
-            if handle_tid == tid {
-                return handle_raw as libc::pthread_t;
-            }
+        // Use the TLS table to resolve our own ThreadHandle in O(1) time
+        // without taking the global registry lock. This also ensures
+        // consistency for detached threads that are still running.
+        if let Some(handle_ptr) = core_handle_for_tid(tid) {
+            return handle_ptr as usize as libc::pthread_t;
         }
     }
     // Fallback for threads not created via our managed pthread_create path.
@@ -587,31 +582,32 @@ fn native_pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_int {
     if a == b { 1 } else { 0 }
 }
 
-/// Resolve a `pthread_t` handle to the kernel thread ID (TID).
-///
-/// Looks up the handle in `THREAD_HANDLE_REGISTRY`. For threads created by
-/// our `pthread_create`, this returns the TID stored in the `ThreadHandle`.
-/// For unrecognised handles (e.g. glibc-created threads), returns `None`.
 fn resolve_thread_tid(thread: libc::pthread_t) -> Option<i32> {
     let thread_key = thread as usize;
-    let registry = THREAD_HANDLE_REGISTRY
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    if let Some(&raw) = registry.get(&thread_key) {
-        let handle_ptr = raw as *mut ThreadHandle;
-        // SAFETY: registry only stores live handles from `core_create_thread`.
+    let handle_ptr = thread as *mut ThreadHandle;
+
+    // Check if it's a managed thread handle.
+    // We check the registry to ensure the pointer is still live and managed.
+    let is_managed = {
+        let registry = THREAD_HANDLE_REGISTRY
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        registry.contains_key(&thread_key)
+    };
+
+    if is_managed {
+        // SAFETY: handle_ptr is validated.
         let tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
         if tid > 0 {
             return Some(tid);
         }
-        // Thread may not have published its TID yet; fall back to self_tid.
         let self_tid = unsafe { (*handle_ptr).self_tid.load(Ordering::Acquire) };
         if self_tid > 0 {
             return Some(self_tid);
         }
     }
-    // For threads not in our registry, the pthread_t may be the TID itself
-    // (our native_pthread_self returns tid as pthread_t).
+
+    // Unmanaged thread fallback: the pthread_t may be the TID itself.
     let candidate = thread_key as i32;
     if candidate > 0 {
         return Some(candidate);
@@ -754,60 +750,46 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
             return unsafe { host_join(thread, retval) };
         }
     }
+
     let thread_key = thread as usize;
-    let my_tid = core_self_tid();
-    if my_tid > 0 && thread_key == my_tid as usize {
-        return libc::EDEADLK;
+    let handle_ptr = thread as *mut ThreadHandle;
+
+    // Self-join detection: compare handles directly for O(1) reliability.
+    if let Some(my_handle) = core_handle_for_tid(core_self_tid()) {
+        if handle_ptr == my_handle {
+            return libc::EDEADLK;
+        }
     }
 
-    // Reject self-join before removing the handle from the registry. This
-    // avoids entering core join wait paths when a thread attempts to join its
-    // own `pthread_t`.
-    {
+    // Verify this is a valid managed thread handle that we know about.
+    // We check the registry to ensure the pointer is still live and managed.
+    let is_managed = {
         let registry = THREAD_HANDLE_REGISTRY
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if let Some(&raw) = registry.get(&thread_key) {
-            let handle_ptr = raw as *mut ThreadHandle;
-            // SAFETY: registry only stores handles created by core_create_thread.
-            let state = unsafe { (*handle_ptr).state.load(Ordering::Acquire) };
-            if state == THREAD_STARTING || state == THREAD_RUNNING {
-                // SAFETY: handle_ptr is valid while present in registry.
-                let handle_tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
-                // SAFETY: handle_ptr is valid while present in registry.
-                let handle_self_tid = unsafe { (*handle_ptr).self_tid.load(Ordering::Acquire) };
-                if my_tid > 0 && (handle_tid == my_tid || handle_self_tid == my_tid) {
-                    return libc::EDEADLK;
-                }
-            }
-        }
-    }
-
-    let handle_ptr = {
-        let mut registry = THREAD_HANDLE_REGISTRY
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        match registry.remove(&thread_key) {
-            Some(raw) => raw as *mut ThreadHandle,
-            None => return libc::ESRCH,
-        }
+        registry.contains_key(&thread_key)
     };
 
+    if !is_managed {
+        return libc::ESRCH;
+    }
+
+    // Call core_join_thread which handles final state transitions and synchronization.
+    // We must ensure the handle is removed from the registry if join succeeds.
     match unsafe { core_join_thread(handle_ptr) } {
         Ok(value) => {
             if !retval.is_null() {
                 // SAFETY: caller provided a writable retval pointer.
                 unsafe { *retval = value as *mut c_void };
             }
-            0
-        }
-        Err(errno) => {
+            // Remove from registry after successful join.
             let mut registry = THREAD_HANDLE_REGISTRY
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            registry.insert(thread_key, handle_ptr as usize);
-            errno
+            registry.remove(&thread_key);
+            0
         }
+        Err(errno) => errno,
     }
 }
 
@@ -820,26 +802,32 @@ unsafe fn native_pthread_detach(thread: libc::pthread_t) -> c_int {
             return unsafe { host_detach(thread) };
         }
     }
+
     let thread_key = thread as usize;
-    let handle_ptr = {
-        let mut registry = THREAD_HANDLE_REGISTRY
+    let handle_ptr = thread as *mut ThreadHandle;
+
+    // Verify this is a valid managed thread handle that we know about.
+    let is_managed = {
+        let registry = THREAD_HANDLE_REGISTRY
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        match registry.remove(&thread_key) {
-            Some(raw) => raw as *mut ThreadHandle,
-            None => return libc::ESRCH,
-        }
+        registry.contains_key(&thread_key)
     };
 
+    if !is_managed {
+        return libc::ESRCH;
+    }
+
     match unsafe { core_detach_thread(handle_ptr) } {
-        Ok(()) => 0,
-        Err(errno) => {
+        Ok(()) => {
+            // Remove from registry after successful detach.
             let mut registry = THREAD_HANDLE_REGISTRY
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            registry.insert(thread_key, handle_ptr as usize);
-            errno
+            registry.remove(&thread_key);
+            0
         }
+        Err(errno) => errno,
     }
 }
 

@@ -108,7 +108,7 @@ pub unsafe extern "C" fn opendir(name: *const c_char) -> *mut DIR {
         last_d_off: 0,
     };
 
-    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let mut registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     let map = registry.get_or_insert_with(HashMap::new);
     map.insert(handle, state);
 
@@ -144,7 +144,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DIR) -> *mut libc::dirent {
     }
 
     let handle = dirp as usize;
-    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let mut registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     let map = match registry.as_mut() {
         Some(m) => m,
         None => {
@@ -261,7 +261,7 @@ pub unsafe extern "C" fn closedir(dirp: *mut DIR) -> c_int {
     }
 
     let handle = dirp as usize;
-    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let mut registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     let state = registry.as_mut().and_then(|m| m.remove(&handle));
 
     match state {
@@ -304,7 +304,7 @@ pub unsafe extern "C" fn seekdir(dirp: *mut DIR, loc: c_long) {
         return;
     }
     let handle = dirp as usize;
-    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let mut registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = registry.as_mut()
         && let Some(state) = map.get_mut(&handle)
     {
@@ -329,7 +329,7 @@ pub unsafe extern "C" fn telldir(dirp: *mut DIR) -> c_long {
         return -1;
     }
     let handle = dirp as usize;
-    let registry = DIR_REGISTRY.lock().unwrap();
+    let registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     match registry.as_ref().and_then(|m| m.get(&handle)) {
         Some(state) => state.last_d_off,
         None => -1,
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn rewinddir(dirp: *mut DIR) {
         return;
     }
     let handle = dirp as usize;
-    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let mut registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = registry.as_mut()
         && let Some(state) = map.get_mut(&handle)
     {
@@ -662,7 +662,7 @@ pub unsafe extern "C" fn fdopendir(fd: c_int) -> *mut libc::DIR {
         last_d_off: 0,
     };
 
-    let mut registry = DIR_REGISTRY.lock().unwrap();
+    let mut registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     let map = registry.get_or_insert_with(HashMap::new);
     map.insert(handle, state);
 
@@ -681,7 +681,7 @@ pub unsafe extern "C" fn dirfd(dirp: *mut libc::DIR) -> c_int {
     }
 
     let handle = dirp as usize;
-    let registry = DIR_REGISTRY.lock().unwrap();
+    let registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     match registry.as_ref().and_then(|m| m.get(&handle)) {
         Some(state) => state.fd,
         None => {

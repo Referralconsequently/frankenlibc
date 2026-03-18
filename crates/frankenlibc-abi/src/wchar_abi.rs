@@ -267,7 +267,7 @@ pub unsafe extern "C" fn wcsncpy(dst: *mut u32, src: *const u32, n: usize) -> *m
         };
 
         while i < max_copy {
-            if repair && src_bound.is_some() && i >= src_bound.unwrap() {
+            if repair && src_bound.is_some_and(|b| i >= b) {
                 // Hit source bound unexpectedly
                 adverse = true;
                 break;
@@ -1776,7 +1776,7 @@ pub unsafe extern "C" fn basename(path: *mut std::ffi::c_char) -> *mut std::ffi:
     if result_len == 0 {
         return dot.as_ptr() as *mut std::ffi::c_char;
     }
-    let mut buf = BASENAME_BUF.lock().unwrap();
+    let mut buf = BASENAME_BUF.lock().unwrap_or_else(|e| e.into_inner());
     buf[..result_len].copy_from_slice(&slice[s..e]);
     buf[result_len] = 0;
     buf.as_mut_ptr() as *mut std::ffi::c_char
@@ -1805,7 +1805,7 @@ pub unsafe extern "C" fn dirname(path: *mut std::ffi::c_char) -> *mut std::ffi::
     if result_len == 0 {
         return dot.as_ptr() as *mut std::ffi::c_char;
     }
-    let mut buf = DIRNAME_BUF.lock().unwrap();
+    let mut buf = DIRNAME_BUF.lock().unwrap_or_else(|e| e.into_inner());
     buf[..result_len].copy_from_slice(&slice[s..e]);
     buf[result_len] = 0;
     buf.as_mut_ptr() as *mut std::ffi::c_char

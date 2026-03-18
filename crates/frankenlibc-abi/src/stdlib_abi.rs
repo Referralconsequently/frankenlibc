@@ -1791,12 +1791,16 @@ pub unsafe extern "C" fn qsort_r(
         return;
     }
 
-    if base.is_null() || nmemb == 0 || size == 0 || compar.is_none() {
+    let Some(cmp_fn) = compar else {
+        runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, false);
+        return;
+    };
+
+    if base.is_null() || nmemb == 0 || size == 0 {
         runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, false);
         return;
     }
 
-    let cmp_fn = compar.unwrap();
     let total = nmemb.saturating_mul(size);
     let slice = unsafe { std::slice::from_raw_parts_mut(base as *mut u8, total) };
 
@@ -2000,19 +2004,14 @@ pub unsafe extern "C" fn on_exit(
     arg: *mut c_void,
 ) -> c_int {
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdlib, 0, 0, true, func.is_none(), 0);
-    if matches!(decision.action, MembraneAction::Deny) || func.is_none() {
+    let Some(f) = func else {
         runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, true);
         return -1;
-    }
-    let f = func.unwrap();
-    if let Ok(mut handlers) = ON_EXIT_HANDLERS.lock() {
-        handlers.push(OnExitEntry { func: f, arg });
-        runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, false);
-        0
-    } else {
-        runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, true);
-        -1
-    }
+    };
+    let mut handlers = ON_EXIT_HANDLERS.lock().unwrap_or_else(|e| e.into_inner());
+    handlers.push(OnExitEntry { func: f, arg });
+    runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, false);
+    0
 }
 
 /// Exit handler entries for `at_quick_exit`.
@@ -2023,29 +2022,23 @@ static QUICK_EXIT_HANDLERS: std::sync::Mutex<Vec<unsafe extern "C" fn()>> =
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn at_quick_exit(func: Option<unsafe extern "C" fn()>) -> c_int {
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdlib, 0, 0, true, func.is_none(), 0);
-    if matches!(decision.action, MembraneAction::Deny) || func.is_none() {
+    let Some(f) = func else {
         runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, true);
         return -1;
-    }
-    let f = func.unwrap();
-    if let Ok(mut handlers) = QUICK_EXIT_HANDLERS.lock() {
-        handlers.push(f);
-        runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, false);
-        0
-    } else {
-        runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, true);
-        -1
-    }
+    };
+    let mut handlers = QUICK_EXIT_HANDLERS.lock().unwrap_or_else(|e| e.into_inner());
+    handlers.push(f);
+    runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 4, false);
+    0
 }
 
 /// `quick_exit` — rapid process termination, calling at_quick_exit handlers.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn quick_exit(status: c_int) -> ! {
     // Call registered quick_exit handlers in reverse order.
-    if let Ok(handlers) = QUICK_EXIT_HANDLERS.lock() {
-        for func in handlers.iter().rev() {
-            unsafe { func() };
-        }
+    let handlers = QUICK_EXIT_HANDLERS.lock().unwrap_or_else(|e| e.into_inner());
+    for func in handlers.iter().rev() {
+        unsafe { func() };
     }
     unsafe { libc::_exit(status) }
 }

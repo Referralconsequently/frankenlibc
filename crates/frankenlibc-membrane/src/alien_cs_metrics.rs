@@ -12,8 +12,8 @@
 //! as appropriate for their context.
 
 use crate::ebr::EbrDiagnostics;
-use crate::ids::{DecisionId, MEMBRANE_SCHEMA_VERSION, TraceId};
 use crate::flat_combining::FlatCombinerDiagnostics;
+use crate::ids::{DecisionId, MEMBRANE_SCHEMA_VERSION, TraceId};
 use crate::seqlock::SeqLockDiagnostics;
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -208,8 +208,7 @@ impl MetricRing {
         let run = sanitize_trace_component(run_id);
         let timestamp = now_utc_iso_like();
         let events = self.snapshot();
-        let mut out =
-            String::with_capacity(events.len().saturating_mul(320).saturating_add(256));
+        let mut out = String::with_capacity(events.len().saturating_mul(320).saturating_add(256));
 
         for (index, event) in events.iter().enumerate() {
             let decision_id = DecisionId::from_raw((index + 1) as u64);
@@ -296,11 +295,7 @@ pub fn build_snapshot(
     rcu: Option<RcuMetrics>,
     epoch_start: Instant,
 ) -> AlienCsSnapshot {
-    let contention = compute_contention_score(
-        seqlock.as_ref(),
-        ebr.as_ref(),
-        fc.as_ref(),
-    );
+    let contention = compute_contention_score(seqlock.as_ref(), ebr.as_ref(), fc.as_ref());
     AlienCsSnapshot {
         captured_at_ns: epoch_start.elapsed().as_nanos() as u64,
         seqlock,
@@ -328,7 +323,10 @@ impl AlienCsSnapshot {
         let ebr_epoch = self.ebr.as_ref().map_or(0, |diag| diag.global_epoch);
         let ebr_active_threads = self.ebr.as_ref().map_or(0, |diag| diag.active_threads);
         let ebr_pinned_threads = self.ebr.as_ref().map_or(0, |diag| diag.pinned_threads);
-        let fc_total_ops = self.flat_combining.as_ref().map_or(0, |diag| diag.total_ops);
+        let fc_total_ops = self
+            .flat_combining
+            .as_ref()
+            .map_or(0, |diag| diag.total_ops);
         let fc_total_passes = self
             .flat_combining
             .as_ref()
@@ -341,7 +339,8 @@ impl AlienCsSnapshot {
             "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"bead_id\":\"{bead}\",\"scenario_id\":\"{run}\",\"decision_id\":0,\"schema_version\":\"{}\",\"level\":\"{level}\",\"event\":\"alien_cs_snapshot\",\"controller_id\":\"alien_cs_metrics.v1\",\"api_family\":\"alien_cs\",\"symbol\":\"alien_cs::snapshot\",\"decision_path\":\"alien_cs::snapshot::build\",\"healing_action\":null,\"errno\":0,\"latency_ns\":{},\"contention_score\":{},\"seqlock_reads\":{seqlock_reads},\"seqlock_writes\":{seqlock_writes},\"ebr_epoch\":{ebr_epoch},\"ebr_active_threads\":{ebr_active_threads},\"ebr_pinned_threads\":{ebr_pinned_threads},\"flat_combining_total_ops\":{fc_total_ops},\"flat_combining_total_passes\":{fc_total_passes},\"rcu_epoch\":{rcu_epoch},\"rcu_reader_count\":{rcu_reader_count},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/alien_cs_metrics.rs\"]}}\n",
             trace_id.as_str(),
             MEMBRANE_SCHEMA_VERSION,
-            self.captured_at_ns, self.contention_score,
+            self.captured_at_ns,
+            self.contention_score,
         )
     }
 }
@@ -598,11 +597,16 @@ mod tests {
             assert_eq!(parsed["decision_id"], (index + 1) as u64);
             assert_eq!(parsed["schema_version"], "1.0");
             assert_eq!(parsed["api_family"], "alien_cs");
-            assert!(parsed["trace_id"]
-                .as_str()
-                .expect("trace_id must be string")
-                .starts_with("alien_cs::metric::"));
-            assert_eq!(parsed["artifact_refs"][0], "crates/frankenlibc-membrane/src/alien_cs_metrics.rs");
+            assert!(
+                parsed["trace_id"]
+                    .as_str()
+                    .expect("trace_id must be string")
+                    .starts_with("alien_cs::metric::")
+            );
+            assert_eq!(
+                parsed["artifact_refs"][0],
+                "crates/frankenlibc-membrane/src/alien_cs_metrics.rs"
+            );
             assert_eq!(parsed["metric_value"], if index == 0 { 7 } else { 2 });
         }
     }
@@ -662,7 +666,10 @@ mod tests {
         assert_eq!(parsed["flat_combining_total_ops"], 13);
         assert_eq!(parsed["rcu_epoch"], 6);
         assert_eq!(parsed["rcu_reader_count"], 3);
-        assert_eq!(parsed["artifact_refs"][0], "crates/frankenlibc-membrane/src/alien_cs_metrics.rs");
+        assert_eq!(
+            parsed["artifact_refs"][0],
+            "crates/frankenlibc-membrane/src/alien_cs_metrics.rs"
+        );
     }
 
     #[test]

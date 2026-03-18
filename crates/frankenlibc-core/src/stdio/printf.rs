@@ -79,6 +79,8 @@ pub enum FormatArg {
     Float(f64),
     Char(u8),
     Pointer(usize),
+    /// For `%m` extension (strerror(errno)).
+    Errno,
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +220,7 @@ pub fn parse_format_spec(fmt: &[u8]) -> Option<(FormatSpec, usize)> {
 
     match conversion {
         b'd' | b'i' | b'u' | b'x' | b'X' | b'o' | b's' | b'c' | b'p' | b'n' | b'%' | b'f'
-        | b'F' | b'e' | b'E' | b'g' | b'G' | b'a' | b'A' => {}
+        | b'F' | b'e' | b'E' | b'g' | b'G' | b'a' | b'A' | b'm' => {}
         _ => return None,
     }
 

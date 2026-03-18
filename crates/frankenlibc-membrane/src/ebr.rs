@@ -386,9 +386,7 @@ impl QuarantineEbr {
         self.quarantine
             .lock()
             .push((target_epoch, Box::new(cleanup)));
-        self.collector
-            .total_retired
-            .fetch_add(1, Ordering::Relaxed);
+        self.collector.total_retired.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Try to advance the epoch and drain eligible quarantine items.

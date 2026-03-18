@@ -23,7 +23,7 @@ pub struct PointerAbstraction {
     /// Known remaining bytes from addr (if any).
     pub remaining: Option<usize>,
     /// Generation at time of abstraction.
-    pub generation: Option<u32>,
+    pub generation: Option<u64>,
 }
 
 impl PointerAbstraction {
@@ -58,7 +58,7 @@ impl PointerAbstraction {
         state: SafetyState,
         alloc_base: usize,
         remaining: usize,
-        generation: u32,
+        generation: u64,
     ) -> Self {
         Self {
             addr,
@@ -106,7 +106,7 @@ impl SafetyAbstraction {
         state: SafetyState,
         alloc_base: Option<usize>,
         remaining: Option<usize>,
-        generation: Option<u32>,
+        generation: Option<u64>,
     ) -> PointerAbstraction {
         if addr == 0 {
             return PointerAbstraction::null();
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn valid_pointer_within_bounds_proceeds() {
-        let ptr = PointerAbstraction::validated(0x1000, SafetyState::Valid, 0x1000, 256, 1);
+        let ptr = PointerAbstraction::validated(0x1000, SafetyState::Valid, 0x1000, 256, 1u64);
         let action = SafetyAbstraction::concretize_decision(&ptr, 100);
         assert_eq!(
             action,
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn valid_pointer_exceeding_bounds_heals() {
-        let ptr = PointerAbstraction::validated(0x1000, SafetyState::Valid, 0x1000, 100, 1);
+        let ptr = PointerAbstraction::validated(0x1000, SafetyState::Valid, 0x1000, 100, 1u64);
         let action = SafetyAbstraction::concretize_decision(&ptr, 500);
         match action {
             ConcreteAction::Heal { effective_size, .. } => assert_eq!(effective_size, 100),
@@ -218,7 +218,7 @@ mod tests {
             state: SafetyState::Freed,
             alloc_base: Some(0x1000),
             remaining: Some(256),
-            generation: Some(1),
+            generation: Some(1u64),
         };
         let action = SafetyAbstraction::concretize_decision(&ptr, 10);
         assert_eq!(action, ConcreteAction::Deny);
@@ -245,7 +245,7 @@ mod tests {
             SafetyState::Valid,
             Some(0x2000),
             Some(512),
-            Some(3),
+            Some(3u64),
         );
         assert_eq!(abs.addr, 0x2000);
         assert_eq!(abs.state, SafetyState::Valid);
@@ -276,7 +276,11 @@ mod tests {
 
     #[test]
     fn proof_galois_connection_valid_operations_never_denied() {
-        let live_states = [SafetyState::Valid, SafetyState::Readable, SafetyState::Writable];
+        let live_states = [
+            SafetyState::Valid,
+            SafetyState::Readable,
+            SafetyState::Writable,
+        ];
         let addrs: &[usize] = &[0x1000, 0x2000, 0xDEAD_0000, usize::MAX / 2];
         let sizes: &[usize] = &[0, 1, 64, 256, 4096];
         let remaining_vals: &[usize] = &[0, 1, 64, 256, 4096, 65536];
@@ -291,7 +295,7 @@ mod tests {
                             state,
                             Some(addr),
                             Some(remaining),
-                            Some(1),
+                            Some(1u64),
                         );
                         // Gamma: concretize
                         let action = SafetyAbstraction::concretize_decision(&abs, requested);
@@ -300,7 +304,10 @@ mod tests {
                         // with full requested size (not denied, not clamped)
                         if requested <= remaining {
                             match action {
-                                ConcreteAction::Proceed { effective_size, effective_addr } => {
+                                ConcreteAction::Proceed {
+                                    effective_size,
+                                    effective_addr,
+                                } => {
                                     assert_eq!(
                                         effective_size, requested,
                                         "Galois: valid request must get full size. \
@@ -374,7 +381,11 @@ mod tests {
 
     #[test]
     fn proof_gamma_deny_iff_null_freed_quarantined_invalid() {
-        let deny_states = [SafetyState::Freed, SafetyState::Quarantined, SafetyState::Invalid];
+        let deny_states = [
+            SafetyState::Freed,
+            SafetyState::Quarantined,
+            SafetyState::Invalid,
+        ];
         let allow_states = [
             SafetyState::Valid,
             SafetyState::Readable,
@@ -389,7 +400,7 @@ mod tests {
                 state,
                 alloc_base: Some(0x1000),
                 remaining: Some(256),
-                generation: Some(1),
+                generation: Some(1u64),
             };
             let action = SafetyAbstraction::concretize_decision(&ptr, 64);
             assert_eq!(
@@ -423,7 +434,7 @@ mod tests {
                 state,
                 alloc_base: Some(0x1000),
                 remaining: Some(256),
-                generation: Some(1),
+                generation: Some(1u64),
             };
             let action = SafetyAbstraction::concretize_decision(&ptr, 64);
             assert!(
@@ -443,7 +454,11 @@ mod tests {
 
     #[test]
     fn proof_healing_never_exceeds_remaining() {
-        let live_states = [SafetyState::Valid, SafetyState::Readable, SafetyState::Writable];
+        let live_states = [
+            SafetyState::Valid,
+            SafetyState::Readable,
+            SafetyState::Writable,
+        ];
         let remaining_vals: &[usize] = &[0, 1, 32, 100, 255, 4096];
 
         for &state in &live_states {
@@ -455,7 +470,7 @@ mod tests {
                         continue; // skip if saturated to same value
                     }
 
-                    let ptr = PointerAbstraction::validated(0x1000, state, 0x1000, remaining, 1);
+                    let ptr = PointerAbstraction::validated(0x1000, state, 0x1000, remaining, 1u64);
                     let action = SafetyAbstraction::concretize_decision(&ptr, requested);
 
                     match action {

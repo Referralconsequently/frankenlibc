@@ -15,23 +15,41 @@ use crate::runtime_policy;
 // Thread-local dlerror state
 // ---------------------------------------------------------------------------
 
+use std::cell::RefCell;
+
 std::thread_local! {
-    static DLERROR_MSG: std::cell::Cell<*const c_char> = const { std::cell::Cell::new(std::ptr::null()) };
+    /// Current error message (not yet seen by dlerror).
+    static PENDING_ERROR: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+    /// Last error message returned by dlerror (valid until next dlfcn call).
+    static STABLE_ERROR: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
 }
 
-/// Set the thread-local dlerror message.
+/// Set the thread-local dlerror message from a static byte slice.
 fn set_dlerror(msg: &'static [u8]) {
-    DLERROR_MSG.with(|cell| cell.set(msg.as_ptr() as *const c_char));
+    PENDING_ERROR.with(|cell| {
+        *cell.borrow_mut() = Some(msg.to_vec());
+    });
 }
 
-/// Set the thread-local dlerror message from a raw C string.
-fn set_dlerror_raw(msg: *const c_char) {
-    DLERROR_MSG.with(|cell| cell.set(msg));
+/// Set the thread-local dlerror message from a raw C string (performing a deep copy).
+unsafe fn set_dlerror_raw(msg: *const c_char) {
+    if msg.is_null() {
+        clear_dlerror();
+        return;
+    }
+    // SAFETY: caller guarantees msg is a valid NUL-terminated C string.
+    let c_str = unsafe { std::ffi::CStr::from_ptr(msg) };
+    let bytes = c_str.to_bytes_with_nul().to_vec();
+    PENDING_ERROR.with(|cell| {
+        *cell.borrow_mut() = Some(bytes);
+    });
 }
 
 /// Clear the thread-local dlerror message.
 fn clear_dlerror() {
-    DLERROR_MSG.with(|cell| cell.set(std::ptr::null()));
+    PENDING_ERROR.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
 }
 
 #[inline]
@@ -93,6 +111,9 @@ host_delegate!(host_dlsym, "dlsym", DlsymFn);
 type DlcloseFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 host_delegate!(host_dlclose, "dlclose", DlcloseFn);
 
+type DlvsymFn = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> *mut c_void;
+host_delegate!(host_dlvsym, "dlvsym", DlvsymFn);
+
 // ---------------------------------------------------------------------------
 // dlopen
 // ---------------------------------------------------------------------------
@@ -125,7 +146,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
             if adverse {
                 let host_err = unsafe { libc::dlerror() };
                 if !host_err.is_null() {
-                    set_dlerror_raw(host_err);
+                    unsafe { set_dlerror_raw(host_err) };
                 } else {
                     set_dlerror(dlfcn_core::ERR_NOT_FOUND);
                 }
@@ -144,7 +165,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
     if adverse {
         let host_err = unsafe { libc::dlerror() };
         if !host_err.is_null() {
-            set_dlerror_raw(host_err);
+            unsafe { set_dlerror_raw(host_err) };
         } else {
             set_dlerror(dlfcn_core::ERR_NOT_FOUND);
         }
@@ -200,7 +221,58 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     if adverse {
         let host_err = unsafe { libc::dlerror() };
         if !host_err.is_null() {
-            set_dlerror_raw(host_err);
+            unsafe { set_dlerror_raw(host_err) };
+        } else {
+            set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+        }
+    }
+    runtime_policy::observe(ApiFamily::Loader, decision.profile, 8, adverse);
+    sym
+}
+
+/// Find a symbol with a specific version in a shared object.
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn dlvsym(
+    handle: *mut c_void,
+    symbol: *const c_char,
+    version: *const c_char,
+) -> *mut c_void {
+    if DLSYM_REENTRY.try_with(|r| r.get()).unwrap_or(true) {
+        return unsafe {
+            host_dlvsym().map_or(std::ptr::null_mut(), |f| f(handle, symbol, version))
+        };
+    }
+
+    struct DlsymGuard;
+    impl Drop for DlsymGuard {
+        fn drop(&mut self) {
+            let _ = DLSYM_REENTRY.try_with(|r| r.set(false));
+        }
+    }
+    let _guard = DlsymGuard;
+    let _ = DLSYM_REENTRY.try_with(|r| r.set(true));
+
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Loader, handle as usize, 0, false, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
+        return std::ptr::null_mut();
+    }
+
+    if symbol.is_null() || version.is_null() {
+        set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
+        return std::ptr::null_mut();
+    }
+
+    clear_dlerror();
+    let sym = unsafe { host_dlvsym().map_or(std::ptr::null_mut(), |f| f(handle, symbol, version)) };
+    let adverse = sym.is_null();
+    if adverse {
+        let host_err = unsafe { libc::dlerror() };
+        if !host_err.is_null() {
+            unsafe { set_dlerror_raw(host_err) };
         } else {
             set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
         }
@@ -242,7 +314,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> c_int {
     if adverse {
         let host_err = unsafe { libc::dlerror() };
         if !host_err.is_null() {
-            set_dlerror_raw(host_err);
+            unsafe { set_dlerror_raw(host_err) };
         } else {
             set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
         }
@@ -251,19 +323,21 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> c_int {
     rc
 }
 
-// ---------------------------------------------------------------------------
-// dlerror
-// ---------------------------------------------------------------------------
-
 /// Return a human-readable error message for the last `dlopen`, `dlsym`,
 /// or `dlclose` failure. Returns null if no error has occurred since the
 /// last call to `dlerror`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dlerror() -> *const c_char {
-    let msg = DLERROR_MSG.with(|cell| cell.get());
-    // Per POSIX: calling dlerror() clears the error state.
-    clear_dlerror();
-    msg
+    let pending = PENDING_ERROR.with(|cell| cell.borrow_mut().take());
+    if let Some(msg) = pending {
+        STABLE_ERROR.with(|cell| {
+            let mut stable = cell.borrow_mut();
+            *stable = Some(msg);
+            stable.as_ref().unwrap().as_ptr() as *const c_char
+        })
+    } else {
+        std::ptr::null()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -315,8 +389,15 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, info: *mut c_void) -> c_int
         return 0;
     }
 
-    if addr.is_null() || info.is_null() {
+    if addr.is_null() {
         set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
+        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
+        return 0;
+    }
+
+    if info.is_null() {
+        // POSIX does not define behavior for null info, but returning 0 (failure)
+        // is the safest path for libc replacement.
         runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
         return 0;
     }

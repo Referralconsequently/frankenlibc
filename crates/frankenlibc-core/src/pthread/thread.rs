@@ -97,6 +97,9 @@ const MAP_ANONYMOUS: usize = 0x20;
 // Thread handle
 // ---------------------------------------------------------------------------
 
+/// Magic value for identifying a valid ThreadHandle.
+const THREAD_HANDLE_MAGIC: u32 = 0x5448_444c; // "THDL"
+
 /// Per-thread control block. Allocated on the heap, pointed to by `pthread_t`.
 ///
 /// The `tid` field doubles as the join futex: `CLONE_CHILD_CLEARTID` tells the
@@ -104,6 +107,9 @@ const MAP_ANONYMOUS: usize = 0x20;
 /// exits. Joiners simply `futex_wait(&tid, current_tid)` until tid becomes 0.
 #[repr(C)]
 pub struct ThreadHandle {
+    /// Magic identifier for validity checking.
+    pub magic: u32,
+
     /// Kernel thread ID. Set by `CLONE_PARENT_SETTID` on creation.
     /// Cleared to 0 by `CLONE_CHILD_CLEARTID` on thread exit.
     pub tid: AtomicI32,
@@ -459,6 +465,7 @@ pub unsafe fn create_thread(
 
     // Allocate the ThreadHandle on the heap (Box).
     let handle = Box::new(ThreadHandle {
+        magic: THREAD_HANDLE_MAGIC,
         tid: AtomicI32::new(0),
         self_tid: AtomicI32::new(0),
         state: AtomicU32::new(THREAD_STARTING),
@@ -846,6 +853,31 @@ pub unsafe fn detach_thread(handle_ptr: *mut ThreadHandle) -> Result<(), i32> {
 #[cfg(target_arch = "x86_64")]
 pub fn self_tid() -> i32 {
     syscall::sys_gettid()
+}
+
+/// Resolve a kernel TID to a `ThreadHandle` pointer.
+///
+/// Uses the TLS registration table to find the handle associated with the TID.
+/// Returns `None` if the TID is not registered or the handle is invalid.
+#[cfg(target_arch = "x86_64")]
+pub fn handle_for_tid(tid: i32) -> Option<*mut ThreadHandle> {
+    let values_ptr = super::tls::table_lookup(tid);
+    if values_ptr.is_null() {
+        return None;
+    }
+
+    // SAFETY: ThreadHandle contains the tls_values array. We use offset_of
+    // to find the base of the handle from the pointer to that array.
+    let offset = core::mem::offset_of!(ThreadHandle, tls_values);
+    let handle_ptr = unsafe { (values_ptr as *mut u8).sub(offset).cast::<ThreadHandle>() };
+
+    // Validate the handle via magic number.
+    // SAFETY: handle_ptr was derived from a valid registered values_ptr.
+    if unsafe { (*handle_ptr).magic } == THREAD_HANDLE_MAGIC {
+        Some(handle_ptr)
+    } else {
+        None
+    }
 }
 
 // ---------------------------------------------------------------------------
