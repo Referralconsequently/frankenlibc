@@ -520,12 +520,13 @@ pub unsafe extern "C" fn _IO_flush_all() -> c_int {
 }
 
 /// `_IO_flush_all_linebuffered` — flush all line-buffered streams.
+///
+/// In glibc this only flushes line-buffered streams. Our best-effort native
+/// approximation flushes all open streams via `fflush(NULL)`, which is a
+/// safe superset of the intended behavior.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_flush_all_linebuffered() {
-    type Fn = unsafe extern "C" fn();
-    if let Some(f) = io_resolve!(c"_IO_flush_all_linebuffered", Fn) {
-        unsafe { f() }
-    }
+    let _ = unsafe { stdio_abi::fflush(std::ptr::null_mut()) };
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +583,12 @@ pub unsafe extern "C" fn _IO_free_wbackup_area(fp: *mut c_void) {
 // Getline / gets
 // ---------------------------------------------------------------------------
 
-/// `_IO_getline` — read a line from FILE.
+/// `_IO_getline` — read a line from FILE (native implementation).
+///
+/// Reads up to `n` bytes from `fp` into `buf`, stopping at `delim`.
+/// If `extract_delim` > 0, the delimiter is included in the output.
+/// If `extract_delim` < 0, the delimiter is consumed but not stored.
+/// Returns the number of bytes stored (excluding any NUL).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_getline(
     fp: *mut c_void,
@@ -591,14 +597,12 @@ pub unsafe extern "C" fn _IO_getline(
     delim: c_int,
     extract_delim: c_int,
 ) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_char, usize, c_int, c_int) -> usize;
-    match io_resolve!(c"_IO_getline", Fn) {
-        Some(f) => unsafe { f(fp, buf, n, delim, extract_delim) },
-        None => 0,
-    }
+    unsafe { _IO_getline_info(fp, buf, n, delim, extract_delim, std::ptr::null_mut()) }
 }
 
-/// `_IO_getline_info` — read a line with extra info.
+/// `_IO_getline_info` — read a line with extra info (native implementation).
+///
+/// Same as `_IO_getline` but writes 1 to `*eof` if EOF was hit (when non-null).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_getline_info(
     fp: *mut c_void,
@@ -608,12 +612,37 @@ pub unsafe extern "C" fn _IO_getline_info(
     extract_delim: c_int,
     eof: *mut c_int,
 ) -> usize {
-    type Fn =
-        unsafe extern "C" fn(*mut c_void, *mut c_char, usize, c_int, c_int, *mut c_int) -> usize;
-    match io_resolve!(c"_IO_getline_info", Fn) {
-        Some(f) => unsafe { f(fp, buf, n, delim, extract_delim, eof) },
-        None => 0,
+    if buf.is_null() {
+        return 0;
     }
+    if !eof.is_null() {
+        unsafe { *eof = 0 };
+    }
+    let mut count: usize = 0;
+    while count < n {
+        let ch = unsafe { stdio_abi::fgetc(fp) };
+        if ch == libc::EOF {
+            if !eof.is_null() {
+                unsafe { *eof = 1 };
+            }
+            break;
+        }
+        if ch == delim {
+            if extract_delim > 0 {
+                unsafe { *buf.add(count) = ch as c_char };
+                count += 1;
+            }
+            // extract_delim < 0: consume but don't store
+            // extract_delim == 0: put it back
+            if extract_delim == 0 {
+                let _ = unsafe { stdio_abi::ungetc(ch, fp) };
+            }
+            break;
+        }
+        unsafe { *buf.add(count) = ch as c_char };
+        count += 1;
+    }
+    count
 }
 
 /// `_IO_gets` — internal gets (deprecated but exported).
@@ -1088,7 +1117,11 @@ pub unsafe extern "C" fn _IO_vfprintf(
     unsafe { stdio_abi::vfprintf(fp, fmt, ap) }
 }
 
-/// `_IO_vfscanf` — internal vfscanf.
+/// `_IO_vfscanf` — internal vfscanf via native stdio_abi.
+///
+/// The glibc internal version takes an extra `errp` parameter that the POSIX
+/// `vfscanf` does not have. We delegate to native vfscanf and ignore the
+/// legacy error pointer (callers in practice pass NULL).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_vfscanf(
     fp: *mut c_void,
@@ -1096,11 +1129,11 @@ pub unsafe extern "C" fn _IO_vfscanf(
     ap: *mut c_void,
     errp: *mut c_int,
 ) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, *mut c_int) -> c_int;
-    match io_resolve!(c"_IO_vfscanf", Fn) {
-        Some(f) => unsafe { f(fp, fmt, ap, errp) },
-        None => -1,
+    let result = unsafe { stdio_abi::vfscanf(fp, fmt, ap) };
+    if !errp.is_null() && result == libc::EOF {
+        unsafe { *errp = 1 };
     }
+    result
 }
 
 /// `_IO_vsprintf` — internal vsprintf.
