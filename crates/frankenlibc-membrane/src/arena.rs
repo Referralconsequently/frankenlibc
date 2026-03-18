@@ -32,7 +32,7 @@ pub struct ArenaSlot {
     /// User-requested size.
     pub user_size: usize,
     /// Generation counter (monotonically increasing).
-    pub generation: u32,
+    pub generation: u64,
     /// Current safety state.
     pub state: SafetyState,
 }
@@ -75,7 +75,7 @@ impl ArenaShard {
 pub struct AllocationArena {
     shards: Box<[Mutex<ArenaShard>]>,
     /// Global generation counter.
-    next_generation: std::sync::atomic::AtomicU32,
+    next_generation: std::sync::atomic::AtomicU64,
 }
 
 impl AllocationArena {
@@ -87,7 +87,7 @@ impl AllocationArena {
             .collect();
         Self {
             shards: shards.into_boxed_slice(),
-            next_generation: std::sync::atomic::AtomicU32::new(1),
+            next_generation: std::sync::atomic::AtomicU64::new(1),
         }
     }
 

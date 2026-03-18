@@ -849,14 +849,10 @@ pub unsafe extern "C" fn _IO_list_resetlock() {
 // popen / proc_open / proc_close
 // ---------------------------------------------------------------------------
 
-/// `_IO_popen` — internal popen.
+/// `_IO_popen` — internal popen via native stdio_abi.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_popen(command: *const c_char, mode: *const c_char) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_void;
-    match io_resolve!(c"_IO_popen", Fn) {
-        Some(f) => unsafe { f(command, mode) },
-        None => std::ptr::null_mut(),
-    }
+    unsafe { stdio_abi::popen(command, mode) }
 }
 
 /// `_IO_proc_open` — open a process pipe.
