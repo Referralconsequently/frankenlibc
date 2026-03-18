@@ -28,6 +28,8 @@ struct JumpRegistryEntry {
     env: JmpBuf,
     capture_mode: SafetyLevel,
     savemask: bool,
+    context_id: u64,
+    generation: u64,
 }
 
 fn registry() -> &'static Mutex<HashMap<usize, JumpRegistryEntry>> {
@@ -67,6 +69,8 @@ fn capture_env(env_addr: usize, mode: SafetyLevel, savemask: bool) -> Result<c_i
         env: jump_env.clone(),
         capture_mode: mode,
         savemask,
+        context_id: capture.context_id,
+        generation: capture.generation,
     };
 
     // Synchronize the captured metadata to the C caller's buffer.

@@ -10,6 +10,10 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
+use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
+
+use crate::runtime_policy;
+
 type c_ulong = u64;
 #[allow(dead_code)]
 type c_long = i64;
@@ -290,6 +294,13 @@ pub unsafe extern "C" fn xdrmem_create(
     size: c_uint,
     op: c_int,
 ) {
+    let (_, decision) =
+        runtime_policy::decide(ApiFamily::Stdio, addr as usize, size as usize, true, true, 0);
+    if matches!(decision.action, MembraneAction::Deny) {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
+        return;
+    }
+
     let x = xdrs as *mut Xdr;
     unsafe {
         (*x).x_op = op;
@@ -299,6 +310,7 @@ pub unsafe extern "C" fn xdrmem_create(
         (*x).x_handy = size;
         (*x).x_public = std::ptr::null_mut();
     }
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, false);
 }
 
 // ===================== Stdio stream backend =====================
@@ -1105,13 +1117,16 @@ pub unsafe extern "C" fn xdr_bytes(
     }
 }
 
-/// Serialize a NUL-terminated string (length-prefixed on wire, calloc+NUL on decode).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn xdr_string(
     xdrs: *mut c_void,
     sp: *mut *mut c_char,
     maxsize: c_uint,
 ) -> c_int {
+    if sp.is_null() {
+        return XDR_FALSE;
+    }
+
     let x = xdrs as *mut Xdr;
     let op = unsafe { (*x).x_op };
     let mut size: c_uint = match op {
@@ -1119,6 +1134,13 @@ pub unsafe extern "C" fn xdr_string(
             let s = unsafe { *sp };
             if s.is_null() {
                 return if op == XDR_FREE { XDR_TRUE } else { XDR_FALSE };
+            }
+            // Validate the string pointer before reading length.
+            let (_, decision) =
+                runtime_policy::decide(ApiFamily::Stdio, s as usize, 0, true, false, 0);
+            if matches!(decision.action, MembraneAction::Deny) {
+                runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
+                return XDR_FALSE;
             }
             (unsafe { libc::strlen(s) }) as c_uint
         }
@@ -1139,6 +1161,18 @@ pub unsafe extern "C" fn xdr_string(
             *sp = buf;
         }
     }
+
+    // Validate the buffer for the actual data transfer.
+    if op == XDR_ENCODE || op == XDR_DECODE {
+        let s = unsafe { *sp };
+        let (_, decision) =
+            runtime_policy::decide(ApiFamily::Stdio, s as usize, size as usize, true, true, 0);
+        if matches!(decision.action, MembraneAction::Deny) {
+            runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
+            return XDR_FALSE;
+        }
+    }
+
     let result = unsafe { xdr_opaque(xdrs, *sp, size) };
     if op == XDR_FREE {
         let p = unsafe { *sp };
@@ -1296,6 +1330,12 @@ pub unsafe extern "C" fn xdr_pointer(
     unsafe { xdr_reference(xdrs, pp, size, proc_) }
 }
 
+#[repr(C)]
+struct XdrDiscrim {
+    value: c_int,
+    proc_: XdrProc,
+}
+
 /// Serialize a discriminated union.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn xdr_union(
@@ -1309,20 +1349,27 @@ pub unsafe extern "C" fn xdr_union(
         return XDR_FALSE;
     }
     let dscm = unsafe { *dscmp };
-    // Walk xdr_discrim array: each entry is { i32 value, [4 pad], fn_ptr } = 16 bytes on LP64
-    let mut entry = choices as *const u8;
-    loop {
-        let proc_ptr = unsafe { std::ptr::read_unaligned(entry.add(8) as *const *mut c_void) };
-        if proc_ptr.is_null() {
-            break;
+
+    // Walk xdr_discrim array. Per glibc ABI, the array is terminated by an
+    // entry with a null proc_ function pointer.
+    let mut entry = choices as *const XdrDiscrim;
+    if !entry.is_null() {
+        loop {
+            // SAFETY: choices array is terminated by a null proc_ field.
+            // We must be careful not to overshoot if the caller provided a bad pointer.
+            let e = unsafe { &*entry };
+            let p = e.proc_ as *mut c_void;
+            if p.is_null() {
+                break;
+            }
+            if e.value == dscm {
+                let pf: XdrProc = unsafe { std::mem::transmute(p) };
+                return unsafe { pf(xdrs, unp.cast()) };
+            }
+            entry = unsafe { entry.add(1) };
         }
-        let val = unsafe { std::ptr::read_unaligned(entry as *const i32) };
-        if val == dscm {
-            let pf: XdrProc = unsafe { std::mem::transmute(proc_ptr) };
-            return unsafe { pf(xdrs, unp.cast()) };
-        }
-        entry = unsafe { entry.add(16) };
     }
+
     if dfault.is_null() {
         return XDR_FALSE;
     }

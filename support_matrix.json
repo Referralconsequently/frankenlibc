@@ -16191,27 +16191,27 @@
     },
     {
       "symbol": "_IO_default_pbackfail",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_default_uflow",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_default_xsgetn",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_default_xsputn",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
       "symbol": "_IO_do_write",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -16606,7 +16606,7 @@
     },
     {
       "symbol": "_IO_switch_to_get_mode",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi"
     },
     {
@@ -31746,8 +31746,8 @@
   ],
   "summary": {
     "RawSyscall": 406,
-    "Implemented": 3451,
-    "GlibcCallThrough": 123,
+    "Implemented": 3457,
+    "GlibcCallThrough": 117,
     "total_exported": 3980
   },
   "implemented": 3399,
