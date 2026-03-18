@@ -191,6 +191,9 @@ impl ValidationSecurityContext {
     }
 }
 
+use crate::ebr::{EbrHandle, QuarantineEbr};
+use std::sync::Arc;
+
 /// The validation pipeline with all backing data structures.
 pub struct ValidationPipeline {
     /// The allocation arena.
@@ -201,6 +204,8 @@ pub struct ValidationPipeline {
     pub page_oracle: PageOracle,
     /// Runtime math kernel for online validation-depth/risk decisions.
     pub runtime_math: RuntimeMathKernel,
+    /// EBR collector for safe deferred deallocation.
+    pub collector: Arc<QuarantineEbr>,
     /// Whether structured validation logging is enabled.
     validation_logging_enabled: AtomicBool,
     /// Monotone decision id for validation logs.
@@ -209,20 +214,39 @@ pub struct ValidationPipeline {
     validation_logs: Mutex<VecDeque<String>>,
 }
 
+thread_local! {
+    /// Per-thread EBR handle for pinning epochs during validation.
+    static EBR_HANDLE: std::cell::OnceCell<EbrHandle<'static>> = const { std::cell::OnceCell::new() };
+}
+
 impl ValidationPipeline {
     /// Create a new validation pipeline.
     #[must_use]
     pub fn new() -> Self {
         let logging_enabled = std::env::var_os("FRANKENLIBC_LOG").is_some();
+        let collector = Arc::new(QuarantineEbr::new(4));
         Self {
-            arena: AllocationArena::new(),
+            arena: AllocationArena::new_with_collector(Some(Arc::clone(&collector))),
             bloom: PointerBloomFilter::new(),
             page_oracle: PageOracle::new(),
             runtime_math: RuntimeMathKernel::new(),
+            collector,
             validation_logging_enabled: AtomicBool::new(logging_enabled),
             validation_log_decision_seq: AtomicU64::new(0),
             validation_logs: Mutex::new(VecDeque::with_capacity(VALIDATION_LOG_CAPACITY)),
         }
+    }
+
+    /// Pin the EBR epoch for the duration of validation.
+    fn pin_epoch(&self) -> crate::ebr::EbrGuard<'_> {
+        EBR_HANDLE.with(|cell| {
+            let handle = cell.get_or_init(|| {
+                // SAFETY: We leak the registration to the static lifetime because
+                // the ValidationPipeline (and its collector) are globals.
+                unsafe { std::mem::transmute(self.collector.register()) }
+            });
+            handle.pin()
+        })
     }
 
     /// Enable or disable structured validation logging.
@@ -515,6 +539,7 @@ impl ValidationPipeline {
         addr: usize,
         security_context: ValidationSecurityContext,
     ) -> ValidationOutcome {
+        let _guard = self.pin_epoch();
         let metrics = global_metrics();
         MembraneMetrics::inc(&metrics.validations);
         let mode = safety_level();

@@ -71,6 +71,8 @@ impl ArenaShard {
     }
 }
 
+use std::sync::Arc;
+
 use crate::ebr::QuarantineEbr;
 
 /// Thread-safe generational allocation arena.
@@ -389,30 +391,31 @@ impl AllocationArena {
                 shard.free_list.push(slot_idx);
             }
 
-            // Actually release memory
-for entry in drained {
-    let layout = std::alloc::Layout::from_size_align(entry.total_size, entry.align)
-        .expect("valid layout");
-
-    if let Some(collector) = &self.collector {
-        // Defer deallocation until grace period completes.
-        collector.retire_quarantined(move || {
-            // SAFETY: raw_base was allocated with this layout.
-            unsafe {
-                std::alloc::dealloc(entry.raw_base as *mut u8, layout);
-            }
-        });
-    } else {
-        // Fallback: immediate deallocation (risky if validation is concurrent).
-        unsafe {
-            std::alloc::dealloc(entry.raw_base as *mut u8, layout);
-        }
-    }
-}
-
             shard.quarantine_bytes -= entry.total_size;
 
             drained.push(entry);
+        }
+
+        // Actually release memory for all drained entries.
+        for entry in &drained {
+            let layout = std::alloc::Layout::from_size_align(entry.total_size, entry.align)
+                .expect("valid layout");
+
+            if let Some(collector) = &self.collector {
+                let raw_base = entry.raw_base;
+                // Defer deallocation until grace period completes.
+                collector.retire_quarantined(move || {
+                    // SAFETY: raw_base was allocated with this layout.
+                    unsafe {
+                        std::alloc::dealloc(raw_base as *mut u8, layout);
+                    }
+                });
+            } else {
+                // Fallback: immediate deallocation (risky if validation is concurrent).
+                unsafe {
+                    std::alloc::dealloc(entry.raw_base as *mut u8, layout);
+                }
+            }
         }
 
         drained

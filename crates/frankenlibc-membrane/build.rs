@@ -58,6 +58,8 @@ struct MemoryModelSource {
     domain: &'static str,
     expected_sites: usize,
     stop_at_cfg_test: bool,
+    /// If true, skip gracefully when the source file is missing (for cross-crate sources).
+    optional: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -712,36 +714,42 @@ const MEMORY_MODEL_SOURCES: &[MemoryModelSource] = &[
         domain: "tsm",
         expected_sites: 4,
         stop_at_cfg_test: false,
+        optional: false,
     },
     MemoryModelSource {
         relative_path: "src/arena.rs",
         domain: "tsm",
         expected_sites: 2,
         stop_at_cfg_test: false,
+        optional: false,
     },
     MemoryModelSource {
         relative_path: "src/tls_cache.rs",
         domain: "tsm",
         expected_sites: 2,
         stop_at_cfg_test: false,
+        optional: false,
     },
     MemoryModelSource {
         relative_path: "src/config.rs",
         domain: "tsm",
         expected_sites: 15,
         stop_at_cfg_test: false,
+        optional: false,
     },
     MemoryModelSource {
         relative_path: "src/metrics.rs",
         domain: "tsm",
         expected_sites: 2,
         stop_at_cfg_test: false,
+        optional: false,
     },
     MemoryModelSource {
         relative_path: "../frankenlibc-core/src/pthread/cond.rs",
         domain: "futex",
         expected_sites: 29,
         stop_at_cfg_test: true,
+        optional: true, // Cross-crate: skip gracefully for standalone builds
     },
 ];
 
@@ -752,8 +760,19 @@ fn write_memory_model_audit(manifest_dir: &Path, out_dir: &Path) -> Result<(), S
     for source in MEMORY_MODEL_SOURCES {
         let source_path = manifest_dir.join(source.relative_path);
         println!("cargo:rerun-if-changed={}", source_path.display());
-        let source_text = fs::read_to_string(&source_path)
-            .map_err(|err| format!("unable to read {}: {err}", source_path.display()))?;
+        let source_text = match fs::read_to_string(&source_path) {
+            Ok(text) => text,
+            Err(err) if source.optional => {
+                eprintln!(
+                    "cargo:warning=Skipping optional memory-model source {}: {err}",
+                    source.relative_path
+                );
+                continue;
+            }
+            Err(err) => {
+                return Err(format!("unable to read {}: {err}", source_path.display()));
+            }
+        };
         let source_hash = compute_file_sha256_hex(&source_path)?;
         let source_sites = extract_atomic_sites(source, &source_text);
         let observed_sites = source_sites.len();
