@@ -19,9 +19,9 @@
         "test_gate": "cargo test --workspace passes"
       },
       "current_state": {
-        "implemented_pct": 59,
-        "raw_syscall_pct": 33,
-        "callthrough_pct": 8,
+        "implemented_pct": 87,
+        "raw_syscall_pct": 10,
+        "callthrough_pct": 3,
         "stub_pct": 0,
         "callthrough_modules": [
           "dlfcn_abi",
@@ -117,14 +117,14 @@
   ],
   "current_level": "L0",
   "current_assessment": {
-    "total_symbols": 250,
-    "implemented": 147,
-    "raw_syscall": 83,
-    "callthrough": 20,
+    "total_symbols": 3980,
+    "implemented": 3457,
+    "raw_syscall": 406,
+    "callthrough": 117,
     "stub": 0,
-    "implemented_pct": 59,
-    "raw_syscall_pct": 33,
-    "callthrough_pct": 8,
+    "implemented_pct": 87,
+    "raw_syscall_pct": 10,
+    "callthrough_pct": 3,
     "stub_pct": 0,
     "callthrough_breakdown": {
       "dlfcn_abi": 4,

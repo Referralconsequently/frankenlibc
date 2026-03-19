@@ -52,3 +52,7 @@ harness = false
 [[bench]]
 name = "alien_cs_bench"
 harness = false
+
+[[bench]]
+name = "baseline_capture_bench"
+harness = false

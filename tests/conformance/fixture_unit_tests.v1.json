@@ -1,16 +1,27 @@
 {
   "schema_version": "v1",
   "bead": "bd-2hh.5",
-  "generated_at": "2026-03-02T19:55:12Z",
+  "generated_at": "2026-03-19T17:47:00Z",
   "summary": {
     "total_fixture_files": 50,
     "valid_fixture_files": 49,
-    "total_cases": 513,
+    "invalid_fixture_files": 1,
+    "total_cases": 526,
     "total_issues": 2,
     "total_warnings": 2,
     "unique_families": 49,
-    "unique_symbols": 213,
+    "unique_symbols": 218,
     "determinism_verified": true
+  },
+  "regression_detection": {
+    "status": "attention_required",
+    "invalid_fixture_files": [
+      "setjmp_nested_edges.json"
+    ],
+    "invalid_fixture_issue_counts": {
+      "setjmp_nested_edges.json": 2
+    },
+    "baseline_fixture_digest": "4b5b46ae9a862a8988aeba6de08cffd18b2da05c10b9e8cc356238e88e45d4bc"
   },
   "fixture_results": [
     {
@@ -97,8 +108,8 @@
       "file": "iconv_phase1.json",
       "version": "v1",
       "family": "iconv/phase1",
-      "case_count": 11,
-      "fixture_hash": "bb2229c8ddbbc315",
+      "case_count": 13,
+      "fixture_hash": "87fdd9ddf249b35b",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -127,8 +138,8 @@
       "file": "locale_ops.json",
       "version": "v1",
       "family": "locale_ops",
-      "case_count": 9,
-      "fixture_hash": "f9611e920f108459",
+      "case_count": 20,
+      "fixture_hash": "2a70ac8fcef590d5",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -208,7 +219,7 @@
       "version": "v1",
       "family": "pthread/cond",
       "case_count": 24,
-      "fixture_hash": "70bdcf72eada9e47",
+      "fixture_hash": "d91c5b156581ca29",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -521,8 +532,8 @@
     }
   ],
   "regression_baseline": {
-    "symbol_count": 213,
-    "total_cases": 513,
+    "symbol_count": 218,
+    "total_cases": 526,
     "symbols": {
       "DnsHeader::new_query": {
         "count": 1,
@@ -791,6 +802,12 @@
           "loader_edges.json"
         ]
       },
+      "duplocale": {
+        "count": 2,
+        "fixtures": [
+          "locale_ops.json"
+        ]
+      },
       "elf_hash": {
         "count": 2,
         "fixtures": [
@@ -885,6 +902,12 @@
         "count": 1,
         "fixtures": [
           "allocator.json"
+        ]
+      },
+      "freelocale": {
+        "count": 2,
+        "fixtures": [
+          "locale_ops.json"
         ]
       },
       "fseek": {
@@ -1046,13 +1069,13 @@
         ]
       },
       "iconv_close": {
-        "count": 1,
+        "count": 2,
         "fixtures": [
           "iconv_phase1.json"
         ]
       },
       "iconv_open": {
-        "count": 2,
+        "count": 3,
         "fixtures": [
           "iconv_phase1.json"
         ]
@@ -1154,7 +1177,7 @@
         ]
       },
       "localeconv": {
-        "count": 1,
+        "count": 2,
         "fixtures": [
           "locale_ops.json"
         ]
@@ -1277,8 +1300,20 @@
           "virtual_memory_ops.json"
         ]
       },
+      "newlocale": {
+        "count": 2,
+        "fixtures": [
+          "locale_ops.json"
+        ]
+      },
       "nl_langinfo": {
         "count": 3,
+        "fixtures": [
+          "locale_ops.json"
+        ]
+      },
+      "nl_langinfo_l": {
+        "count": 2,
         "fixtures": [
           "locale_ops.json"
         ]
@@ -1730,6 +1765,12 @@
           "ctype_ops.json"
         ]
       },
+      "uselocale": {
+        "count": 2,
+        "fixtures": [
+          "locale_ops.json"
+        ]
+      },
       "waitpid": {
         "count": 2,
         "fixtures": [
@@ -1840,10 +1881,10 @@
     "elf_loader.json": "f299aa5ce910bb8b",
     "errno_ops.json": "6aa46d1f231e16d3",
     "grp_ops.json": "279b68d06ddfc898",
-    "iconv_phase1.json": "bb2229c8ddbbc315",
+    "iconv_phase1.json": "87fdd9ddf249b35b",
     "inet_ops.json": "62799ba849186b2f",
     "loader_edges.json": "94470b86850542ab",
-    "locale_ops.json": "f9611e920f108459",
+    "locale_ops.json": "2a70ac8fcef590d5",
     "math_ops.json": "d8fa7f90d4c4e242",
     "membrane_mode_split.json": "bd8641139f333985",
     "memcpy_strict.json": "eef9a5b6413ab2fb",
@@ -1851,7 +1892,7 @@
     "poll_ops.json": "aa3ea68175ae73b6",
     "pressure_sensing.json": "591a298eb979e2e1",
     "process_ops.json": "a8eac4848383515a",
-    "pthread_cond.json": "70bdcf72eada9e47",
+    "pthread_cond.json": "d91c5b156581ca29",
     "pthread_mutex.json": "3e4572f2cebbff4e",
     "pthread_thread.json": "7e1c508cf49a09ef",
     "pthread_tls_keys.json": "be6e8e18f3c8f265",

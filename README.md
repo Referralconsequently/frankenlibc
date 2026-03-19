@@ -41,7 +41,7 @@ Current source of truth: `tests/conformance/support_matrix_maintenance_report.v1
 | Why it matters | Current state |
 |---|---|
 | Large classified ABI surface | `3980` exported symbols classified |
-| Native ownership is already broad | `3441 Implemented` + `406 RawSyscall` = `96.7%` native coverage |
+| Native ownership is already broad | `3457 Implemented` + `406 RawSyscall` = `97.1%` native coverage |
 | No exported stubs right now | `0 Stub` |
 | Interposition works today | `target/release/libfrankenlibc_abi.so` via `LD_PRELOAD` |
 | Hardened mode exists now | `FRANKENLIBC_MODE=hardened` |
@@ -174,13 +174,13 @@ Current source of truth: `tests/conformance/support_matrix_maintenance_report.v1
 
 | Status | Count | Meaning |
 |---|---:|---|
-| `Implemented` | 3441 | Native ABI-backed Rust-owned behavior |
+| `Implemented` | 3457 | Native ABI-backed Rust-owned behavior |
 | `RawSyscall` | 406 | ABI path delegates directly to Linux syscalls |
-| `GlibcCallThrough` | 133 | Still depends on host glibc for that symbol |
+| `GlibcCallThrough` | 117 | Still depends on host glibc for that symbol |
 | `Stub` | 0 | No exported stubs in the current classified surface |
 
 Total classified exports: **3980**.  
-Current native coverage (`Implemented + RawSyscall`): **96.7%**.
+Current native coverage (`Implemented + RawSyscall`): **97.1%**.
 
 In practice:
 
