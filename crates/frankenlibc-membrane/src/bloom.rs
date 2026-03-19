@@ -228,7 +228,7 @@ mod tests {
         fn prop_insert_is_monotonic(ptr in 1usize..usize::MAX) {
             // Once inserted, a pointer is always found (monotonic)
             let filter = PointerBloomFilter::new();
-            prop_assert!(!filter.might_contain(ptr) || true); // may FP before insert
+            // Before insert: might_contain may return true (false positive) or false — both ok.
             filter.insert(ptr);
             prop_assert!(filter.might_contain(ptr)); // must be found after
             // Insert again — still found (idempotent)

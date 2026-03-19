@@ -4291,7 +4291,7 @@ pub unsafe extern "C" fn delete_module(name: *const c_char, flags: c_uint) -> c_
 dlsym_passthrough!(fn dladdr1(addr: *const c_void, info: *mut c_void, extra_info: *mut *mut c_void, flags: c_int) -> c_int);
 dlsym_passthrough!(fn dlinfo(handle: *mut c_void, request: c_int, info: *mut c_void) -> c_int);
 dlsym_passthrough!(fn dlmopen(lmid: c_long, filename: *const c_char, flags: c_int) -> *mut c_void);
-dlsym_passthrough!(fn dlvsym(handle: *mut c_void, symbol: *const c_char, version: *const c_char) -> *mut c_void);
+// NOTE: dlvsym is defined in dlfcn_abi.rs with a full implementation.
 // dysize: native — returns 366 for leap years, 365 otherwise
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dysize(year: c_int) -> c_int {

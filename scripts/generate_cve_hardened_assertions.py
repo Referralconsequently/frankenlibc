@@ -15,6 +15,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import hashlib
 
 
 def find_repo_root():
@@ -27,6 +28,32 @@ def find_repo_root():
 def load_json_file(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def sanitize_trace_component(value):
+    sanitized = "".join(
+        ch if ch.isalnum() or ch in "-_." else "_" for ch in str(value)
+    )
+    return sanitized or "unknown"
+
+
+def build_log_row(timestamp, run_id, cve_id, symbol, decision_path, healing_action, outcome, artifact_refs, details):
+    return {
+        "timestamp": timestamp,
+        "trace_id": f"bd-1m5.6::{run_id}::{sanitize_trace_component(cve_id)}",
+        "bead_id": "bd-1m5.6",
+        "scenario_id": run_id,
+        "mode": "hardened",
+        "api_family": "cve_arena",
+        "symbol": symbol or "cve_hardened_assertion",
+        "decision_path": decision_path,
+        "healing_action": healing_action,
+        "errno": 0,
+        "latency_ns": 0,
+        "artifact_refs": artifact_refs,
+        "outcome": outcome,
+        **details,
+    }
 
 
 # Healing action → prevention strategy mapping
@@ -183,6 +210,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="CVE hardened assertion suite generator")
     parser.add_argument("-o", "--output", help="Output file path")
+    parser.add_argument("--log", help="Optional JSONL log output path")
+    parser.add_argument(
+        "--timestamp",
+        default=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        help="Deterministic timestamp to embed in generated artifacts",
+    )
     args = parser.parse_args()
 
     root = find_repo_root()
@@ -215,11 +248,28 @@ def main():
 
     error_count = sum(1 for i in validation_issues if i["severity"] == "error")
     warning_count = sum(1 for i in validation_issues if i["severity"] == "warning")
+    run_id = sanitize_trace_component(
+        Path(args.output).stem if args.output else "hardened-assertions"
+    )
+    assertion_digest = hashlib.sha256(
+        json.dumps(assertions, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    regression_detection = {
+        "status": "clean" if error_count == 0 and no_crash_count == len(assertions) else "failing",
+        "assertion_digest": assertion_digest,
+        "all_no_crash": no_crash_count == len(assertions),
+        "all_with_healing_actions": with_healing == len(assertions),
+        "validation_issue_counts": {
+            "errors": error_count,
+            "warnings": warning_count,
+        },
+    }
 
     report = {
         "schema_version": "v1",
         "bead": "bd-1m5.6",
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": args.timestamp,
         "summary": {
             "total_assertions": len(assertions),
             "no_crash_in_hardened": no_crash_count,
@@ -229,6 +279,7 @@ def main():
             "validation_errors": error_count,
             "validation_warnings": warning_count,
         },
+        "regression_detection": regression_detection,
         "assertion_matrix": assertions,
         "healing_expectation_map": healing_map,
         "validation_issues": validation_issues,
@@ -241,6 +292,62 @@ def main():
         print(f"Report written to {args.output}", file=sys.stderr)
     else:
         print(output)
+
+    if args.log:
+        log_rows = []
+        for assertion in assertions:
+            required_actions = assertion["hardened_expectations"]["healing_actions_required"]
+            log_rows.append(
+                build_log_row(
+                    args.timestamp,
+                    run_id,
+                    assertion["cve_id"],
+                    assertion["test_name"],
+                    "cve::hardened_assertion::evaluate",
+                    required_actions[0] if required_actions else None,
+                    "pass" if assertion["regression_checks"]["no_crash"] else "fail",
+                    [
+                        "scripts/generate_cve_hardened_assertions.py",
+                        "tests/cve_arena/results/hardened_assertions.v1.json",
+                    ],
+                    {
+                        "event": "cve_hardened_assertion",
+                        "cve_id": assertion["cve_id"],
+                        "prevention_strategy": assertion["prevention_strategy"],
+                        "healing_actions": required_actions,
+                        "risk_state": "no_uncontrolled_unsafety"
+                        if assertion["hardened_expectations"]["no_uncontrolled_unsafety"]
+                        else "unsafe",
+                    },
+                )
+            )
+        log_rows.append(
+            build_log_row(
+                args.timestamp,
+                run_id,
+                "summary",
+                "cve_hardened_assertions",
+                "cve::hardened_assertion::summary",
+                None,
+                regression_detection["status"],
+                [
+                    "scripts/generate_cve_hardened_assertions.py",
+                    args.output or "stdout",
+                ],
+                {
+                    "event": "cve_hardened_assertion_summary",
+                    "total_assertions": len(assertions),
+                    "validation_errors": error_count,
+                    "validation_warnings": warning_count,
+                    "assertion_digest": assertion_digest,
+                },
+            )
+        )
+        Path(args.log).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.log).write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in log_rows),
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

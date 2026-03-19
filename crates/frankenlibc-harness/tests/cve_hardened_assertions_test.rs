@@ -20,21 +20,30 @@ fn load_json(path: &Path) -> serde_json::Value {
         .unwrap_or_else(|e| panic!("Invalid JSON in {}: {}", path.display(), e))
 }
 
+fn run_generator(extra_args: &[&str]) -> std::process::Output {
+    let root = repo_root();
+    let report_path = root.join("tests/cve_arena/results/hardened_assertions.v1.json");
+    let mut args = vec![
+        root.join("scripts/generate_cve_hardened_assertions.py")
+            .to_str()
+            .unwrap()
+            .to_string(),
+        "-o".to_string(),
+        report_path.to_str().unwrap().to_string(),
+    ];
+    args.extend(extra_args.iter().map(|value| value.to_string()));
+    Command::new("python3")
+        .args(args)
+        .current_dir(&root)
+        .output()
+        .expect("failed to execute hardened assertions generator")
+}
+
 #[test]
 fn hardened_report_generates_successfully() {
     let root = repo_root();
     let report_path = root.join("tests/cve_arena/results/hardened_assertions.v1.json");
-    let output = Command::new("python3")
-        .args([
-            root.join("scripts/generate_cve_hardened_assertions.py")
-                .to_str()
-                .unwrap(),
-            "-o",
-            report_path.to_str().unwrap(),
-        ])
-        .current_dir(&root)
-        .output()
-        .expect("failed to execute hardened assertions generator");
+    let output = run_generator(&[]);
     assert!(
         output.status.success(),
         "Hardened assertions generator failed:\n{}",
@@ -62,6 +71,7 @@ fn hardened_report_schema_complete() {
     ] {
         assert!(!summary[field].is_null(), "Missing summary field: {field}");
     }
+    assert!(data["regression_detection"].is_object());
     assert!(data["assertion_matrix"].is_array());
     assert!(data["healing_expectation_map"].is_object());
 }
@@ -136,6 +146,7 @@ fn hardened_no_validation_errors() {
 
     let val_errors = data["summary"]["validation_errors"].as_u64().unwrap();
     assert_eq!(val_errors, 0, "Validation errors found");
+    assert_eq!(data["regression_detection"]["status"], "clean");
 }
 
 #[test]
@@ -155,4 +166,86 @@ fn hardened_healing_expectation_map_populated() {
         let count = info["count"].as_u64().unwrap();
         assert!(count > 0, "Healing action {} has count 0", action);
     }
+}
+
+#[test]
+fn hardened_regression_detection_digest_present() {
+    let root = repo_root();
+    let report_path = root.join("tests/cve_arena/results/hardened_assertions.v1.json");
+    let data = load_json(&report_path);
+
+    let digest = data["regression_detection"]["assertion_digest"]
+        .as_str()
+        .expect("assertion digest should be present");
+    assert_eq!(digest.len(), 64, "assertion digest should be full sha256");
+    assert!(
+        data["regression_detection"]["all_no_crash"]
+            .as_bool()
+            .unwrap(),
+        "all_no_crash should remain true"
+    );
+    assert!(
+        data["regression_detection"]["all_with_healing_actions"]
+            .as_bool()
+            .unwrap(),
+        "all_with_healing_actions should remain true"
+    );
+}
+
+#[test]
+fn hardened_log_emission_contains_required_fields() {
+    let root = repo_root();
+    let log_path = root.join("target/conformance/hardened_assertions.log.jsonl");
+    let output = run_generator(&[
+        "--timestamp",
+        "2026-03-19T19:31:00Z",
+        "--log",
+        log_path.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "Hardened assertions generator with log failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(&log_path)
+        .unwrap_or_else(|e| panic!("failed reading {}: {}", log_path.display(), e));
+    let rows: Vec<serde_json::Value> = content
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("log row should be valid json"))
+        .collect();
+    assert!(
+        rows.len() >= 2,
+        "expected assertion rows plus summary row in log"
+    );
+
+    for row in &rows {
+        for field in [
+            "timestamp",
+            "trace_id",
+            "bead_id",
+            "scenario_id",
+            "mode",
+            "api_family",
+            "symbol",
+            "decision_path",
+            "healing_action",
+            "errno",
+            "latency_ns",
+            "artifact_refs",
+            "event",
+            "outcome",
+        ] {
+            assert!(row.get(field).is_some(), "missing log field {field}");
+        }
+        assert_eq!(row["bead_id"], "bd-1m5.6");
+        assert_eq!(row["mode"], "hardened");
+    }
+
+    let summary = rows
+        .iter()
+        .find(|row| row["event"] == "cve_hardened_assertion_summary")
+        .expect("summary row should be present");
+    assert_eq!(summary["outcome"], "clean");
+    assert_eq!(summary["validation_errors"], 0);
 }

@@ -707,28 +707,26 @@ fn redact_hex_addresses(s: &str) -> String {
     while let Some((i, ch)) = chars.next() {
         if ch == '0' {
             // Check if next char is 'x' forming a "0x" prefix.
-            if let Some(&(_, next_ch)) = chars.peek() {
-                if next_ch == 'x' {
-                    chars.next(); // consume the 'x'
-                    let hex_start = chars.peek().map_or(s.len(), |&(idx, _)| idx);
-                    let mut hex_end = hex_start;
-                    while let Some(&(idx, hch)) = chars.peek() {
-                        if hch.is_ascii_hexdigit() {
-                            hex_end = idx + hch.len_utf8();
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-                    let hex_len = hex_end - hex_start;
-                    if hex_len >= 8 {
-                        result.push_str("[REDACTED]");
+            if let Some(&(_, 'x')) = chars.peek() {
+                chars.next(); // consume the 'x'
+                let hex_start = chars.peek().map_or(s.len(), |&(idx, _)| idx);
+                let mut hex_end = hex_start;
+                while let Some(&(idx, hch)) = chars.peek() {
+                    if hch.is_ascii_hexdigit() {
+                        hex_end = idx + hch.len_utf8();
+                        chars.next();
                     } else {
-                        // Short hex — not an address, keep as-is
-                        result.push_str(&s[i..hex_end]);
+                        break;
                     }
-                    continue;
                 }
+                let hex_len = hex_end - hex_start;
+                if hex_len >= 8 {
+                    result.push_str("[REDACTED]");
+                } else {
+                    // Short hex — not an address, keep as-is
+                    result.push_str(&s[i..hex_end]);
+                }
+                continue;
             }
         }
         result.push(ch);

@@ -21,17 +21,14 @@ use frankenlibc_abi::io_internal_abi::{
     _IO_fsetpos64, _IO_ftell, _IO_fwrite, _IO_printf, _IO_setbuffer, _IO_setvbuf, _IO_sprintf,
     _IO_sscanf, _IO_ungetc, _IO_vfprintf, _IO_vsprintf,
 };
+use frankenlibc_abi::io_internal_abi::{_IO_feof, _IO_ferror, _IO_getc, _IO_putc};
 use frankenlibc_abi::stdio_abi::{
     __isoc99_fscanf,
     __isoc99_sscanf,
-    _IO_feof,
-    _IO_ferror,
     _IO_flockfile,
     _IO_ftrylockfile,
     _IO_funlockfile,
-    _IO_getc,
     _IO_padn,
-    _IO_putc,
     _IO_puts,
     _IO_seekoff,
     _IO_seekpos,

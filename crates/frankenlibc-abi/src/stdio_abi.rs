@@ -4680,17 +4680,8 @@ pub unsafe extern "C" fn putw(w: c_int, stream: *mut c_void) -> c_int {
 mod _io_internal {
     use super::*;
 
-    /// `_IO_putc` — glibc internal putc.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub unsafe extern "C" fn _IO_putc(c: c_int, stream: *mut c_void) -> c_int {
-        unsafe { fputc(c, stream) }
-    }
-
-    /// `_IO_getc` — glibc internal getc.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub unsafe extern "C" fn _IO_getc(stream: *mut c_void) -> c_int {
-        unsafe { fgetc(stream) }
-    }
+    // NOTE: _IO_putc and _IO_getc are defined in io_internal_abi.rs
+    // (the canonical location for _IO_* internal symbols).
 
     /// `_IO_puts` — glibc internal puts.
     #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -4698,17 +4689,7 @@ mod _io_internal {
         unsafe { puts(s) }
     }
 
-    /// `_IO_feof` — glibc internal feof.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub unsafe extern "C" fn _IO_feof(stream: *mut c_void) -> c_int {
-        unsafe { feof(stream) }
-    }
-
-    /// `_IO_ferror` — glibc internal ferror.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub unsafe extern "C" fn _IO_ferror(stream: *mut c_void) -> c_int {
-        unsafe { ferror(stream) }
-    }
+    // NOTE: _IO_feof and _IO_ferror are defined in io_internal_abi.rs.
 
     /// `_IO_flockfile` — glibc internal flockfile.
     #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -4728,17 +4709,7 @@ mod _io_internal {
         unsafe { ftrylockfile(stream) }
     }
 
-    /// `_IO_peekc_locked` — peek at next char without consuming (under lock).
-    /// Returns EOF if stream is at end or has error.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub unsafe extern "C" fn _IO_peekc_locked(stream: *mut c_void) -> c_int {
-        // Read one char, then push it back
-        let c = unsafe { fgetc(stream) };
-        if c != libc::EOF {
-            unsafe { ungetc(c, stream) };
-        }
-        c
-    }
+    // NOTE: _IO_peekc_locked is defined in io_internal_abi.rs.
 
     /// `_IO_padn` — write `count` copies of `pad` char to stream. Returns count or EOF.
     #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

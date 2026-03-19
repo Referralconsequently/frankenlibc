@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-1m5.6",
-  "generated_at": "2026-03-12T04:54:39Z",
+  "generated_at": "2026-03-19T19:31:00Z",
   "summary": {
     "total_assertions": 12,
     "no_crash_in_hardened": 12,
@@ -23,6 +23,16 @@
     ],
     "validation_errors": 0,
     "validation_warnings": 0
+  },
+  "regression_detection": {
+    "status": "clean",
+    "assertion_digest": "29b4e5076e90e245cd5850574c04c2553275f9d89d8c49abb708010a65b9c78c",
+    "all_no_crash": true,
+    "all_with_healing_actions": true,
+    "validation_issue_counts": {
+      "errors": 0,
+      "warnings": 0
+    }
   },
   "assertion_matrix": [
     {

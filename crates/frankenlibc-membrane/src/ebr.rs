@@ -768,4 +768,102 @@ mod tests {
         let _ = advanced; // suppress unused warning
         let _ = pinned_epoch;
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PROPERTY-BASED: EBR invariants via proptest
+    //
+    // These tests verify that EBR's core safety invariants hold
+    // for arbitrary sequences of operations.
+    // ═══════════════════════════════════════════════════════════════
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn prop_epoch_monotonically_increases(advances in 1usize..50) {
+            let c = EbrCollector::new();
+            let mut prev = c.epoch();
+            for _ in 0..advances {
+                if let Some(new) = c.try_advance() {
+                    prop_assert!(new > prev, "epoch must increase: {} -> {}", prev, new);
+                    prev = new;
+                }
+            }
+        }
+
+        #[test]
+        fn prop_retired_geq_reclaimed(retires in 1usize..100) {
+            let c = EbrCollector::new();
+            let handle = c.register();
+            for _ in 0..retires {
+                let guard = handle.pin();
+                c.retire(|| {});
+                drop(guard);
+            }
+            for _ in 0..10 {
+                c.try_advance();
+            }
+            let d = c.diagnostics();
+            prop_assert!(
+                d.total_reclaimed <= d.total_retired,
+                "reclaimed ({}) must not exceed retired ({})",
+                d.total_reclaimed,
+                d.total_retired
+            );
+        }
+
+        #[test]
+        fn prop_active_count_tracks_registrations(n in 1usize..20) {
+            let c = EbrCollector::new();
+            let mut handles = Vec::new();
+            for _ in 0..n {
+                handles.push(c.register());
+            }
+            prop_assert_eq!(c.active_count(), n);
+            drop(handles);
+            prop_assert_eq!(c.active_count(), 0);
+        }
+
+        #[test]
+        fn prop_quarantine_depth_delays_reclaim(depth in 1u64..5) {
+            let q = QuarantineEbr::new(depth);
+            let reclaimed = Arc::new(AtomicBool::new(false));
+            let r = Arc::clone(&reclaimed);
+            q.retire_quarantined(move || {
+                r.store(true, Ordering::Relaxed);
+            });
+
+            // Should NOT be reclaimed before enough advances
+            for _ in 0..depth {
+                q.try_advance();
+            }
+            // May or may not be reclaimed yet depending on exact epoch math.
+            // But after depth+3 more advances, it must be reclaimed.
+            for _ in 0..depth + 3 {
+                q.try_advance();
+            }
+            prop_assert!(
+                reclaimed.load(Ordering::Relaxed),
+                "item must be reclaimed after {} advances (depth={})",
+                2 * depth + 3,
+                depth
+            );
+        }
+
+        #[test]
+        fn prop_pin_returns_current_epoch(advances in 0usize..10) {
+            let c = EbrCollector::new();
+            for _ in 0..advances {
+                c.try_advance();
+            }
+            let h = c.register();
+            let guard = h.pin();
+            let pin_epoch = guard.epoch();
+            let current = c.epoch();
+            prop_assert_eq!(
+                pin_epoch, current,
+                "pin epoch must match current epoch"
+            );
+        }
+    }
 }

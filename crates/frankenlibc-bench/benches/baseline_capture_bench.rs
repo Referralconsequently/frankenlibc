@@ -4,58 +4,57 @@
 //! Complements existing benches (string_bench, malloc_bench, stdio_bench,
 //! mutex_bench, condvar_bench) to achieve coverage across all major families.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::ffi::{c_char, c_int};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 // ═══════════════════════════════════════════════════════════════════
 // CTYPE FAMILY BENCHMARKS
 // ═══════════════════════════════════════════════════════════════════
 
 fn bench_ctype_isalpha(c: &mut Criterion) {
-    use frankenlibc_abi::ctype_abi::isalpha;
+    use frankenlibc_core::ctype::is_alpha;
 
     c.bench_function("ctype/isalpha/ascii_letter", |b| {
-        b.iter(|| unsafe { black_box(isalpha(black_box(b'A' as c_int))) })
+        b.iter(|| black_box(is_alpha(black_box(b'A'))))
     });
 
     c.bench_function("ctype/isalpha/digit", |b| {
-        b.iter(|| unsafe { black_box(isalpha(black_box(b'5' as c_int))) })
+        b.iter(|| black_box(is_alpha(black_box(b'5'))))
     });
 }
 
 fn bench_ctype_isdigit(c: &mut Criterion) {
-    use frankenlibc_abi::ctype_abi::isdigit;
+    use frankenlibc_core::ctype::is_digit;
 
     c.bench_function("ctype/isdigit/digit", |b| {
-        b.iter(|| unsafe { black_box(isdigit(black_box(b'7' as c_int))) })
+        b.iter(|| black_box(is_digit(black_box(b'7'))))
     });
 
     c.bench_function("ctype/isdigit/letter", |b| {
-        b.iter(|| unsafe { black_box(isdigit(black_box(b'z' as c_int))) })
+        b.iter(|| black_box(is_digit(black_box(b'z'))))
     });
 }
 
 fn bench_ctype_toupper(c: &mut Criterion) {
-    use frankenlibc_abi::ctype_abi::toupper;
+    use frankenlibc_core::ctype::to_upper;
 
     c.bench_function("ctype/toupper/lowercase", |b| {
-        b.iter(|| unsafe { black_box(toupper(black_box(b'a' as c_int))) })
+        b.iter(|| black_box(to_upper(black_box(b'a'))))
     });
 
     c.bench_function("ctype/toupper/already_upper", |b| {
-        b.iter(|| unsafe { black_box(toupper(black_box(b'A' as c_int))) })
+        b.iter(|| black_box(to_upper(black_box(b'A'))))
     });
 }
 
 fn bench_ctype_isspace(c: &mut Criterion) {
-    use frankenlibc_abi::ctype_abi::isspace;
+    use frankenlibc_core::ctype::is_space;
 
     c.bench_function("ctype/isspace/space", |b| {
-        b.iter(|| unsafe { black_box(isspace(black_box(b' ' as c_int))) })
+        b.iter(|| black_box(is_space(black_box(b' '))))
     });
 
     c.bench_function("ctype/isspace/non_space", |b| {
-        b.iter(|| unsafe { black_box(isspace(black_box(b'x' as c_int))) })
+        b.iter(|| black_box(is_space(black_box(b'x'))))
     });
 }
 
@@ -64,54 +63,54 @@ fn bench_ctype_isspace(c: &mut Criterion) {
 // ═══════════════════════════════════════════════════════════════════
 
 fn bench_math_trig(c: &mut Criterion) {
-    use frankenlibc_abi::math_abi::{cos, sin, tan};
+    use frankenlibc_core::math::{cos, sin, tan};
 
     c.bench_function("math/sin/small", |b| {
-        b.iter(|| unsafe { black_box(sin(black_box(0.5))) })
+        b.iter(|| black_box(sin(black_box(0.5))))
     });
 
     c.bench_function("math/cos/small", |b| {
-        b.iter(|| unsafe { black_box(cos(black_box(0.5))) })
+        b.iter(|| black_box(cos(black_box(0.5))))
     });
 
     c.bench_function("math/tan/small", |b| {
-        b.iter(|| unsafe { black_box(tan(black_box(0.5))) })
+        b.iter(|| black_box(tan(black_box(0.5))))
     });
 }
 
 fn bench_math_exp_log(c: &mut Criterion) {
-    use frankenlibc_abi::math_abi::{exp, log};
+    use frankenlibc_core::math::{exp, log};
 
     c.bench_function("math/exp/small", |b| {
-        b.iter(|| unsafe { black_box(exp(black_box(1.5))) })
+        b.iter(|| black_box(exp(black_box(1.5))))
     });
 
     c.bench_function("math/log/small", |b| {
-        b.iter(|| unsafe { black_box(log(black_box(2.5))) })
+        b.iter(|| black_box(log(black_box(2.5))))
     });
 }
 
 fn bench_math_sqrt(c: &mut Criterion) {
-    use frankenlibc_abi::math_abi::sqrt;
+    use frankenlibc_core::math::sqrt;
 
     c.bench_function("math/sqrt/integer", |b| {
-        b.iter(|| unsafe { black_box(sqrt(black_box(144.0))) })
+        b.iter(|| black_box(sqrt(black_box(144.0))))
     });
 
     c.bench_function("math/sqrt/large", |b| {
-        b.iter(|| unsafe { black_box(sqrt(black_box(1e12))) })
+        b.iter(|| black_box(sqrt(black_box(1e12))))
     });
 }
 
 fn bench_math_pow(c: &mut Criterion) {
-    use frankenlibc_abi::math_abi::pow;
+    use frankenlibc_core::math::pow;
 
     c.bench_function("math/pow/integer_exp", |b| {
-        b.iter(|| unsafe { black_box(pow(black_box(2.0), black_box(10.0))) })
+        b.iter(|| black_box(pow(black_box(2.0), black_box(10.0))))
     });
 
     c.bench_function("math/pow/fractional_exp", |b| {
-        b.iter(|| unsafe { black_box(pow(black_box(2.0), black_box(0.5))) })
+        b.iter(|| black_box(pow(black_box(2.0), black_box(0.5))))
     });
 }
 
@@ -120,23 +119,23 @@ fn bench_math_pow(c: &mut Criterion) {
 // ═══════════════════════════════════════════════════════════════════
 
 fn bench_stdlib_atoi(c: &mut Criterion) {
-    use frankenlibc_abi::stdlib_abi::atoi;
+    use frankenlibc_core::stdlib::atoi;
 
     c.bench_function("stdlib/atoi/small", |b| {
-        b.iter(|| unsafe { black_box(atoi(black_box(b"42\0".as_ptr() as *const c_char))) })
+        b.iter(|| black_box(atoi(black_box(b"42\0"))))
     });
 
     c.bench_function("stdlib/atoi/large", |b| {
-        b.iter(|| unsafe { black_box(atoi(black_box(b"2147483647\0".as_ptr() as *const c_char))) })
+        b.iter(|| black_box(atoi(black_box(b"2147483647\0"))))
     });
 
     c.bench_function("stdlib/atoi/negative", |b| {
-        b.iter(|| unsafe { black_box(atoi(black_box(b"-999\0".as_ptr() as *const c_char))) })
+        b.iter(|| black_box(atoi(black_box(b"-999\0"))))
     });
 }
 
 fn bench_stdlib_abs(c: &mut Criterion) {
-    use frankenlibc_abi::stdlib_abi::abs;
+    use frankenlibc_core::stdlib::abs;
 
     c.bench_function("stdlib/abs/positive", |b| {
         b.iter(|| black_box(abs(black_box(42))))
@@ -152,10 +151,12 @@ fn bench_stdlib_abs(c: &mut Criterion) {
 // ═══════════════════════════════════════════════════════════════════
 
 fn bench_errno_location(c: &mut Criterion) {
-    use frankenlibc_abi::errno_abi::__errno_location;
+    use frankenlibc_core::errno::{get_errno, set_errno};
+
+    set_errno(0);
 
     c.bench_function("errno/__errno_location", |b| {
-        b.iter(|| unsafe { black_box(__errno_location()) })
+        b.iter(|| black_box(get_errno()))
     });
 }
 
@@ -164,31 +165,31 @@ fn bench_errno_location(c: &mut Criterion) {
 // ═══════════════════════════════════════════════════════════════════
 
 fn bench_strlen_varied(c: &mut Criterion) {
-    use frankenlibc_abi::string_abi::strlen;
+    use frankenlibc_core::string::strlen;
 
     for len in [1, 8, 32, 128, 512] {
         let mut s = vec![b'x'; len];
         s.push(0);
         let label = format!("string/strlen/{len}");
         c.bench_function(&label, |b| {
-            b.iter(|| unsafe { black_box(strlen(black_box(s.as_ptr() as *const c_char))) })
+            b.iter(|| black_box(strlen(black_box(s.as_slice()))))
         });
     }
 }
 
 fn bench_strcmp_varied(c: &mut Criterion) {
-    use frankenlibc_abi::string_abi::strcmp;
+    use frankenlibc_core::string::strcmp;
 
     for len in [4, 32, 256] {
         let mut a = vec![b'a'; len];
         a.push(0);
-        let mut b_equal = a.clone();
+        let b_equal = a.clone();
         let label_eq = format!("string/strcmp/equal_{len}");
         c.bench_function(&label_eq, |bench| {
-            bench.iter(|| unsafe {
+            bench.iter(|| {
                 black_box(strcmp(
-                    black_box(a.as_ptr() as *const c_char),
-                    black_box(b_equal.as_ptr() as *const c_char),
+                    black_box(a.as_slice()),
+                    black_box(b_equal.as_slice()),
                 ))
             })
         });
@@ -198,10 +199,10 @@ fn bench_strcmp_varied(c: &mut Criterion) {
         b_diff[len - 1] = b'b';
         let label_diff = format!("string/strcmp/differ_last_{len}");
         c.bench_function(&label_diff, |bench| {
-            bench.iter(|| unsafe {
+            bench.iter(|| {
                 black_box(strcmp(
-                    black_box(a.as_ptr() as *const c_char),
-                    black_box(b_diff.as_ptr() as *const c_char),
+                    black_box(a.as_slice()),
+                    black_box(b_diff.as_slice()),
                 ))
             })
         });
