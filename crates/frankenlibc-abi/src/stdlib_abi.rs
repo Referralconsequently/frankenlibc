@@ -526,7 +526,24 @@ pub unsafe extern "C" fn strtoull(
 pub unsafe extern "C" fn exit(status: c_int) -> ! {
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdlib, 0, 0, false, true, 0);
     runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 100, false);
-    frankenlibc_core::stdlib::exit(status)
+    
+    // First flush stdio streams since atexit handlers might not do it
+    // Wait, POSIX says atexit handlers run, THEN streams are flushed.
+    // So if atexit handler prints something, it needs to be flushed.
+    // However, frankenlibc_core::stdlib::exit calls atexit handlers,
+    // and we can't easily hook back into stdio here without splitting exit.
+    // Let's implement the full POSIX exit here, calling `_exit`.
+    
+    // 1. Run atexit handlers.
+    frankenlibc_core::stdlib::run_atexit_handlers();
+
+    // 2. Flush all open stdio streams.
+    unsafe {
+        crate::stdio_abi::fflush(std::ptr::null_mut());
+    }
+
+    // 3. Terminate process.
+    frankenlibc_core::syscall::sys_exit_group(status)
 }
 
 // ---------------------------------------------------------------------------

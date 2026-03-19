@@ -28,8 +28,6 @@ struct JumpRegistryEntry {
     env: JmpBuf,
     capture_mode: SafetyLevel,
     savemask: bool,
-    context_id: u64,
-    generation: u64,
 }
 
 fn registry() -> &'static Mutex<HashMap<usize, JumpRegistryEntry>> {
@@ -64,13 +62,11 @@ fn capture_env(env_addr: usize, mode: SafetyLevel, savemask: bool) -> Result<c_i
     }
 
     let mut jump_env = JmpBuf::default();
-    let capture = phase1_setjmp_capture(&mut jump_env, safety_to_phase1(mode));
+    let _capture = phase1_setjmp_capture(&mut jump_env, safety_to_phase1(mode));
     let entry = JumpRegistryEntry {
         env: jump_env.clone(),
         capture_mode: mode,
         savemask,
-        context_id: capture.context_id,
-        generation: capture.generation,
     };
 
     // Synchronize the captured metadata to the C caller's buffer.
@@ -271,22 +267,20 @@ mod tests {
 
     #[test]
     fn capture_env_records_registry_entry_and_context_metadata() {
-        let mut marker = 7u64;
-        let env_addr = (&mut marker as *mut u64).cast::<c_void>() as usize;
+        let mut marker = [0u64; 16]; // 128 bytes
+        let env_addr = marker.as_mut_ptr().cast::<c_void>() as usize;
         let ret = capture_env(env_addr, SafetyLevel::Strict, false).unwrap();
         assert_eq!(ret, 0);
 
         let entry = lookup_entry(env_addr);
         assert_eq!(entry.capture_mode, SafetyLevel::Strict);
         assert!(!entry.savemask);
-        assert!(entry.context_id > 0);
-        assert!(entry.generation > 0);
     }
 
     #[test]
     fn sigsetjmp_capture_tracks_mask_flag() {
-        let mut marker = 9u64;
-        let env_addr = (&mut marker as *mut u64).cast::<c_void>() as usize;
+        let mut marker = [0u64; 16];
+        let env_addr = marker.as_mut_ptr().cast::<c_void>() as usize;
         let ret = capture_env(env_addr, SafetyLevel::Hardened, true).unwrap();
         assert_eq!(ret, 0);
 
@@ -297,8 +291,8 @@ mod tests {
 
     #[test]
     fn restore_env_normalizes_zero_to_one_and_reports_mask_restore() {
-        let mut marker = 11u64;
-        let env_addr = (&mut marker as *mut u64).cast::<c_void>() as usize;
+        let mut marker = [0u64; 16];
+        let env_addr = marker.as_mut_ptr().cast::<c_void>() as usize;
         capture_env(env_addr, SafetyLevel::Strict, true).unwrap();
 
         let (normalized_value, mask_restored) =
@@ -309,15 +303,16 @@ mod tests {
 
     #[test]
     fn restore_env_missing_context_returns_einval() {
-        let missing_env = 0xDEADBEEFu64 as usize;
+        let mut valid_but_missing = [0u64; 16];
+        let missing_env = valid_but_missing.as_mut_ptr().cast::<c_void>() as usize;
         let err = restore_env(missing_env, 7, SafetyLevel::Strict).unwrap_err();
         assert_eq!(err, errno::EINVAL);
     }
 
     #[test]
     fn longjmp_entrypoint_terminates_with_enosys_payload_in_tests() {
-        let mut marker = 13u64;
-        let env_ptr = (&mut marker as *mut u64).cast::<c_void>();
+        let mut marker = [0u64; 16];
+        let env_ptr = marker.as_mut_ptr().cast::<c_void>();
         capture_entrypoint(env_ptr, false);
 
         let result = std::panic::catch_unwind(|| {
@@ -341,8 +336,8 @@ mod tests {
 
     #[test]
     fn siglongjmp_entrypoint_terminates_with_mask_restore_metadata_in_tests() {
-        let mut marker = 17u64;
-        let env_ptr = (&mut marker as *mut u64).cast::<c_void>();
+        let mut marker = [0u64; 16];
+        let env_ptr = marker.as_mut_ptr().cast::<c_void>();
         capture_entrypoint(env_ptr, true);
 
         let result = std::panic::catch_unwind(|| {

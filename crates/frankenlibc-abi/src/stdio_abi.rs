@@ -2208,15 +2208,50 @@ pub unsafe extern "C" fn printf(format: *const c_char, mut args: ...) -> c_int {
     let rendered = unsafe { render_printf(fmt_bytes, arg_buf.as_ptr(), extract_count) };
     let total_len = rendered.len();
 
-    let wrote_all = write_all_fd(libc::STDOUT_FILENO, &rendered);
+    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = reg.streams.get_mut(&id) {
+        let flush_data = s.buffer_write(&rendered);
+        if !flush_data.is_empty() {
+            let fd = s.fd();
+            let mut written = 0usize;
+            let mut success = true;
+            while written < flush_data.len() {
+                let rc = unsafe {
+                    sys_write_fd(
+                        fd,
+                        flush_data[written..].as_ptr().cast(),
+                        flush_data.len() - written,
+                    )
+                };
+                if rc <= 0 {
+                    success = false;
+                    break;
+                }
+                written += rc as usize;
+            }
+            if !success {
+                s.set_error();
+                runtime_policy::observe(
+                    ApiFamily::Stdio,
+                    decision.profile,
+                    runtime_policy::scaled_cost(15, total_len),
+                    true,
+                );
+                return -1;
+            }
+        }
+    } else {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
 
     runtime_policy::observe(
         ApiFamily::Stdio,
         decision.profile,
         runtime_policy::scaled_cost(15, total_len),
-        !wrote_all,
+        false,
     );
-    if wrote_all { total_len as c_int } else { -1 }
+    total_len as c_int
 }
 
 /// POSIX `dprintf`.
@@ -2622,15 +2657,50 @@ pub unsafe extern "C" fn vprintf(format: *const c_char, ap: *mut c_void) -> c_in
     let rendered = unsafe { render_printf(fmt_bytes, arg_buf.as_ptr(), extract_count) };
     let total_len = rendered.len();
 
-    let wrote_all = write_all_fd(libc::STDOUT_FILENO, &rendered);
+    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = reg.streams.get_mut(&id) {
+        let flush_data = s.buffer_write(&rendered);
+        if !flush_data.is_empty() {
+            let fd = s.fd();
+            let mut written = 0usize;
+            let mut success = true;
+            while written < flush_data.len() {
+                let rc = unsafe {
+                    sys_write_fd(
+                        fd,
+                        flush_data[written..].as_ptr().cast(),
+                        flush_data.len() - written,
+                    )
+                };
+                if rc <= 0 {
+                    success = false;
+                    break;
+                }
+                written += rc as usize;
+            }
+            if !success {
+                s.set_error();
+                runtime_policy::observe(
+                    ApiFamily::Stdio,
+                    decision.profile,
+                    runtime_policy::scaled_cost(15, total_len),
+                    true,
+                );
+                return -1;
+            }
+        }
+    } else {
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
+        return -1;
+    }
 
     runtime_policy::observe(
         ApiFamily::Stdio,
         decision.profile,
         runtime_policy::scaled_cost(15, total_len),
-        !wrote_all,
+        false,
     );
-    if wrote_all { total_len as c_int } else { -1 }
+    total_len as c_int
 }
 
 /// POSIX `vdprintf` — format to file descriptor from va_list.
