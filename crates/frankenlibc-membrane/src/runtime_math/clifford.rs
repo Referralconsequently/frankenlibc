@@ -80,6 +80,14 @@ const PARITY_VIOLATION_THRESHOLD: f64 = 0.30;
 /// Combined alarm threshold.
 const OVERLAP_VIOLATION_THRESHOLD: f64 = 0.45;
 
+fn sanitize_unit_interval(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
 /// Alignment regime classification for one dimension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -250,11 +258,13 @@ impl CliffordController {
     pub fn observe(&mut self, obs: AlignmentObservation) {
         self.total_observations += 1;
 
+        let overlap_fraction = sanitize_unit_interval(obs.overlap_fraction);
+        let length_regime = sanitize_unit_interval(obs.length_regime);
         let current = [
             obs.src_alignment.as_f64(),
             obs.dst_alignment.as_f64(),
-            obs.overlap_fraction,
-            obs.length_regime,
+            overlap_fraction,
+            length_regime,
         ];
 
         if let Some(prev) = self.prev_obs {
@@ -289,8 +299,8 @@ impl CliffordController {
 
             // Pseudoscalar: determinant-like overlap/chirality indicator.
             // Positive when overlap is decreasing (healthy), negative when increasing.
-            mv.coeffs[15] = if obs.overlap_fraction > 0.0 {
-                -obs.overlap_fraction * mag
+            mv.coeffs[15] = if overlap_fraction > 0.0 {
+                -overlap_fraction * mag
             } else {
                 0.0
             };
@@ -504,5 +514,46 @@ mod tests {
         assert_eq!(s.state, CliffordState::Aligned);
         assert_eq!(s.drift_count, 0);
         assert_eq!(s.overlap_violation_count, 0);
+    }
+
+    #[test]
+    fn non_finite_and_out_of_range_scalars_are_sanitized() {
+        let mut cc = CliffordController::new();
+        cc.observe(AlignmentObservation {
+            src_alignment: AlignmentRegime::Align16,
+            dst_alignment: AlignmentRegime::Align32Plus,
+            overlap_fraction: f64::NAN,
+            length_regime: f64::INFINITY,
+        });
+
+        assert_eq!(cc.prev_obs, Some([2.0 / 3.0, 1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn adversarial_scalar_stream_keeps_summary_finite_and_bounded() {
+        let mut cc = CliffordController::new();
+        for _ in 0..256 {
+            cc.observe_and_update(AlignmentObservation {
+                src_alignment: AlignmentRegime::Unaligned,
+                dst_alignment: AlignmentRegime::Align32Plus,
+                overlap_fraction: f64::NEG_INFINITY,
+                length_regime: 9.0,
+            });
+            cc.observe_and_update(AlignmentObservation {
+                src_alignment: AlignmentRegime::Align32Plus,
+                dst_alignment: AlignmentRegime::Unaligned,
+                overlap_fraction: f64::NAN,
+                length_regime: -5.0,
+            });
+        }
+
+        let summary = cc.summary();
+        assert!(summary.grade0_energy.is_finite());
+        assert!(summary.grade2_energy.is_finite());
+        assert!(summary.parity_imbalance.is_finite());
+        assert!(summary.rotor_deviation.is_finite());
+        assert!((0.0..=1.0).contains(&summary.grade0_energy));
+        assert!((0.0..=1.0).contains(&summary.grade2_energy));
+        assert!((0.0..=1.0).contains(&summary.parity_imbalance));
     }
 }
