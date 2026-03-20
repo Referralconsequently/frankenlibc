@@ -418,7 +418,7 @@ impl AllocationArena {
                 shard.free_list.push(slot_idx);
             }
 
-            shard.quarantine_bytes -= entry.total_size;
+            shard.quarantine_bytes = shard.quarantine_bytes.saturating_sub(entry.total_size);
 
             drained.push(entry);
         }

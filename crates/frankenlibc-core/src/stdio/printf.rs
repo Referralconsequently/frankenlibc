@@ -378,7 +378,12 @@ pub fn format_unsigned(value: u64, spec: &FormatSpec, buf: &mut Vec<u8>) {
 
     let content_len = prefix.len() + zero_prefix_count + digit_count;
 
-    let suppress_zero = value == 0 && matches!(spec.precision, Precision::Fixed(0));
+    let mut suppress_zero = value == 0 && matches!(spec.precision, Precision::Fixed(0));
+    // POSIX: For 'o' conversion with '#', if the value and precision are both 0, a single 0 is printed.
+    if suppress_zero && spec.flags.alt_form && spec.conversion == b'o' {
+        suppress_zero = false;
+    }
+
     let effective_content = if suppress_zero {
         prefix.len()
     } else {

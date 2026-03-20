@@ -101,12 +101,14 @@ impl PointerBloomFilter {
 
     /// Compute the i-th hash for a pointer value.
     ///
-    /// Uses double hashing: h(i) = (h1 + i*h2) mod m
+    /// Uses double hashing: h(i) = (h1 + i*h2) & (m-1)
+    /// `num_bits` is guaranteed to be a power of 2, so bitwise AND
+    /// replaces modulo for the hot-path optimization.
     fn hash(&self, ptr: usize, i: u32) -> usize {
         let h1 = self.hash1(ptr);
         let h2 = self.hash2(ptr);
         let combined = h1.wrapping_add((i as usize).wrapping_mul(h2));
-        combined % self.num_bits
+        combined & (self.num_bits - 1)
     }
 
     /// Primary hash function (based on multiplicative hashing).
