@@ -13,14 +13,9 @@ use std::ptr;
 
 use crate::malloc_abi::known_remaining;
 use crate::runtime_policy;
+use crate::errno_abi::set_abi_errno;
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 use libc::{intmax_t, uintmax_t};
-
-#[inline]
-unsafe fn set_abi_errno(val: c_int) {
-    let p = unsafe { super::errno_abi::__errno_location() };
-    unsafe { *p = val };
-}
 
 unsafe extern "C" {
     #[link_name = "setenv@GLIBC_2.2.5"]
@@ -2834,13 +2829,20 @@ pub unsafe extern "C" fn __assert_fail(
     } else {
         unsafe { core::ffi::CStr::from_ptr(function) }
     };
-    eprintln!(
-        "{}: {}: {}: Assertion `{}' failed.",
+    let msg = format!(
+        "{}: {}: {}: Assertion `{}' failed.\n",
         f.to_str().unwrap_or("??"),
         line,
         func.to_str().unwrap_or("??"),
         a.to_str().unwrap_or("??")
     );
+    unsafe {
+        crate::unistd_abi::sys_write_fd(
+            libc::STDERR_FILENO,
+            msg.as_ptr().cast(),
+            msg.len(),
+        );
+    }
     std::process::abort();
 }
 
@@ -2863,13 +2865,20 @@ pub unsafe extern "C" fn __assert_perror_fail(
         unsafe { core::ffi::CStr::from_ptr(function) }
     };
     let msg = std::io::Error::from_raw_os_error(errnum);
-    eprintln!(
-        "{}: {}: {}: Unexpected error: {}.",
+    let msg_str = format!(
+        "{}: {}: {}: Unexpected error: {}.\n",
         f.to_str().unwrap_or("??"),
         line,
         func.to_str().unwrap_or("??"),
         msg
     );
+    unsafe {
+        crate::unistd_abi::sys_write_fd(
+            libc::STDERR_FILENO,
+            msg_str.as_ptr().cast(),
+            msg_str.len(),
+        );
+    }
     std::process::abort();
 }
 

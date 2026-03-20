@@ -11738,7 +11738,8 @@ pub unsafe extern "C" fn fmtmsg(
         } else {
             ""
         };
-        eprintln!("{lbl}: {sev}: {txt}\nTO FIX: {act} {tg}");
+        let out = format!("{lbl}: {sev}: {txt}\nTO FIX: {act} {tg}\n");
+        unsafe { sys_write_fd(libc::STDERR_FILENO, out.as_ptr().cast(), out.len()) };
     }
     0 // MM_OK
 }

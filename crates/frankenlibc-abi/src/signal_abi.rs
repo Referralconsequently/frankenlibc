@@ -10,13 +10,8 @@ use frankenlibc_core::signal as signal_core;
 use frankenlibc_core::syscall;
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 
+use crate::errno_abi::set_abi_errno;
 use crate::runtime_policy;
-
-#[inline]
-unsafe fn set_abi_errno(val: c_int) {
-    let p = unsafe { super::errno_abi::__errno_location() };
-    unsafe { *p = val };
-}
 
 #[inline]
 fn last_host_errno(default_errno: c_int) -> c_int {
@@ -581,11 +576,13 @@ pub unsafe extern "C" fn psiginfo(info: *const libc::siginfo_t, msg: *const std:
     if !msg.is_null() {
         let c_msg = unsafe { std::ffi::CStr::from_ptr(msg) };
         if let Ok(s) = c_msg.to_str() {
-            eprintln!("{s}: SIG{desc}");
+            let out = format!("{s}: SIG{desc}\n");
+            unsafe { crate::unistd_abi::sys_write_fd(libc::STDERR_FILENO, out.as_ptr().cast(), out.len()) };
             return;
         }
     }
-    eprintln!("SIG{desc}");
+    let out = format!("SIG{desc}\n");
+    unsafe { crate::unistd_abi::sys_write_fd(libc::STDERR_FILENO, out.as_ptr().cast(), out.len()) };
 }
 
 /// `sigabbrev_np` — return abbreviated signal name (GNU extension).
