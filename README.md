@@ -172,15 +172,19 @@ These invariants are meant to hold as the codebase grows:
 
 Current source of truth: `tests/conformance/support_matrix_maintenance_report.v1.json`.
 
-| Status | Count | Meaning |
-|---|---:|---|
-| `Implemented` | 3457 | Native ABI-backed Rust-owned behavior |
-| `RawSyscall` | 406 | ABI path delegates directly to Linux syscalls |
-| `GlibcCallThrough` | 117 | Still depends on host glibc for that symbol |
-| `Stub` | 0 | No exported stubs in the current classified surface |
+| Status | Count | % | Meaning |
+|---|---:|---:|---|
+| `Implemented` | 3457 | 87% | Native ABI-backed Rust-owned behavior |
+| `RawSyscall` | 406 | 10% | ABI path delegates directly to Linux syscalls |
+| `GlibcCallThrough` | 117 | 3% | Still depends on host glibc for that symbol |
+| `Stub` | 0 | 0% | No exported stubs in the current classified surface |
 
-Total classified exports: **3980**.  
+Total currently classified exports: **3980**.
 Current native coverage (`Implemented + RawSyscall`): **97.1%**.
+
+Source of truth: `tests/conformance/reality_report.v1.json` (generated `2026-02-18T04:49:26Z`).
+
+Reality snapshot: total_exported=3980, implemented=3457, raw_syscall=406, glibc_call_through=117, stub=0.
 
 In practice:
 
@@ -1040,7 +1044,7 @@ Not fully. The practical artifact today is `libfrankenlibc_abi.so` used via `LD_
 
 ### Does it already implement a lot of symbols natively?
 
-Yes. The current classified surface is 3980 symbols, with 3441 `Implemented` and 406 `RawSyscall`.
+Yes. The current classified surface is 3980 symbols, with 3457 `Implemented` and 406 `RawSyscall`.
 
 ### What does hardened mode actually do?
 
