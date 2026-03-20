@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-5fw.4",
-  "timestamp": "2026-03-10T01:04:40Z",
+  "timestamp": "2026-03-20T03:35:00Z",
   "dry_run": true,
   "binder_valid": true,
   "total_obligations": 21,
@@ -24,6 +24,7 @@
     "robustness",
     "statistical_guarantee"
   ],
+  "counterexamples": [],
   "obligations": [
     {
       "obligation_id": "PO-01",
@@ -230,21 +231,30 @@
       "obligation_id": "PO-10",
       "statement": "HJI Viability Theorem: runtime remains in computed viability kernel under adversary model.",
       "category": "controller_safety",
-      "status": "planned",
-      "owner": "bd-w2c3.6.2",
+      "status": "in_progress",
+      "owner": "bd-249m.6",
       "artifact_schema": "proof_obligation_record.v1",
-      "verification_command": "bash scripts/check_runtime_math_manifest.sh",
+      "verification_command": "bash scripts/check_runtime_math_hji_viability_proofs.sh",
       "valid": true,
-      "evidence_found": 1,
+      "evidence_found": 4,
       "evidence_missing": 0,
-      "gates_found": 1,
+      "gates_found": 2,
       "gates_missing": 0,
-      "source_refs_total": 0,
-      "source_refs_valid": 0,
+      "source_refs_total": 8,
+      "source_refs_valid": 8,
       "source_refs_invalid": 0,
       "violations": [],
       "evidence_hashes": {},
-      "source_ref_results": {}
+      "source_ref_results": {
+        "crates/frankenlibc-membrane/src/hji_reachability.rs:169": "valid",
+        "crates/frankenlibc-membrane/src/hji_reachability.rs:398": "valid",
+        "crates/frankenlibc-membrane/src/runtime_math/mod.rs:2471": "valid",
+        "crates/frankenlibc-membrane/src/runtime_math/mod.rs:4224": "valid",
+        "crates/frankenlibc-membrane/src/runtime_math/mod.rs:5391": "valid",
+        "crates/frankenlibc-harness/src/runtime_math_hji_viability_proofs.rs:62": "valid",
+        "scripts/check_runtime_math_hji_viability_proofs.sh:1": "valid",
+        "docs/proofs/hji_viability_kernel.md:1": "valid"
+      }
     },
     {
       "obligation_id": "PO-11",

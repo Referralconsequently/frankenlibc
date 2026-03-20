@@ -1,46 +1,46 @@
 {
   "schema_version": "v1",
   "bead": "bd-3g4p",
-  "generated_at": "2026-03-17T06:23:08Z",
+  "generated_at": "2026-03-20T03:39:40Z",
   "summary": {
     "total_symbols": 3980,
-    "status_validated": 3980,
-    "status_invalid": 0,
+    "status_validated": 3979,
+    "status_invalid": 1,
     "status_skipped": 0,
     "status_valid_pct": 100.0,
     "fixture_linked": 203,
     "fixture_unlinked": 3777,
     "fixture_coverage_pct": 5.1,
-    "total_warnings": 0
+    "total_warnings": 1
   },
   "coverage_dashboard": {
     "total_symbols": 3980,
     "status_counts": {
-      "Implemented": 3441,
+      "Implemented": 3457,
       "RawSyscall": 406,
-      "GlibcCallThrough": 133,
+      "GlibcCallThrough": 117,
       "Stub": 0
     },
     "status_share_pct": {
-      "Implemented": 86.5,
+      "Implemented": 86.9,
       "RawSyscall": 10.2,
-      "GlibcCallThrough": 3.3,
+      "GlibcCallThrough": 2.9,
       "Stub": 0.0
     },
-    "native_coverage_pct": 96.7
+    "native_coverage_pct": 97.1
   },
   "trend": {
     "baseline_report_path": "/data/projects/frankenlibc/tests/conformance/support_matrix_maintenance_report.v1.json",
     "baseline_loaded": true,
     "baseline_symbol_map_loaded": true,
     "status_count_delta": {
-      "GlibcCallThrough": -5,
-      "Implemented": 5,
+      "GlibcCallThrough": -16,
+      "Implemented": 16,
       "RawSyscall": 0,
       "Stub": 0
     },
-    "native_coverage_pct_delta": 0.16,
-    "reclassified_symbol_count": 5,
+    "native_coverage_pct_delta": 0.36,
+    "reclassified_symbol_count": 16,
     "new_symbol_count": 0,
     "removed_symbol_count": 0,
     "new_symbols": [],
@@ -56,10 +56,10 @@
     "reclassification_requires_conformance": {
       "status": "fail",
       "baseline_symbol_map_loaded": true,
-      "total_reclassified": 5,
+      "total_reclassified": 16,
       "violations": [
         {
-          "symbol": "_IO_file_overflow",
+          "symbol": "_IO_adjust_column",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -75,7 +75,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_seek",
+          "symbol": "_IO_adjust_wcolumn",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -91,7 +91,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_seekoff",
+          "symbol": "_IO_default_pbackfail",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -107,7 +107,7 @@
           ]
         },
         {
-          "symbol": "_IO_file_stat",
+          "symbol": "_IO_default_uflow",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -123,7 +123,183 @@
           ]
         },
         {
-          "symbol": "_IO_file_underflow",
+          "symbol": "_IO_default_xsgetn",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_default_xsputn",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_do_write",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_flush_all_linebuffered",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_getline",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_getline_info",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_gets",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_popen",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_proc_close",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_sputbackc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_switch_to_get_mode",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_vfscanf",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -143,11 +319,11 @@
   },
   "status_distribution": {
     "GlibcCallThrough": {
-      "count": 133,
+      "count": 117,
       "fixture_linked": 4
     },
     "Implemented": {
-      "count": 3441,
+      "count": 3457,
       "fixture_linked": 146
     },
     "RawSyscall": {
@@ -363,15 +539,15 @@
     "_IO_2_1_stderr_": "Implemented",
     "_IO_2_1_stdin_": "Implemented",
     "_IO_2_1_stdout_": "Implemented",
-    "_IO_adjust_column": "GlibcCallThrough",
-    "_IO_adjust_wcolumn": "GlibcCallThrough",
+    "_IO_adjust_column": "Implemented",
+    "_IO_adjust_wcolumn": "Implemented",
     "_IO_default_doallocate": "GlibcCallThrough",
     "_IO_default_finish": "GlibcCallThrough",
-    "_IO_default_pbackfail": "GlibcCallThrough",
-    "_IO_default_uflow": "GlibcCallThrough",
-    "_IO_default_xsgetn": "GlibcCallThrough",
-    "_IO_default_xsputn": "GlibcCallThrough",
-    "_IO_do_write": "GlibcCallThrough",
+    "_IO_default_pbackfail": "Implemented",
+    "_IO_default_uflow": "Implemented",
+    "_IO_default_xsgetn": "Implemented",
+    "_IO_default_xsputn": "Implemented",
+    "_IO_do_write": "Implemented",
     "_IO_doallocbuf": "GlibcCallThrough",
     "_IO_enable_locks": "Implemented",
     "_IO_fclose": "Implemented",
@@ -403,7 +579,7 @@
     "_IO_file_xsputn": "Implemented",
     "_IO_flockfile": "Implemented",
     "_IO_flush_all": "Implemented",
-    "_IO_flush_all_linebuffered": "GlibcCallThrough",
+    "_IO_flush_all_linebuffered": "Implemented",
     "_IO_fopen": "Implemented",
     "_IO_fprintf": "Implemented",
     "_IO_fputs": "Implemented",
@@ -417,9 +593,9 @@
     "_IO_funlockfile": "Implemented",
     "_IO_fwrite": "Implemented",
     "_IO_getc": "Implemented",
-    "_IO_getline": "GlibcCallThrough",
-    "_IO_getline_info": "GlibcCallThrough",
-    "_IO_gets": "GlibcCallThrough",
+    "_IO_getline": "Implemented",
+    "_IO_getline_info": "Implemented",
+    "_IO_gets": "Implemented",
     "_IO_init": "GlibcCallThrough",
     "_IO_init_marker": "GlibcCallThrough",
     "_IO_init_wmarker": "GlibcCallThrough",
@@ -437,9 +613,9 @@
     "_IO_marker_difference": "GlibcCallThrough",
     "_IO_padn": "Implemented",
     "_IO_peekc_locked": "Implemented",
-    "_IO_popen": "GlibcCallThrough",
+    "_IO_popen": "Implemented",
     "_IO_printf": "Implemented",
-    "_IO_proc_close": "GlibcCallThrough",
+    "_IO_proc_close": "Implemented",
     "_IO_proc_open": "GlibcCallThrough",
     "_IO_putc": "Implemented",
     "_IO_puts": "Implemented",
@@ -453,7 +629,7 @@
     "_IO_setvbuf": "Implemented",
     "_IO_sgetn": "Implemented",
     "_IO_sprintf": "Implemented",
-    "_IO_sputbackc": "GlibcCallThrough",
+    "_IO_sputbackc": "Implemented",
     "_IO_sputbackwc": "GlibcCallThrough",
     "_IO_sscanf": "Implemented",
     "_IO_str_init_readonly": "GlibcCallThrough",
@@ -464,7 +640,7 @@
     "_IO_str_underflow": "GlibcCallThrough",
     "_IO_sungetc": "GlibcCallThrough",
     "_IO_sungetwc": "GlibcCallThrough",
-    "_IO_switch_to_get_mode": "GlibcCallThrough",
+    "_IO_switch_to_get_mode": "Implemented",
     "_IO_switch_to_main_wget_area": "GlibcCallThrough",
     "_IO_switch_to_wbackup_area": "GlibcCallThrough",
     "_IO_switch_to_wget_mode": "GlibcCallThrough",
@@ -473,7 +649,7 @@
     "_IO_unsave_markers": "GlibcCallThrough",
     "_IO_unsave_wmarkers": "GlibcCallThrough",
     "_IO_vfprintf": "Implemented",
-    "_IO_vfscanf": "GlibcCallThrough",
+    "_IO_vfscanf": "Implemented",
     "_IO_vsprintf": "Implemented",
     "_IO_wdefault_doallocate": "GlibcCallThrough",
     "_IO_wdefault_finish": "GlibcCallThrough",
@@ -4341,7 +4517,7 @@
   },
   "reclassified_symbols": [
     {
-      "symbol": "_IO_file_overflow",
+      "symbol": "_IO_adjust_column",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4357,7 +4533,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_seek",
+      "symbol": "_IO_adjust_wcolumn",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4373,7 +4549,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_seekoff",
+      "symbol": "_IO_default_pbackfail",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4389,7 +4565,7 @@
       ]
     },
     {
-      "symbol": "_IO_file_stat",
+      "symbol": "_IO_default_uflow",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4405,7 +4581,183 @@
       ]
     },
     {
-      "symbol": "_IO_file_underflow",
+      "symbol": "_IO_default_xsgetn",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_default_xsputn",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_do_write",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_flush_all_linebuffered",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_getline",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_getline_info",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_gets",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_popen",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_proc_close",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_sputbackc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_switch_to_get_mode",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_vfscanf",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4918,6 +5270,15 @@
       ]
     },
     {
+      "symbol": "perror",
+      "status": "Implemented",
+      "module": "stdio_abi",
+      "valid": false,
+      "findings": [
+        "Implemented but calls libc::{strerror_r}"
+      ]
+    },
+    {
       "symbol": "posix_spawnattr_getflags",
       "status": "Implemented",
       "module": "unistd_abi",
@@ -5362,6 +5723,51 @@
       "symbol": "wcwidth",
       "status": "Implemented",
       "module": "unistd_abi",
+      "valid": true,
+      "findings": [
+        "function body not found (may use alternate pattern)"
+      ]
+    },
+    {
+      "symbol": "_IO_putc",
+      "status": "Implemented",
+      "module": "stdio_abi",
+      "valid": true,
+      "findings": [
+        "function body not found (may use alternate pattern)"
+      ]
+    },
+    {
+      "symbol": "_IO_getc",
+      "status": "Implemented",
+      "module": "stdio_abi",
+      "valid": true,
+      "findings": [
+        "function body not found (may use alternate pattern)"
+      ]
+    },
+    {
+      "symbol": "_IO_feof",
+      "status": "Implemented",
+      "module": "stdio_abi",
+      "valid": true,
+      "findings": [
+        "function body not found (may use alternate pattern)"
+      ]
+    },
+    {
+      "symbol": "_IO_ferror",
+      "status": "Implemented",
+      "module": "stdio_abi",
+      "valid": true,
+      "findings": [
+        "function body not found (may use alternate pattern)"
+      ]
+    },
+    {
+      "symbol": "_IO_peekc_locked",
+      "status": "Implemented",
+      "module": "stdio_abi",
       "valid": true,
       "findings": [
         "function body not found (may use alternate pattern)"
@@ -6252,6 +6658,15 @@
     {
       "symbol": "daylight",
       "status": "Implemented",
+      "module": "glibc_internal_abi",
+      "valid": true,
+      "findings": [
+        "function body not found (may use alternate pattern)"
+      ]
+    },
+    {
+      "symbol": "dlvsym",
+      "status": "GlibcCallThrough",
       "module": "glibc_internal_abi",
       "valid": true,
       "findings": [
