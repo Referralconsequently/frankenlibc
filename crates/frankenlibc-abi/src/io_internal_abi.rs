@@ -147,22 +147,23 @@ pub unsafe extern "C" fn _IO_adjust_wcolumn(
 // ---------------------------------------------------------------------------
 
 /// `_IO_default_doallocate` — default buffer allocation for FILE.
+///
+/// Native no-op: buffer allocation is handled lazily by our stdio layer on
+/// first read/write.  Returning 0 (success) signals the caller that the
+/// stream is ready to use.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_default_doallocate(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_default_doallocate", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_default_doallocate(_fp: *mut c_void) -> c_int {
+    0 // success — buffer will be allocated on demand
 }
 
 /// `_IO_default_finish` — default finalization for FILE.
+///
+/// Native no-op: real resource cleanup is handled by `fclose` in our stdio
+/// layer.  This vtable hook exists for glibc's internal bookkeeping which
+/// we do not need.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_default_finish(fp: *mut c_void, dummy: c_int) {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int);
-    if let Some(f) = io_resolve!(c"_IO_default_finish", Fn) {
-        unsafe { f(fp, dummy) }
-    }
+pub unsafe extern "C" fn _IO_default_finish(_fp: *mut c_void, _dummy: c_int) {
+    // No-op: fclose handles all cleanup
 }
 
 /// `_IO_default_pbackfail` — default putback failure handler via native ungetc.
@@ -211,12 +212,11 @@ pub unsafe extern "C" fn _IO_do_write(fp: *mut c_void, buf: *const c_char, n: us
 }
 
 /// `_IO_doallocbuf` — allocate FILE internal buffer.
+///
+/// Native no-op: our stdio layer handles buffer allocation lazily.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_doallocbuf(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_doallocbuf", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_doallocbuf(_fp: *mut c_void) {
+    // No-op: buffer allocation is lazy in our stdio layer
 }
 
 /// `_IO_getc` — internal getc.
@@ -356,13 +356,14 @@ pub unsafe extern "C" fn _IO_fwrite(
 // ---------------------------------------------------------------------------
 
 /// `_IO_file_attach` — attach fd to FILE.
+///
+/// Native: delegates to `fdopen` which creates a proper FILE for the
+/// given fd.  Returns the FILE pointer on success, NULL on failure.
+/// Note: this ignores the existing `fp` and creates a new FILE; the
+/// glibc version reuses the provided `fp` structure.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_file_attach(fp: *mut c_void, fd: c_int) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int) -> *mut c_void;
-    match io_resolve!(c"_IO_file_attach", Fn) {
-        Some(f) => unsafe { f(fp, fd) },
-        None => std::ptr::null_mut(),
-    }
+pub unsafe extern "C" fn _IO_file_attach(_fp: *mut c_void, fd: c_int) -> *mut c_void {
+    unsafe { stdio_abi::fdopen(fd, c"r+".as_ptr()) }
 }
 
 /// `_IO_file_close` — close underlying fd.
@@ -378,64 +379,74 @@ pub unsafe extern "C" fn _IO_file_close_it(fp: *mut c_void) -> c_int {
 }
 
 /// `_IO_file_doallocate` — allocate buffer for file stream.
+///
+/// Native: delegates to `_IO_default_doallocate` (lazy allocation).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_doallocate(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_file_doallocate", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { _IO_default_doallocate(fp) }
 }
 
 /// `_IO_file_finish` — finalize file stream.
+///
+/// Native: delegates to `_IO_default_finish` (no-op — fclose handles cleanup).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_finish(fp: *mut c_void, dummy: c_int) {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int);
-    if let Some(f) = io_resolve!(c"_IO_file_finish", Fn) {
-        unsafe { f(fp, dummy) }
-    }
+    unsafe { _IO_default_finish(fp, dummy) }
 }
 
 /// `_IO_file_fopen` — open file by name into existing FILE.
+///
+/// Native: delegates to our `fopen` implementation.  The `is32not64`
+/// flag is ignored since we handle large-file support transparently.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_fopen(
-    fp: *mut c_void,
+    _fp: *mut c_void,
     filename: *const c_char,
     mode: *const c_char,
-    is32not64: c_int,
+    _is32not64: c_int,
 ) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, c_int) -> *mut c_void;
-    match io_resolve!(c"_IO_file_fopen", Fn) {
-        Some(f) => unsafe { f(fp, filename, mode, is32not64) },
-        None => std::ptr::null_mut(),
-    }
+    unsafe { stdio_abi::fopen(filename, mode) }
 }
 
 /// `_IO_file_init` — initialize FILE structure.
+///
+/// Native no-op: our stdio layer initializes FILE state in fopen/fdopen.
+/// This vtable hook is a glibc internal for its linked-list bookkeeping.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_file_init(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_file_init", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_file_init(_fp: *mut c_void) {
+    // No-op: fopen/fdopen handle initialization
 }
 
 /// `_IO_file_open` — open file by name (low-level).
+///
+/// Native: opens via raw syscall `open(2)` and then attaches to a FILE
+/// via `fdopen`.  The `read_write` flags determine the mode string.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_open(
-    fp: *mut c_void,
+    _fp: *mut c_void,
     filename: *const c_char,
     posix_mode: c_int,
     prot: c_int,
-    read_write: c_int,
-    is32not64: c_int,
+    _read_write: c_int,
+    _is32not64: c_int,
 ) -> *mut c_void {
-    type Fn =
-        unsafe extern "C" fn(*mut c_void, *const c_char, c_int, c_int, c_int, c_int) -> *mut c_void;
-    match io_resolve!(c"_IO_file_open", Fn) {
-        Some(f) => unsafe { f(fp, filename, posix_mode, prot, read_write, is32not64) },
-        None => std::ptr::null_mut(),
+    let fd = unsafe { libc::open(filename, posix_mode, prot) };
+    if fd < 0 {
+        return std::ptr::null_mut();
     }
+    // Determine mode string from posix_mode flags
+    let mode = if posix_mode & libc::O_WRONLY != 0 {
+        c"w"
+    } else if posix_mode & libc::O_RDWR != 0 {
+        c"r+"
+    } else {
+        c"r"
+    };
+    let fp = unsafe { stdio_abi::fdopen(fd, mode.as_ptr()) };
+    if fp.is_null() {
+        unsafe { libc::close(fd) };
+    }
+    fp
 }
 
 /// `_IO_file_overflow` — handle write buffer overflow.
@@ -598,21 +609,20 @@ pub unsafe extern "C" fn _IO_sscanf(s: *const c_char, fmt: *const c_char, mut ar
 // ---------------------------------------------------------------------------
 
 /// `_IO_free_backup_area` — free the backup read buffer.
+///
+/// Native no-op: our stdio layer does not maintain separate backup areas.
+/// The ungetc push-back is handled inline in our buffer management.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_free_backup_area(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_free_backup_area", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_free_backup_area(_fp: *mut c_void) {
+    // No-op: no separate backup area to free
 }
 
 /// `_IO_free_wbackup_area` — free the wide backup read buffer.
+///
+/// Native no-op: same rationale as `_IO_free_backup_area`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_free_wbackup_area(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_free_wbackup_area", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_free_wbackup_area(_fp: *mut c_void) {
+    // No-op: no separate wide backup area to free
 }
 
 // ---------------------------------------------------------------------------
@@ -719,12 +729,13 @@ pub unsafe extern "C" fn _IO_gets(buf: *mut c_char) -> *mut c_char {
 // ---------------------------------------------------------------------------
 
 /// `_IO_init` — initialize an _IO_FILE structure.
+///
+/// Native no-op: our stdio layer manages its own FILE initialization.
+/// This glibc internal sets up the linked-list chain and default vtable,
+/// neither of which we maintain.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_init(fp: *mut c_void, flags: c_int) {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int);
-    if let Some(f) = io_resolve!(c"_IO_init", Fn) {
-        unsafe { f(fp, flags) }
-    }
+pub unsafe extern "C" fn _IO_init(_fp: *mut c_void, _flags: c_int) {
+    // No-op: our FILE management does not use glibc's internal init chain
 }
 
 // ---------------------------------------------------------------------------
@@ -732,112 +743,101 @@ pub unsafe extern "C" fn _IO_init(fp: *mut c_void, flags: c_int) {
 // ---------------------------------------------------------------------------
 
 /// `_IO_init_marker` — initialize a stream position marker.
+///
+/// Native no-op: glibc markers are internal linked-list bookmarks into
+/// the stream buffer.  Our stdio layer uses standard fseek/ftell instead.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_init_marker(marker: *mut c_void, fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_init_marker", Fn) {
-        unsafe { f(marker, fp) }
-    }
+pub unsafe extern "C" fn _IO_init_marker(_marker: *mut c_void, _fp: *mut c_void) {
+    // No-op: markers are a glibc internal that we do not maintain
 }
 
 /// `_IO_init_wmarker` — initialize a wide stream position marker.
+///
+/// Native no-op: same rationale as `_IO_init_marker`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_init_wmarker(marker: *mut c_void, fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_init_wmarker", Fn) {
-        unsafe { f(marker, fp) }
-    }
+pub unsafe extern "C" fn _IO_init_wmarker(_marker: *mut c_void, _fp: *mut c_void) {
+    // No-op: wide markers are a glibc internal
 }
 
 /// `_IO_marker_delta` — distance from marker to current position.
+///
+/// Native: returns 0 (no delta) since we do not track marker positions.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_marker_delta(marker: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_marker_delta", Fn) {
-        Some(f) => unsafe { f(marker) },
-        None => 0,
-    }
+pub unsafe extern "C" fn _IO_marker_delta(_marker: *mut c_void) -> c_int {
+    0
 }
 
 /// `_IO_marker_difference` — distance between two markers.
+///
+/// Native: returns 0 since we do not track marker positions.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_marker_difference(mark1: *mut c_void, mark2: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
-    match io_resolve!(c"_IO_marker_difference", Fn) {
-        Some(f) => unsafe { f(mark1, mark2) },
-        None => 0,
-    }
+pub unsafe extern "C" fn _IO_marker_difference(_mark1: *mut c_void, _mark2: *mut c_void) -> c_int {
+    0
 }
 
 /// `_IO_remove_marker` — remove a stream position marker.
+///
+/// Native no-op: we do not maintain a marker linked list.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_remove_marker(marker: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_remove_marker", Fn) {
-        unsafe { f(marker) }
-    }
+pub unsafe extern "C" fn _IO_remove_marker(_marker: *mut c_void) {
+    // No-op
 }
 
 /// `_IO_seekmark` — seek to a marker position.
+///
+/// Native: returns -1 (error) since markers are not supported.
+/// Callers in practice use fseek instead.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_seekmark(fp: *mut c_void, marker: *mut c_void, delta: c_int) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int;
-    match io_resolve!(c"_IO_seekmark", Fn) {
-        Some(f) => unsafe { f(fp, marker, delta) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_seekmark(
+    _fp: *mut c_void,
+    _marker: *mut c_void,
+    _delta: c_int,
+) -> c_int {
+    -1 // markers not supported — use fseek
 }
 
 /// `_IO_seekwmark` — seek to a wide marker position.
+///
+/// Native: returns -1 (error) since wide markers are not supported.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_seekwmark(
-    fp: *mut c_void,
-    marker: *mut c_void,
-    delta: c_int,
+    _fp: *mut c_void,
+    _marker: *mut c_void,
+    _delta: c_int,
 ) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int;
-    match io_resolve!(c"_IO_seekwmark", Fn) {
-        Some(f) => unsafe { f(fp, marker, delta) },
-        None => -1,
-    }
+    -1 // wide markers not supported
 }
 
 /// `_IO_unsave_markers` — release all saved markers.
+///
+/// Native no-op: no markers to release.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_unsave_markers(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_unsave_markers", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_unsave_markers(_fp: *mut c_void) {
+    // No-op
 }
 
 /// `_IO_unsave_wmarkers` — release all saved wide markers.
+///
+/// Native no-op: no wide markers to release.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_unsave_wmarkers(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_unsave_wmarkers", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_unsave_wmarkers(_fp: *mut c_void) {
+    // No-op
 }
 
 /// `_IO_least_wmarker` — find the leftmost wide marker.
+///
+/// Native: returns 0 since we do not maintain wide markers.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_least_wmarker(fp: *mut c_void, end: *mut c_void) -> isize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> isize;
-    match io_resolve!(c"_IO_least_wmarker", Fn) {
-        Some(f) => unsafe { f(fp, end) },
-        None => 0,
-    }
+pub unsafe extern "C" fn _IO_least_wmarker(_fp: *mut c_void, _end: *mut c_void) -> isize {
+    0
 }
 
 /// `_IO_wmarker_delta` — distance from wide marker to current position.
+///
+/// Native: returns 0 since we do not track wide marker positions.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wmarker_delta(marker: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_wmarker_delta", Fn) {
-        Some(f) => unsafe { f(marker) },
-        None => 0,
-    }
+pub unsafe extern "C" fn _IO_wmarker_delta(_marker: *mut c_void) -> c_int {
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -845,43 +845,37 @@ pub unsafe extern "C" fn _IO_wmarker_delta(marker: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// `_IO_iter_begin` — get iterator to first FILE in list.
+///
+/// Native: returns NULL (empty list).  We do not maintain glibc's linked
+/// FILE list, so iteration yields no elements.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_iter_begin() -> *mut c_void {
-    type Fn = unsafe extern "C" fn() -> *mut c_void;
-    match io_resolve!(c"_IO_iter_begin", Fn) {
-        Some(f) => unsafe { f() },
-        None => std::ptr::null_mut(),
-    }
+    std::ptr::null_mut() // empty list
 }
 
 /// `_IO_iter_end` — get sentinel iterator (end of list).
+///
+/// Native: returns NULL sentinel.  Since `_IO_iter_begin` also returns
+/// NULL, `begin == end` correctly indicates an empty iteration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_iter_end() -> *mut c_void {
-    type Fn = unsafe extern "C" fn() -> *mut c_void;
-    match io_resolve!(c"_IO_iter_end", Fn) {
-        Some(f) => unsafe { f() },
-        None => std::ptr::null_mut(),
-    }
+    std::ptr::null_mut()
 }
 
 /// `_IO_iter_file` — dereference iterator to get FILE*.
+///
+/// Native: returns NULL since our iterators are always at end-of-list.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_iter_file(iter: *mut c_void) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
-    match io_resolve!(c"_IO_iter_file", Fn) {
-        Some(f) => unsafe { f(iter) },
-        None => std::ptr::null_mut(),
-    }
+pub unsafe extern "C" fn _IO_iter_file(_iter: *mut c_void) -> *mut c_void {
+    std::ptr::null_mut()
 }
 
 /// `_IO_iter_next` — advance iterator to next FILE.
+///
+/// Native: returns NULL (end sentinel) since we have no FILE list.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_iter_next(iter: *mut c_void) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
-    match io_resolve!(c"_IO_iter_next", Fn) {
-        Some(f) => unsafe { f(iter) },
-        None => std::ptr::null_mut(),
-    }
+pub unsafe extern "C" fn _IO_iter_next(_iter: *mut c_void) -> *mut c_void {
+    std::ptr::null_mut()
 }
 
 // ---------------------------------------------------------------------------
@@ -889,48 +883,44 @@ pub unsafe extern "C" fn _IO_iter_next(iter: *mut c_void) -> *mut c_void {
 // ---------------------------------------------------------------------------
 
 /// `_IO_link_in` — add FILE to the global list.
+///
+/// Native no-op: FrankenLibC does not maintain glibc's linked FILE list.
+/// Stream tracking is handled separately by our stdio layer.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_link_in(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_link_in", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_link_in(_fp: *mut c_void) {
+    // No-op: we do not maintain glibc's _IO_list_all linked list
 }
 
 /// `_IO_un_link` — remove FILE from the global list.
+///
+/// Native no-op: counterpart to `_IO_link_in`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_un_link(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_un_link", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_un_link(_fp: *mut c_void) {
+    // No-op: we do not maintain glibc's _IO_list_all linked list
 }
 
 /// `_IO_list_lock` — lock the global FILE list.
+///
+/// Native no-op: we do not maintain a global FILE list that needs locking.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_list_lock() {
-    type Fn = unsafe extern "C" fn();
-    if let Some(f) = io_resolve!(c"_IO_list_lock", Fn) {
-        unsafe { f() }
-    }
+    // No-op: no global list to lock
 }
 
 /// `_IO_list_unlock` — unlock the global FILE list.
+///
+/// Native no-op: counterpart to `_IO_list_lock`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_list_unlock() {
-    type Fn = unsafe extern "C" fn();
-    if let Some(f) = io_resolve!(c"_IO_list_unlock", Fn) {
-        unsafe { f() }
-    }
+    // No-op: no global list to unlock
 }
 
 /// `_IO_list_resetlock` — reset the global FILE list lock.
+///
+/// Native no-op: counterpart to `_IO_list_lock`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_list_resetlock() {
-    type Fn = unsafe extern "C" fn();
-    if let Some(f) = io_resolve!(c"_IO_list_resetlock", Fn) {
-        unsafe { f() }
-    }
+    // No-op: no global list lock to reset
 }
 
 // ---------------------------------------------------------------------------
@@ -944,17 +934,15 @@ pub unsafe extern "C" fn _IO_popen(command: *const c_char, mode: *const c_char) 
 }
 
 /// `_IO_proc_open` — open a process pipe.
+///
+/// Native: delegates to `popen` which handles fork/exec and pipe setup.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_proc_open(
-    fp: *mut c_void,
+    _fp: *mut c_void,
     command: *const c_char,
     mode: *const c_char,
 ) -> *mut c_void {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> *mut c_void;
-    match io_resolve!(c"_IO_proc_open", Fn) {
-        Some(f) => unsafe { f(fp, command, mode) },
-        None => std::ptr::null_mut(),
-    }
+    unsafe { stdio_abi::popen(command, mode) }
 }
 
 /// `_IO_proc_close` — close a process pipe via native pclose.
@@ -968,17 +956,18 @@ pub unsafe extern "C" fn _IO_proc_close(fp: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// `_IO_setb` — set base and end of internal buffer.
+///
+/// Native no-op: our stdio layer manages its own buffer pointers.
+/// This glibc internal directly manipulates `_IO_FILE._IO_buf_base`
+/// and `_IO_buf_end`, which we do not expose.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_setb(
-    fp: *mut c_void,
-    base: *mut c_char,
-    end: *mut c_char,
-    user_buf: c_int,
+    _fp: *mut c_void,
+    _base: *mut c_char,
+    _end: *mut c_char,
+    _user_buf: c_int,
 ) {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_char, *mut c_char, c_int);
-    if let Some(f) = io_resolve!(c"_IO_setb", Fn) {
-        unsafe { f(fp, base, end, user_buf) }
-    }
+    // No-op: buffer management is internal to our stdio layer
 }
 
 /// `_IO_setbuffer` — set FILE buffer (like setbuf).
@@ -1009,33 +998,32 @@ pub unsafe extern "C" fn _IO_sputbackc(fp: *mut c_void, ch: c_int) -> c_int {
 }
 
 /// `_IO_sputbackwc` — put back a wide character.
+///
+/// Native: delegates to `ungetwc` via our wchar ABI layer. Falls back
+/// to WEOF if the stream does not support wide pushback.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_sputbackwc(fp: *mut c_void, wch: u32) -> u32 {
-    type Fn = unsafe extern "C" fn(*mut c_void, u32) -> u32;
-    match io_resolve!(c"_IO_sputbackwc", Fn) {
-        Some(f) => unsafe { f(fp, wch) },
-        None => 0xFFFF_FFFF, // WEOF
-    }
+    // Use the ungetwc ABI path for wide pushback
+    let result = unsafe { crate::wchar_abi::ungetwc(wch, fp) };
+    result
 }
 
 /// `_IO_sungetc` — unget the last byte read.
+///
+/// Native: returns EOF since we do not track the last-read byte
+/// outside of the ungetc push-back slot.  Callers should use
+/// `ungetc(ch, fp)` with an explicit character instead.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_sungetc(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_sungetc", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_sungetc(_fp: *mut c_void) -> c_int {
+    libc::EOF // cannot re-push without knowing the character
 }
 
 /// `_IO_sungetwc` — unget the last wide character read.
+///
+/// Native: returns WEOF for the same reason as `_IO_sungetc`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_sungetwc(fp: *mut c_void) -> u32 {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> u32;
-    match io_resolve!(c"_IO_sungetwc", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => 0xFFFF_FFFF, // WEOF
-    }
+pub unsafe extern "C" fn _IO_sungetwc(_fp: *mut c_void) -> u32 {
+    0xFFFF_FFFF // WEOF
 }
 
 /// `_IO_ungetc` — internal ungetc.
@@ -1049,71 +1037,72 @@ pub unsafe extern "C" fn _IO_ungetc(ch: c_int, fp: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// `_IO_str_init_readonly` — initialize a read-only string stream.
+///
+/// Native no-op: string stream setup (fmemopen/open_memstream) is handled
+/// by our stdio layer.  This vtable hook is glibc's internal initializer
+/// for its `_IO_str_fields` overlay on `_IO_FILE`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_str_init_readonly(fp: *mut c_void, str: *const c_char, len: usize) {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_char, usize);
-    if let Some(f) = io_resolve!(c"_IO_str_init_readonly", Fn) {
-        unsafe { f(fp, str, len) }
-    }
+pub unsafe extern "C" fn _IO_str_init_readonly(
+    _fp: *mut c_void,
+    _str: *const c_char,
+    _len: usize,
+) {
+    // No-op: string stream init handled by fmemopen
 }
 
 /// `_IO_str_init_static` — initialize a static string stream.
+///
+/// Native no-op: same rationale as `_IO_str_init_readonly`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_str_init_static(
-    fp: *mut c_void,
-    str: *mut c_char,
-    len: usize,
-    pstart: *mut c_char,
+    _fp: *mut c_void,
+    _str: *mut c_char,
+    _len: usize,
+    _pstart: *mut c_char,
 ) {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_char, usize, *mut c_char);
-    if let Some(f) = io_resolve!(c"_IO_str_init_static", Fn) {
-        unsafe { f(fp, str, len, pstart) }
-    }
+    // No-op: static string stream init handled by our stdio layer
 }
 
 /// `_IO_str_overflow` — handle overflow for string stream.
+///
+/// Native: returns EOF since string stream overflow (buffer full)
+/// cannot be resolved without internal buffer reallocation that we
+/// handle through the stdio layer.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_str_overflow(fp: *mut c_void, ch: c_int) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
-    match io_resolve!(c"_IO_str_overflow", Fn) {
-        Some(f) => unsafe { f(fp, ch) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_str_overflow(_fp: *mut c_void, _ch: c_int) -> c_int {
+    libc::EOF // buffer full
 }
 
 /// `_IO_str_pbackfail` — handle putback failure for string stream.
+///
+/// Native: returns EOF since putback on a string stream that cannot
+/// back up is a defined failure case.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_str_pbackfail(fp: *mut c_void, ch: c_int) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
-    match io_resolve!(c"_IO_str_pbackfail", Fn) {
-        Some(f) => unsafe { f(fp, ch) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_str_pbackfail(_fp: *mut c_void, _ch: c_int) -> c_int {
+    libc::EOF // putback not possible
 }
 
 /// `_IO_str_seekoff` — seek on string stream.
+///
+/// Native: returns -1 (error) since string stream seeking requires
+/// internal buffer pointers we do not maintain at this level.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_str_seekoff(
-    fp: *mut c_void,
-    offset: i64,
-    dir: c_int,
-    mode: c_int,
+    _fp: *mut c_void,
+    _offset: i64,
+    _dir: c_int,
+    _mode: c_int,
 ) -> i64 {
-    type Fn = unsafe extern "C" fn(*mut c_void, i64, c_int, c_int) -> i64;
-    match io_resolve!(c"_IO_str_seekoff", Fn) {
-        Some(f) => unsafe { f(fp, offset, dir, mode) },
-        None => -1,
-    }
+    -1 // string stream seek not supported at vtable level
 }
 
 /// `_IO_str_underflow` — handle underflow for string stream.
+///
+/// Native: returns EOF since string stream underflow (no more data)
+/// is the correct behavior when the string has been fully consumed.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_str_underflow(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_str_underflow", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_str_underflow(_fp: *mut c_void) -> c_int {
+    libc::EOF // no more data in string
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,31 +1119,29 @@ pub unsafe extern "C" fn _IO_switch_to_get_mode(fp: *mut c_void) -> c_int {
 }
 
 /// `_IO_switch_to_main_wget_area` — switch to main wide get area.
+///
+/// Native no-op: our stdio layer does not maintain separate main/backup
+/// wide buffer areas.  Flushing via fflush is sufficient.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_switch_to_main_wget_area(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_switch_to_main_wget_area", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_switch_to_main_wget_area(_fp: *mut c_void) {
+    // No-op: we don't maintain separate wide buffer areas
 }
 
 /// `_IO_switch_to_wbackup_area` — switch to wide backup area.
+///
+/// Native no-op: same rationale as `_IO_switch_to_main_wget_area`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_switch_to_wbackup_area(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_switch_to_wbackup_area", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_switch_to_wbackup_area(_fp: *mut c_void) {
+    // No-op: we don't maintain separate wide buffer areas
 }
 
 /// `_IO_switch_to_wget_mode` — switch FILE to wide read mode.
+///
+/// Native: flushes pending writes via fflush to prepare for reading,
+/// then returns 0 (success).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_switch_to_wget_mode(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_switch_to_wget_mode", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fflush(fp) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1205,85 +1192,81 @@ pub unsafe extern "C" fn _IO_vsprintf(
 // ---------------------------------------------------------------------------
 
 /// `_IO_wdefault_doallocate` — default wide buffer allocation.
+///
+/// Native: returns 0 (success) — wide buffer allocation is handled
+/// lazily by our stdio layer, same as narrow buffer allocation.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdefault_doallocate(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_wdefault_doallocate", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_wdefault_doallocate(_fp: *mut c_void) -> c_int {
+    0 // success — buffer allocated on demand
 }
 
 /// `_IO_wdefault_finish` — default wide finalization.
+///
+/// Native no-op: resource cleanup for wide streams is handled by fclose.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdefault_finish(fp: *mut c_void, dummy: c_int) {
-    type Fn = unsafe extern "C" fn(*mut c_void, c_int);
-    if let Some(f) = io_resolve!(c"_IO_wdefault_finish", Fn) {
-        unsafe { f(fp, dummy) }
-    }
+pub unsafe extern "C" fn _IO_wdefault_finish(_fp: *mut c_void, _dummy: c_int) {
+    // No-op: fclose handles wide stream cleanup
 }
 
 /// `_IO_wdefault_pbackfail` — default wide putback failure.
+///
+/// Native: returns WEOF to signal putback failure.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdefault_pbackfail(fp: *mut c_void, wch: u32) -> u32 {
-    type Fn = unsafe extern "C" fn(*mut c_void, u32) -> u32;
-    match io_resolve!(c"_IO_wdefault_pbackfail", Fn) {
-        Some(f) => unsafe { f(fp, wch) },
-        None => 0xFFFF_FFFF, // WEOF
-    }
+pub unsafe extern "C" fn _IO_wdefault_pbackfail(_fp: *mut c_void, _wch: u32) -> u32 {
+    0xFFFF_FFFF // WEOF
 }
 
 /// `_IO_wdefault_uflow` — default wide underflow-then-advance.
+///
+/// Native: returns WEOF to signal end of data.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdefault_uflow(fp: *mut c_void) -> u32 {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> u32;
-    match io_resolve!(c"_IO_wdefault_uflow", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => 0xFFFF_FFFF, // WEOF
-    }
+pub unsafe extern "C" fn _IO_wdefault_uflow(_fp: *mut c_void) -> u32 {
+    0xFFFF_FFFF // WEOF
 }
 
 /// `_IO_wdefault_xsgetn` — default wide multi-byte read.
+///
+/// Native: returns 0 (no data read) as the default wide read path.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdefault_xsgetn(fp: *mut c_void, buf: *mut c_void, n: usize) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void, usize) -> usize;
-    match io_resolve!(c"_IO_wdefault_xsgetn", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => 0,
-    }
+pub unsafe extern "C" fn _IO_wdefault_xsgetn(
+    _fp: *mut c_void,
+    _buf: *mut c_void,
+    _n: usize,
+) -> usize {
+    0
 }
 
 /// `_IO_wdefault_xsputn` — default wide multi-byte write.
+///
+/// Native: returns 0 (no data written) as the default wide write path.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_wdefault_xsputn(
-    fp: *mut c_void,
-    buf: *const c_void,
-    n: usize,
+    _fp: *mut c_void,
+    _buf: *const c_void,
+    _n: usize,
 ) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> usize;
-    match io_resolve!(c"_IO_wdefault_xsputn", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => 0,
-    }
+    0
 }
 
 /// `_IO_wdo_write` — flush wide write buffer to fd.
+///
+/// Native: returns -1 since wide buffer flushing at vtable level
+/// requires internal wide-to-narrow conversion state we do not maintain.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdo_write(fp: *mut c_void, buf: *const c_void, n: usize) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> c_int;
-    match io_resolve!(c"_IO_wdo_write", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => -1,
-    }
+pub unsafe extern "C" fn _IO_wdo_write(
+    _fp: *mut c_void,
+    _buf: *const c_void,
+    _n: usize,
+) -> c_int {
+    -1 // wide write not supported at vtable level
 }
 
 /// `_IO_wdoallocbuf` — allocate wide FILE internal buffer.
+///
+/// Native no-op: wide buffer allocation is lazy.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wdoallocbuf(fp: *mut c_void) {
-    type Fn = unsafe extern "C" fn(*mut c_void);
-    if let Some(f) = io_resolve!(c"_IO_wdoallocbuf", Fn) {
-        unsafe { f(fp) }
-    }
+pub unsafe extern "C" fn _IO_wdoallocbuf(_fp: *mut c_void) {
+    // No-op: wide buffer allocation is lazy
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,58 +1274,58 @@ pub unsafe extern "C" fn _IO_wdoallocbuf(fp: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// `_IO_wfile_overflow` — handle wide write buffer overflow.
+///
+/// Native: returns WEOF since wide file overflow requires internal
+/// wide-to-narrow conversion that is handled by our stdio layer.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wfile_overflow(fp: *mut c_void, wch: u32) -> u32 {
-    type Fn = unsafe extern "C" fn(*mut c_void, u32) -> u32;
-    match io_resolve!(c"_IO_wfile_overflow", Fn) {
-        Some(f) => unsafe { f(fp, wch) },
-        None => 0xFFFF_FFFF, // WEOF
-    }
+pub unsafe extern "C" fn _IO_wfile_overflow(_fp: *mut c_void, _wch: u32) -> u32 {
+    0xFFFF_FFFF // WEOF
 }
 
 /// `_IO_wfile_seekoff` — seek on wide file.
+///
+/// Native: delegates to the narrow file seek via fseeko/ftello which
+/// handles both narrow and wide streams.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_wfile_seekoff(
     fp: *mut c_void,
     offset: i64,
     dir: c_int,
-    mode: c_int,
+    _mode: c_int,
 ) -> i64 {
-    type Fn = unsafe extern "C" fn(*mut c_void, i64, c_int, c_int) -> i64;
-    match io_resolve!(c"_IO_wfile_seekoff", Fn) {
-        Some(f) => unsafe { f(fp, offset, dir, mode) },
-        None => -1,
+    if unsafe { stdio_abi::fseeko(fp, offset, dir) } != 0 {
+        return -1;
     }
+    unsafe { stdio_abi::ftello(fp) }
 }
 
 /// `_IO_wfile_sync` — synchronize wide FILE buffer with fd.
+///
+/// Native: delegates to fflush which handles both narrow and wide streams.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_wfile_sync(fp: *mut c_void) -> c_int {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> c_int;
-    match io_resolve!(c"_IO_wfile_sync", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => -1,
-    }
+    unsafe { stdio_abi::fflush(fp) }
 }
 
 /// `_IO_wfile_underflow` — handle wide read buffer underflow.
+///
+/// Native: returns WEOF to signal end of data.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wfile_underflow(fp: *mut c_void) -> u32 {
-    type Fn = unsafe extern "C" fn(*mut c_void) -> u32;
-    match io_resolve!(c"_IO_wfile_underflow", Fn) {
-        Some(f) => unsafe { f(fp) },
-        None => 0xFFFF_FFFF, // WEOF
-    }
+pub unsafe extern "C" fn _IO_wfile_underflow(_fp: *mut c_void) -> u32 {
+    0xFFFF_FFFF // WEOF
 }
 
 /// `_IO_wfile_xsputn` — multi-byte write for wide file stream.
+///
+/// Native: returns 0 (no data written) — wide file writing at vtable
+/// level requires the full wide-to-multibyte conversion pipeline.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn _IO_wfile_xsputn(fp: *mut c_void, buf: *const c_void, n: usize) -> usize {
-    type Fn = unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> usize;
-    match io_resolve!(c"_IO_wfile_xsputn", Fn) {
-        Some(f) => unsafe { f(fp, buf, n) },
-        None => 0,
-    }
+pub unsafe extern "C" fn _IO_wfile_xsputn(
+    _fp: *mut c_void,
+    _buf: *const c_void,
+    _n: usize,
+) -> usize {
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -1350,15 +1333,14 @@ pub unsafe extern "C" fn _IO_wfile_xsputn(fp: *mut c_void, buf: *const c_void, n
 // ---------------------------------------------------------------------------
 
 /// `_IO_wsetb` — set base and end of wide internal buffer.
+///
+/// Native no-op: our stdio layer manages its own wide buffer pointers.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_wsetb(
-    fp: *mut c_void,
-    base: *mut c_void,
-    end: *mut c_void,
-    user_buf: c_int,
+    _fp: *mut c_void,
+    _base: *mut c_void,
+    _end: *mut c_void,
+    _user_buf: c_int,
 ) {
-    type Fn = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, c_int);
-    if let Some(f) = io_resolve!(c"_IO_wsetb", Fn) {
-        unsafe { f(fp, base, end, user_buf) }
-    }
+    // No-op: wide buffer management is internal to our stdio layer
 }
