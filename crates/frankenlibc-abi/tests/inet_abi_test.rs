@@ -44,6 +44,30 @@ const AF_INET: c_int = 2;
 const AF_INET6: c_int = 10;
 const INADDR_NONE: u32 = 0xFFFF_FFFF;
 
+fn services_alias_fixture() -> Option<(CString, CString, String, u16)> {
+    let content = std::fs::read("/etc/services").ok()?;
+    let entry = content
+        .split(|&b| b == b'\n')
+        .filter_map(frankenlibc_core::resolv::parse_services_line)
+        .find(|entry| {
+            entry.protocol.eq_ignore_ascii_case(b"tcp")
+                && entry
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.iter().all(u8::is_ascii_alphanumeric))
+        })?;
+    let alias = entry
+        .aliases
+        .iter()
+        .find(|alias| alias.iter().all(u8::is_ascii_alphanumeric))?;
+    Some((
+        CString::new(alias.as_slice()).ok()?,
+        CString::new(entry.protocol.clone()).ok()?,
+        String::from_utf8(entry.name).ok()?,
+        entry.port,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // htons / htonl / ntohs / ntohl — byte order conversions
 // ---------------------------------------------------------------------------
@@ -759,6 +783,33 @@ fn getservbyname_r_nonexistent_service() {
         rc != 0 || result.is_null(),
         "nonexistent service should not succeed"
     );
+}
+
+#[test]
+fn getservbyname_r_alias_resolves_to_canonical_entry() {
+    let Some((alias, proto, canonical_name, port)) = services_alias_fixture() else {
+        return;
+    };
+    let (mut result_buf, mut buf) = servent_buffers();
+    let mut result: *mut c_void = std::ptr::null_mut();
+
+    let rc = unsafe {
+        getservbyname_r(
+            alias.as_ptr(),
+            proto.as_ptr(),
+            result_buf.as_mut_ptr().cast(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(!result.is_null());
+
+    let servent = unsafe { &*(result as *const libc::servent) };
+    assert_eq!(u16::from_be(servent.s_port as u16), port);
+    let resolved_name = unsafe { CStr::from_ptr(servent.s_name) }.to_string_lossy();
+    assert_eq!(resolved_name, canonical_name);
 }
 
 #[test]
