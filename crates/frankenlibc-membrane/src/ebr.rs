@@ -151,7 +151,13 @@ impl EbrCollector {
             );
 
             // Reclaim garbage from two epochs ago.
-            let reclaim_bucket = (current % 3) as usize;
+            // Items retired in epoch `e` are safe to reclaim once the global epoch
+            // has reached `e + 2`, because that implies all threads have observed
+            // at least epoch `e + 1`.
+            // The bucket for `current - 1` (the epoch we just completed) is `current % 3`.
+            // The bucket for `current - 2` (the one safe to reclaim) is `(current + 1) % 3`.
+            let reclaim_bucket = (current + 1) % 3;
+            let reclaim_bucket = reclaim_bucket as usize;
 
             // Extract items while holding the bucket lock
             let items_to_clean = {
