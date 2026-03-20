@@ -289,6 +289,7 @@ fn glob_recursive(pat: &[u8], flags: i32, results: &mut Vec<Vec<u8>>) -> Result<
         Some(pos) => (&tail[..pos], &tail[pos + 1..]),
         None => (tail, &[] as &[u8]),
     };
+    let noescape = flags & GLOB_NOESCAPE != 0;
 
     // Determine the directory to read.
     let dir_path = if dir_prefix.is_empty() {
@@ -513,10 +514,28 @@ mod tests {
 
     #[test]
     fn noescape_treats_backslash_star_as_magic() {
-        let result = glob_expand(b"\\*\0", GLOB_NOESCAPE | GLOB_NOCHECK);
-        assert!(result.is_ok());
+        let unique = format!(
+            "frankenlibc_glob_noescape_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let temp = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&temp).unwrap();
+        let escaped_name = b"\\alpha";
+        let escaped_path = temp.join(OsStr::from_bytes(escaped_name));
+        std::fs::write(&escaped_path, b"test").unwrap();
+
+        let mut pattern = temp.as_os_str().as_bytes().to_vec();
+        pattern.extend_from_slice(b"/\\*\0");
+
+        let result = glob_expand(&pattern, GLOB_NOESCAPE);
+        assert!(result.is_ok(), "pattern should be treated as magic");
         let res = result.unwrap();
-        assert_eq!(res.paths, vec![b"\\*".to_vec()]);
+        assert_eq!(res.paths.len(), 1);
+        assert_eq!(res.paths[0], escaped_path.as_os_str().as_bytes());
         assert!(has_magic(b"\\*", true));
     }
 }

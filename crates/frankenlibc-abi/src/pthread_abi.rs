@@ -2588,7 +2588,10 @@ pub unsafe extern "C" fn pthread_setcanceltype(typ: c_int, oldtype: *mut c_int) 
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_testcancel() {
-    let _ = consume_pending_cancel_for_current_thread();
+    if consume_pending_cancel_for_current_thread() {
+        // PTHREAD_CANCELED is typically defined as ((void *) -1)
+        pthread_exit(!0usize as *mut std::ffi::c_void);
+    }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

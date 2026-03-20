@@ -1,7 +1,7 @@
 //! SipHash-based allocation fingerprints and trailing canaries.
 //!
 //! Every membrane-managed allocation gets:
-//! - A 20-byte fingerprint header: `[u64 hash | u32 generation | u64 size]`
+//! - A 24-byte fingerprint header: `[u64 hash | u64 generation | u64 size]`
 //! - An 8-byte trailing canary (known pattern derived from the hash)
 //!
 //! The fingerprint provides:
