@@ -416,19 +416,26 @@ pub unsafe extern "C" fn alphasort(
     if da.is_null() || db.is_null() {
         return 0;
     }
-    let na = unsafe { &(*da).d_name };
-    let nb = unsafe { &(*db).d_name };
-    for i in 0..na.len().min(nb.len()) {
-        let ca = na[i] as u8;
-        let cb = nb[i] as u8;
+    // Compare d_name fields using strcmp semantics.
+    let na = unsafe { (*da).d_name.as_ptr() };
+    let nb = unsafe { (*db).d_name.as_ptr() };
+    
+    let mut i = 0usize;
+    loop {
+        let ca = unsafe { *na.add(i) } as u8;
+        let cb = unsafe { *nb.add(i) } as u8;
         if ca != cb {
             return (ca as c_int) - (cb as c_int);
         }
         if ca == 0 {
             return 0;
         }
+        i += 1;
+        // dirent name is bounded by 256 in libc::dirent
+        if i >= 256 {
+            return 0;
+        }
     }
-    0
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +527,16 @@ pub unsafe extern "C" fn scandir(
     unsafe { closedir(dir) };
 
     let count = entries.len();
+
+    // Prevent integer overflow in array size calculation.
+    // libc::dirent is large (~280 bytes), and namelist is an array of pointers.
+    if count > (usize::MAX / std::mem::size_of::<*mut libc::dirent>()) {
+        for &e in &entries {
+            unsafe { crate::malloc_abi::free(e as *mut c_void) };
+        }
+        unsafe { set_abi_errno(errno::ENOMEM) };
+        return -1;
+    }
 
     // Allocate the namelist array
     if count == 0 {

@@ -11,6 +11,8 @@ use frankenlibc_abi::glibc_internal_abi::{
     __file_is_unchanged,
     __fseeko64,
     __ftello64,
+    __gconv_close,
+    __gconv_open,
     __idna_from_dns_encoding,
     __idna_to_dns_encoding,
     __inet_aton_exact,
@@ -173,6 +175,38 @@ fn res_ownok_delegates_to_dnok() {
 
     let invalid = CString::new("bad name").unwrap();
     assert_eq!(unsafe { res_ownok(invalid.as_ptr()) }, 0);
+}
+
+// ===========================================================================
+// gconv shims over native iconv
+// ===========================================================================
+
+#[test]
+fn gconv_open_and_close_roundtrip() {
+    let to = CString::new("UTF-16LE").unwrap();
+    let from = CString::new("UTF-8").unwrap();
+    let mut handle = ptr::null_mut();
+
+    let rc = unsafe { __gconv_open(to.as_ptr(), from.as_ptr(), &mut handle, 0) };
+    assert_eq!(rc, 0);
+    assert!(!handle.is_null());
+    assert_eq!(unsafe { __gconv_close(handle) }, 0);
+}
+
+#[test]
+fn gconv_open_unsupported_codec_returns_noconv() {
+    let to = CString::new("EBCDIC").unwrap();
+    let from = CString::new("UTF-8").unwrap();
+    let mut handle = ptr::null_mut();
+
+    let rc = unsafe { __gconv_open(to.as_ptr(), from.as_ptr(), &mut handle, 0) };
+    assert_eq!(rc, -1);
+    assert!(handle.is_null());
+}
+
+#[test]
+fn gconv_close_rejects_null_handle() {
+    assert_eq!(unsafe { __gconv_close(ptr::null_mut()) }, -1);
 }
 
 // ===========================================================================

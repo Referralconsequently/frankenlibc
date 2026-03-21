@@ -22,6 +22,10 @@ type WcharT = i32;
 type SizeT = usize;
 type SSizeT = isize;
 
+const GCONV_OK: c_int = 0;
+const GCONV_NOCONV: c_int = -1;
+const ICONV_ERROR_VALUE: usize = usize::MAX;
+
 // ==========================================================================
 // Native math helpers
 // ==========================================================================
@@ -6648,7 +6652,7 @@ pub unsafe extern "C" fn __lll_lock_wake_private(futex: *mut c_int, private: c_i
 }
 
 // ---------------------------------------------------------------------------
-// gconv (iconv internals) — GLIBC_PRIVATE, delegate to host
+// gconv (iconv internals) — GLIBC_PRIVATE
 // ---------------------------------------------------------------------------
 
 /// `__gconv_open` — open a gconv conversion descriptor.
@@ -6659,13 +6663,22 @@ pub unsafe extern "C" fn __gconv_open(
     handle: *mut *mut c_void,
     _flags: c_int,
 ) -> c_int {
-    type F = unsafe extern "C" fn(*const c_char, *const c_char, *mut *mut c_void, c_int) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_open".as_ptr()) };
-    if sym.is_null() {
-        return -1; // GCONV_NOCONV
+    if handle.is_null() {
+        return GCONV_NOCONV;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(toset, fromset, handle, _flags) }
+    let descriptor = unsafe { super::iconv_abi::iconv_open(toset, fromset) };
+    unsafe {
+        *handle = if descriptor as usize == ICONV_ERROR_VALUE {
+            std::ptr::null_mut()
+        } else {
+            descriptor
+        };
+    }
+    if descriptor as usize == ICONV_ERROR_VALUE {
+        GCONV_NOCONV
+    } else {
+        GCONV_OK
+    }
 }
 
 /// `__gconv_create_spec` — create conversion spec. GLIBC_PRIVATE.
@@ -6768,13 +6781,14 @@ pub unsafe extern "C" fn __gconv(
 /// `__gconv_close` — close a gconv conversion descriptor. GLIBC_PRIVATE.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_close(handle: *mut c_void) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_close".as_ptr()) };
-    if sym.is_null() {
-        return -1;
+    if handle.is_null() || handle as usize == ICONV_ERROR_VALUE {
+        return GCONV_NOCONV;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(handle) }
+    if unsafe { super::iconv_abi::iconv_close(handle) } == 0 {
+        GCONV_OK
+    } else {
+        GCONV_NOCONV
+    }
 }
 
 /// `__gconv_transliterate` — transliterate a character. GLIBC_PRIVATE.

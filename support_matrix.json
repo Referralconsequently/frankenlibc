@@ -21197,20 +21197,20 @@
     },
     {
       "symbol": "__gconv_close",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
-      "strict_semantics": true,
-      "hardened_semantics": true,
+      "strict_semantics": "Native GLIBC_PRIVATE shim over frankenlibc iconv_close",
+      "hardened_semantics": "Native GLIBC_PRIVATE shim over frankenlibc iconv_close with deterministic invalid-handle rejection",
       "default_stub": false
     },
     {
       "symbol": "__gconv_open",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "glibc_internal_abi",
       "perf_class": "O1",
-      "strict_semantics": true,
-      "hardened_semantics": true,
+      "strict_semantics": "Native GLIBC_PRIVATE shim over frankenlibc iconv_open",
+      "hardened_semantics": "Native GLIBC_PRIVATE shim over frankenlibc iconv_open with deterministic unsupported-codec rejection",
       "default_stub": false
     },
     {
