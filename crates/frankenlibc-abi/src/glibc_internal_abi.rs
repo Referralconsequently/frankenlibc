@@ -6682,100 +6682,81 @@ pub unsafe extern "C" fn __gconv_open(
 }
 
 /// `__gconv_create_spec` — create conversion spec. GLIBC_PRIVATE.
+///
+/// Native safe-default: zero-initialise the caller-provided spec buffer and
+/// return success.  The spec is an opaque struct used only by glibc-internal
+/// iconv machinery; our iconv surface (`iconv_open`/`iconv`/`iconv_close`)
+/// handles conversion without the gconv step-chain, so a zeroed spec is inert.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_create_spec(spec: *mut c_void) -> c_int {
-    type F = unsafe extern "C" fn(*mut c_void) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_create_spec".as_ptr()) };
-    if sym.is_null() {
-        return -1;
+    if spec.is_null() {
+        return GCONV_NOCONV;
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(spec) }
+    // Zero 64 bytes — enough to cover the gconv_spec struct on all arches.
+    // SAFETY: spec points to caller-allocated memory; we write a conservative
+    // upper-bound size of zeroes matching glibc's __gconv_spec layout.
+    unsafe { std::ptr::write_bytes(spec.cast::<u8>(), 0, 64) };
+    GCONV_OK
 }
 
 /// `__gconv_destroy_spec` — destroy conversion spec. GLIBC_PRIVATE.
+///
+/// Native safe-default: no-op.  The spec created by `__gconv_create_spec` is
+/// an inert zeroed buffer; there is nothing to release.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn __gconv_destroy_spec(spec: *mut c_void) {
-    type F = unsafe extern "C" fn(*mut c_void);
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_destroy_spec".as_ptr()) };
-    if !sym.is_null() {
-        let f: F = unsafe { std::mem::transmute(sym) };
-        unsafe { f(spec) };
-    }
+pub unsafe extern "C" fn __gconv_destroy_spec(_spec: *mut c_void) {
+    // Intentional no-op — our create_spec allocates nothing.
 }
 
 /// `__gconv_get_alias_db` — get alias database. GLIBC_PRIVATE.
+///
+/// Native safe-default: return null.  FrankenLibC does not maintain a gconv
+/// alias database; our iconv layer handles encoding name resolution directly.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_get_alias_db() -> *mut c_void {
-    type F = unsafe extern "C" fn() -> *mut c_void;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_get_alias_db".as_ptr()) };
-    if sym.is_null() {
-        return std::ptr::null_mut();
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f() }
+    std::ptr::null_mut()
 }
 
 /// `__gconv_get_cache` — get gconv cache. GLIBC_PRIVATE.
+///
+/// Native safe-default: return null.  FrankenLibC does not maintain a gconv
+/// module cache; encoding conversion is handled by our iconv implementation.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_get_cache() -> *mut c_void {
-    type F = unsafe extern "C" fn() -> *mut c_void;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_get_cache".as_ptr()) };
-    if sym.is_null() {
-        return std::ptr::null_mut();
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f() }
+    std::ptr::null_mut()
 }
 
 /// `__gconv_get_modules_db` — get modules database. GLIBC_PRIVATE.
+///
+/// Native safe-default: return null.  FrankenLibC does not maintain a gconv
+/// modules database; encoding modules are not dynamically loaded.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_get_modules_db() -> *mut c_void {
-    type F = unsafe extern "C" fn() -> *mut c_void;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_get_modules_db".as_ptr()) };
-    if sym.is_null() {
-        return std::ptr::null_mut();
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f() }
+    std::ptr::null_mut()
 }
 
 /// `__gconv` — perform gconv character conversion step. GLIBC_PRIVATE.
+///
+/// Native safe-default: return `GCONV_NOCONV` and set `*written = 0`.
+/// The gconv step-chain is an internal glibc mechanism; our public iconv
+/// surface (`iconv_open`/`iconv`/`iconv_close`) performs conversion without
+/// invoking the step chain, so this path is only hit by code that directly
+/// calls the private API — returning NOCONV signals "conversion unavailable."
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv(
-    step: *mut c_void,
-    step_data: *mut c_void,
-    inbuf: *mut *const c_void,
-    inbufend: *const c_void,
-    outbufstart: *mut *mut c_void,
-    outbufend: *mut c_void,
+    _step: *mut c_void,
+    _step_data: *mut c_void,
+    _inbuf: *mut *const c_void,
+    _inbufend: *const c_void,
+    _outbufstart: *mut *mut c_void,
+    _outbufend: *mut c_void,
     written: *mut SizeT,
 ) -> c_int {
-    type F = unsafe extern "C" fn(
-        *mut c_void,
-        *mut c_void,
-        *mut *const c_void,
-        *const c_void,
-        *mut *mut c_void,
-        *mut c_void,
-        *mut SizeT,
-    ) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv".as_ptr()) };
-    if sym.is_null() {
-        return -1; // GCONV_NOCONV
+    if !written.is_null() {
+        // SAFETY: caller-provided pointer, write zero conversion count.
+        unsafe { *written = 0 };
     }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe {
-        f(
-            step,
-            step_data,
-            inbuf,
-            inbufend,
-            outbufstart,
-            outbufend,
-            written,
-        )
-    }
+    GCONV_NOCONV
 }
 
 /// `__gconv_close` — close a gconv conversion descriptor. GLIBC_PRIVATE.
@@ -6792,29 +6773,21 @@ pub unsafe extern "C" fn __gconv_close(handle: *mut c_void) -> c_int {
 }
 
 /// `__gconv_transliterate` — transliterate a character. GLIBC_PRIVATE.
+///
+/// Native safe-default: return `GCONV_NOCONV`.  Transliteration is a glibc
+/// internal feature for approximate character mapping when exact conversion
+/// fails.  Returning NOCONV tells the caller no transliteration is available,
+/// which is the correct fallback behaviour.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gconv_transliterate(
-    step: *mut c_void,
-    step_data: *mut c_void,
-    input: *const c_void,
-    inend: *const c_void,
-    output: *mut *mut c_void,
-    outend: *const c_void,
+    _step: *mut c_void,
+    _step_data: *mut c_void,
+    _input: *const c_void,
+    _inend: *const c_void,
+    _output: *mut *mut c_void,
+    _outend: *const c_void,
 ) -> c_int {
-    type F = unsafe extern "C" fn(
-        *mut c_void,
-        *mut c_void,
-        *const c_void,
-        *const c_void,
-        *mut *mut c_void,
-        *const c_void,
-    ) -> c_int;
-    let sym = unsafe { libc::dlsym(libc::RTLD_NEXT, c"__gconv_transliterate".as_ptr()) };
-    if sym.is_null() {
-        return -1;
-    }
-    let f: F = unsafe { std::mem::transmute(sym) };
-    unsafe { f(step, step_data, input, inend, output, outend) }
+    GCONV_NOCONV
 }
 
 // ---------------------------------------------------------------------------
