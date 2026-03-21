@@ -1892,7 +1892,11 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                                 let size = match resolved_spec.length {
                                     LengthMod::Hh => 1,
                                     LengthMod::H => 2,
-                                    LengthMod::L | LengthMod::Ll | LengthMod::J | LengthMod::Z | LengthMod::T => 8,
+                                    LengthMod::L
+                                    | LengthMod::Ll
+                                    | LengthMod::J
+                                    | LengthMod::Z
+                                    | LengthMod::T => 8,
                                     _ => 4,
                                 };
                                 let (mode, decision) = crate::runtime_policy::decide(
@@ -1903,9 +1907,19 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                                     false,
                                     0,
                                 );
-                                
-                                let mut should_write = !matches!(decision.action, frankenlibc_membrane::runtime_math::MembraneAction::Deny);
-                                if mode.heals_enabled() || matches!(decision.action, frankenlibc_membrane::runtime_math::MembraneAction::Repair(_)) {
+
+                                let mut should_write = !matches!(
+                                    decision.action,
+                                    frankenlibc_membrane::runtime_math::MembraneAction::Deny
+                                );
+                                if mode.heals_enabled()
+                                    || matches!(
+                                        decision.action,
+                                        frankenlibc_membrane::runtime_math::MembraneAction::Repair(
+                                            _
+                                        )
+                                    )
+                                {
                                     if let Some(rem) = crate::malloc_abi::known_remaining(ptr_val) {
                                         if rem < size {
                                             should_write = false;
