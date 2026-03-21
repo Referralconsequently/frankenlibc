@@ -172,16 +172,14 @@ unsafe fn raw_memset_bytes(dst: *mut u8, value: u8, n: usize) {
 
 fn maybe_clamp_copy_len(
     requested: usize,
-    src_addr: Option<usize>,
-    dst_addr: Option<usize>,
+    src_remaining: Option<usize>,
+    dst_remaining: Option<usize>,
     enable_repair: bool,
 ) -> (usize, bool) {
     if !enable_repair || requested == 0 {
         return (requested, false);
     }
 
-    let src_remaining = src_addr.and_then(known_remaining);
-    let dst_remaining = dst_addr.and_then(known_remaining);
     let action = global_healing_policy().heal_copy_bounds(requested, src_remaining, dst_remaining);
     match action {
         HealingAction::ClampSize {
@@ -302,30 +300,18 @@ pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) 
         return dst;
     };
 
+    let dst_rem = known_remaining(dst as usize);
+    let src_rem = known_remaining(src as usize);
     let aligned = ((dst as usize) | (src as usize)) & 0x7 == 0;
-    let recent_page = (!dst.is_null() && known_remaining(dst as usize).is_some())
-        || (!src.is_null() && known_remaining(src as usize).is_some());
+    let recent_page = dst_rem.is_some() || src_rem.is_some();
     let ordering = runtime_policy::check_ordering(ApiFamily::StringMemory, aligned, recent_page);
-
-    if n == 0 {
-        return dst;
-    }
-    if dst.is_null() || src.is_null() {
-        record_string_stage_outcome(
-            &ordering,
-            aligned,
-            recent_page,
-            Some(stage_index(&ordering, CheckStage::Null)),
-        );
-        return std::ptr::null_mut();
-    }
 
     let (mode, decision) = runtime_policy::decide(
         ApiFamily::StringMemory,
         dst as usize,
         n,
         true,
-        known_remaining(dst as usize).is_none() && known_remaining(src as usize).is_none(),
+        dst_rem.is_none() && src_rem.is_none(),
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
@@ -346,8 +332,8 @@ pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) 
 
     let (copy_len, clamped) = maybe_clamp_copy_len(
         n,
-        Some(src as usize),
-        Some(dst as usize),
+        src_rem,
+        dst_rem,
         mode.heals_enabled() || matches!(decision.action, MembraneAction::Repair(_)),
     );
     if copy_len == 0 {
@@ -406,30 +392,18 @@ pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize)
         return dst;
     };
 
+    let dst_rem = known_remaining(dst as usize);
+    let src_rem = known_remaining(src as usize);
     let aligned = ((dst as usize) | (src as usize)) & 0x7 == 0;
-    let recent_page = (!dst.is_null() && known_remaining(dst as usize).is_some())
-        || (!src.is_null() && known_remaining(src as usize).is_some());
+    let recent_page = dst_rem.is_some() || src_rem.is_some();
     let ordering = runtime_policy::check_ordering(ApiFamily::StringMemory, aligned, recent_page);
-
-    if n == 0 {
-        return dst;
-    }
-    if dst.is_null() || src.is_null() {
-        record_string_stage_outcome(
-            &ordering,
-            aligned,
-            recent_page,
-            Some(stage_index(&ordering, CheckStage::Null)),
-        );
-        return std::ptr::null_mut();
-    }
 
     let (mode, decision) = runtime_policy::decide(
         ApiFamily::StringMemory,
         dst as usize,
         n,
         true,
-        known_remaining(dst as usize).is_none() && known_remaining(src as usize).is_none(),
+        dst_rem.is_none() && src_rem.is_none(),
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
@@ -450,8 +424,8 @@ pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize)
 
     let (copy_len, clamped) = maybe_clamp_copy_len(
         n,
-        Some(src as usize),
-        Some(dst as usize),
+        src_rem,
+        dst_rem,
         mode.heals_enabled() || matches!(decision.action, MembraneAction::Repair(_)),
     );
     if copy_len == 0 {
@@ -510,29 +484,17 @@ pub unsafe extern "C" fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_
         return dst;
     };
 
+    let dst_rem = known_remaining(dst as usize);
     let aligned = (dst as usize) & 0x7 == 0;
-    let recent_page = !dst.is_null() && known_remaining(dst as usize).is_some();
+    let recent_page = dst_rem.is_some();
     let ordering = runtime_policy::check_ordering(ApiFamily::StringMemory, aligned, recent_page);
-
-    if n == 0 {
-        return dst;
-    }
-    if dst.is_null() {
-        record_string_stage_outcome(
-            &ordering,
-            aligned,
-            recent_page,
-            Some(stage_index(&ordering, CheckStage::Null)),
-        );
-        return std::ptr::null_mut();
-    }
 
     let (mode, decision) = runtime_policy::decide(
         ApiFamily::StringMemory,
         dst as usize,
         n,
         true,
-        known_remaining(dst as usize).is_none(),
+        dst_rem.is_none(),
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
@@ -554,7 +516,7 @@ pub unsafe extern "C" fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_
     let (fill_len, clamped) = maybe_clamp_copy_len(
         n,
         None,
-        Some(dst as usize),
+        dst_rem,
         mode.heals_enabled() || matches!(decision.action, MembraneAction::Repair(_)),
     );
     if fill_len == 0 {
@@ -909,27 +871,21 @@ pub unsafe extern "C" fn memrchr(s: *const c_void, c: c_int, n: usize) -> *mut c
 /// Caller must ensure `s` points to a valid null-terminated string.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn strlen(s: *const c_char) -> usize {
-    let aligned = (s as usize) & 0x7 == 0;
-    let recent_page = !s.is_null() && known_remaining(s as usize).is_some();
-    let ordering = runtime_policy::check_ordering(ApiFamily::StringMemory, aligned, recent_page);
-
     if s.is_null() {
-        // Membrane: null pointer in strlen is UB in C. Return safe default.
-        record_string_stage_outcome(
-            &ordering,
-            aligned,
-            recent_page,
-            Some(stage_index(&ordering, CheckStage::Null)),
-        );
         return 0;
     }
+
+    let rem = known_remaining(s as usize);
+    let aligned = (s as usize) & 0x7 == 0;
+    let recent_page = rem.is_some();
+    let ordering = runtime_policy::check_ordering(ApiFamily::StringMemory, aligned, recent_page);
 
     let (mode, decision) = runtime_policy::decide(
         ApiFamily::StringMemory,
         s as usize,
         0,
         false,
-        known_remaining(s as usize).is_none(),
+        rem.is_none(),
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
@@ -944,7 +900,7 @@ pub unsafe extern "C" fn strlen(s: *const c_char) -> usize {
     }
 
     if (mode.heals_enabled() || matches!(decision.action, MembraneAction::Repair(_)))
-        && let Some(limit) = known_remaining(s as usize)
+        && let Some(limit) = rem
     {
         // SAFETY: bounded scan within known allocation extent.
         unsafe {

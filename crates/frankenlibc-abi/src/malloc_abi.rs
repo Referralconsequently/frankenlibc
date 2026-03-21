@@ -100,7 +100,7 @@ thread_local! {
 }
 
 const MALLOC_STATS_BIN_COUNT: usize = frankenlibc_core::malloc::size_class::NUM_SIZE_CLASSES + 1;
-const FLAT_COMBINER_SLOT_COUNT: usize = 128;
+const FLAT_COMBINER_SLOT_COUNT: usize = 512;
 const FC_OP_NONE: usize = 0;
 const FC_OP_ALLOC: usize = 1;
 const FC_OP_FREE: usize = 2;
@@ -204,9 +204,10 @@ impl FlatCombiningStats {
         ALLOC_STATS_SLOT_INDEX.with(|slot| match slot.get() {
             Some(idx) => idx,
             None => {
+                // Use a stride to reduce collisions between sibling threads.
                 let idx = self
                     .next_slot
-                    .fetch_add(1, Ordering::Relaxed)
+                    .fetch_add(13, Ordering::Relaxed)
                     .wrapping_rem(FLAT_COMBINER_SLOT_COUNT);
                 slot.set(Some(idx));
                 idx
@@ -264,6 +265,9 @@ impl FlatCombiningStats {
         };
 
         for slot in &self.slots {
+            // Capture req_id before swap to ensure we acknowledge exactly the
+            // request we are about to process (or NONE if it hasn't arrived).
+            let req_id = slot.request_id.load(Ordering::Acquire);
             let op = slot.op.swap(FC_OP_NONE, Ordering::AcqRel);
             if op == FC_OP_NONE {
                 continue;
@@ -288,8 +292,7 @@ impl FlatCombiningStats {
             slot.result_peak_usage
                 .store(snapshot.peak_usage, Ordering::Release);
 
-            let current_req = slot.request_id.load(Ordering::Acquire);
-            slot.completed_id.store(current_req, Ordering::Release);
+            slot.completed_id.store(req_id, Ordering::Release);
         }
 
         self.combiner_lock.store(false, Ordering::Release);
@@ -395,7 +398,7 @@ fn fallback_contains(ptr: *mut c_void) -> bool {
         return false;
     };
     let start = fallback_start_index(key);
-    for i in 0..FALLBACK_ALLOC_TABLE_SLOTS {
+    for i in 0..1024 {
         let idx = (start + i) % FALLBACK_ALLOC_TABLE_SLOTS;
         let slot = FALLBACK_ALLOC_PTRS[idx].load(Ordering::Acquire);
         if slot == key {
@@ -414,7 +417,7 @@ fn fallback_insert(ptr: *mut c_void) {
     };
     let start = fallback_start_index(key);
     let mut first_tombstone: Option<usize> = None;
-    for i in 0..FALLBACK_ALLOC_TABLE_SLOTS {
+    for i in 0..1024 {
         let idx = (start + i) % FALLBACK_ALLOC_TABLE_SLOTS;
         let slot = FALLBACK_ALLOC_PTRS[idx].load(Ordering::Acquire);
         if slot == key {
@@ -472,7 +475,7 @@ fn fallback_remove(ptr: *mut c_void) -> bool {
         return false;
     };
     let start = fallback_start_index(key);
-    for i in 0..FALLBACK_ALLOC_TABLE_SLOTS {
+    for i in 0..1024 {
         let idx = (start + i) % FALLBACK_ALLOC_TABLE_SLOTS;
         let slot = FALLBACK_ALLOC_PTRS[idx].load(Ordering::Acquire);
         if slot == key {

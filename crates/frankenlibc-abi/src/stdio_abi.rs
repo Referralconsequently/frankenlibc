@@ -35,7 +35,8 @@ fn repair_enabled(heals_enabled: bool, action: MembraneAction) -> bool {
 }
 
 unsafe fn scan_c_str_len(ptr: *const c_char, bound: Option<usize>) -> (usize, bool) {
-    match bound {
+    let limit = bound.or_else(|| known_remaining(ptr as usize));
+    match limit {
         Some(limit) => {
             for i in 0..limit {
                 if unsafe { *ptr.add(i) } == 0 {

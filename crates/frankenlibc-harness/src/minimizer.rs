@@ -83,11 +83,12 @@ pub fn ddmin(cases: &[FixtureCase], predicate: &dyn TestPredicate) -> MinimizeRe
             break;
         }
 
-        let chunk_size = (len + n - 1) / n;
+        let chunk_size = len.div_ceil(n);
+        let num_chunks = n;
         let mut found = false;
 
         // Try each partition
-        for i in 0..n {
+        for i in 0..num_chunks {
             let start = i * chunk_size;
             let end = (start + chunk_size).min(len);
             if start >= len {
@@ -108,7 +109,7 @@ pub fn ddmin(cases: &[FixtureCase], predicate: &dyn TestPredicate) -> MinimizeRe
         }
 
         // Try each complement
-        for i in 0..n {
+        for i in 0..num_chunks {
             let start = i * chunk_size;
             let end = (start + chunk_size).min(len);
             if start >= len {

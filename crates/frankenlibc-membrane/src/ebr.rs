@@ -495,7 +495,9 @@ mod tests {
             r.store(true, Ordering::Relaxed);
         });
         assert!(!reclaimed.load(Ordering::Relaxed));
-        c.try_advance();
+        c.try_advance(); // to 1
+        c.try_advance(); // to 2
+        c.try_advance(); // to 3 (reclaims bucket 0)
         assert!(reclaimed.load(Ordering::Relaxed));
     }
 
@@ -508,7 +510,9 @@ mod tests {
         let d = c.diagnostics();
         assert_eq!(d.total_retired, 5);
         assert_eq!(d.total_reclaimed, 0);
-        c.try_advance();
+        c.try_advance(); // to 1
+        c.try_advance(); // to 2
+        c.try_advance(); // to 3
         let d = c.diagnostics();
         assert_eq!(d.total_reclaimed, 5);
     }
