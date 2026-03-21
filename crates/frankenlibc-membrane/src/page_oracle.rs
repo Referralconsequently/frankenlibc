@@ -35,13 +35,11 @@ struct L2Bitmap {
 
 impl L2Bitmap {
     fn new() -> Self {
-        // Initialize all counts to 0
-        let counts: Vec<AtomicU32> = (0..PAGES_PER_L2).map(|_| AtomicU32::new(0)).collect();
-        let counts_array: Box<[AtomicU32; PAGES_PER_L2]> =
-            counts.into_boxed_slice().try_into().expect("correct size");
-        Self {
-            counts: counts_array,
-        }
+        // SAFETY: AtomicU32 has the same layout as u32. We can initialize a zeroed
+        // array of u32s and safely treat it as AtomicU32. For now, we'll use a safer
+        // approach with a typed initializer to avoid any UB risks.
+        let counts: Box<[AtomicU32; PAGES_PER_L2]> = std::array::from_fn(|_| AtomicU32::new(0)).into();
+        Self { counts }
     }
 
     fn set(&self, page_within_chunk: usize) {

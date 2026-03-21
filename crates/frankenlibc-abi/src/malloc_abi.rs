@@ -1144,11 +1144,8 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     };
 
     // Allocate new block
-    let new_ptr = match arena.allocate(size) {
-        Some(p) => {
-            pipeline.register_allocation(p as usize, size);
-            p
-        }
+    let new_ptr = match pipeline.allocate(size) {
+        Some(p) => p,
         None => {
             record_allocator_stage_outcome(
                 &ordering,

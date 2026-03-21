@@ -84,6 +84,17 @@ pub struct AllocationArena {
     collector: Option<Arc<QuarantineEbr>>,
 }
 
+/// Result of a successful allocation in the arena.
+#[derive(Debug, Clone, Copy)]
+pub struct AllocationResult {
+    /// User-visible pointer (past fingerprint header).
+    pub ptr: *mut u8,
+    /// Base address of the full allocation (including fingerprint header).
+    pub raw_base: usize,
+    /// Total size of the raw allocation (including all overhead).
+    pub total_size: usize,
+}
+
 impl AllocationArena {
     /// Create a new empty arena.
     #[must_use]
@@ -106,32 +117,21 @@ impl AllocationArena {
 
     /// Allocate memory with fingerprint header and canary.
     ///
-    /// Returns the user-visible pointer (past the fingerprint header).
-    /// Returns None if the system allocator fails.
-    pub fn allocate(&self, user_size: usize) -> Option<*mut u8> {
+    /// Returns the allocation metadata on success.
+    pub fn allocate(&self, user_size: usize) -> Option<AllocationResult> {
         self.allocate_aligned(user_size, 16)
     }
 
     /// Allocate memory with fingerprint header, canary, and specific alignment.
     ///
     /// Alignment must be a power of 2.
-    /// Returns the user-visible pointer (past the fingerprint header).
-    pub fn allocate_aligned(&self, user_size: usize, align: usize) -> Option<*mut u8> {
-        // Ensure alignment is at least 32 (>= FINGERPRINT_SIZE=20, power of 2) and power of 2
+    /// Returns the allocation metadata on success.
+    pub fn allocate_aligned(&self, user_size: usize, align: usize) -> Option<AllocationResult> {
+        // Ensure alignment is at least 32 (>= FINGERPRINT_SIZE=24, power of 2) and power of 2
         let align = align.max(32);
         if !align.is_power_of_two() {
             return None;
         }
-
-        // We need user_base to be aligned to `align`.
-        // The fingerprint header sits at `user_base - FINGERPRINT_SIZE`.
-        // The raw allocation starts at `raw_base`.
-        // We need `user_base >= raw_base + FINGERPRINT_SIZE`.
-        // We choose `offset = align` (since align >= 32 >= FINGERPRINT_SIZE=20).
-        // So `user_base = raw_base + align`.
-        // This ensures `user_base` is aligned (since raw_base is aligned)
-        // and there is enough space for the header.
-        // Unused gap: `[raw_base, raw_base + align - FINGERPRINT_SIZE)`.
 
         let offset = align;
         let total_size = offset.checked_add(user_size)?.checked_add(CANARY_SIZE)?;
@@ -191,7 +191,11 @@ impl AllocationArena {
         };
         shard.addr_to_slot.insert(user_base, slot_idx);
 
-        Some(user_base as *mut u8)
+        Some(AllocationResult {
+            ptr: user_base as *mut u8,
+            raw_base,
+            total_size,
+        })
     }
 
     /// Free a membrane-managed allocation.

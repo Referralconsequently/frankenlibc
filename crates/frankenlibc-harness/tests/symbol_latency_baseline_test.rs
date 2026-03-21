@@ -111,28 +111,28 @@ fn summary_counts_consistent() {
     let strict_p50 = measured["strict"]["p50"].as_u64().unwrap();
     let hardened_p50 = measured["hardened"]["p50"].as_u64().unwrap();
     assert!(
-        raw_p50 >= 14,
-        "expected at least 14 raw p50 measurements from ingestion after string bench capture, got {raw_p50}"
+        raw_p50 >= 16,
+        "expected at least 16 raw p50 measurements from ingestion after memcmp/strcmp string bench capture, got {raw_p50}"
     );
     assert!(
-        strict_p50 >= 14,
-        "expected at least 14 strict p50 measurements from ingestion after string bench capture, got {strict_p50}"
+        strict_p50 >= 16,
+        "expected at least 16 strict p50 measurements from ingestion after memcmp/strcmp string bench capture, got {strict_p50}"
     );
     assert!(
-        hardened_p50 >= 14,
-        "expected at least 14 hardened p50 measurements from ingestion after string bench capture, got {hardened_p50}"
+        hardened_p50 >= 16,
+        "expected at least 16 hardened p50 measurements from ingestion after memcmp/strcmp string bench capture, got {hardened_p50}"
     );
 
     let ingestion = doc["ingestion"].as_object().unwrap();
     let updated_symbols = ingestion["updated_symbols"].as_u64().unwrap();
     let updated_modes = ingestion["updated_modes"].as_u64().unwrap();
     assert!(
-        updated_symbols >= 14,
-        "expected at least 14 symbols updated by ingestion after string bench capture, got {updated_symbols}"
+        updated_symbols >= 16,
+        "expected at least 16 symbols updated by ingestion after memcmp/strcmp string bench capture, got {updated_symbols}"
     );
     assert!(
-        updated_modes >= 42,
-        "expected at least 42 mode rows updated by ingestion after string bench capture, got {updated_modes}"
+        updated_modes >= 48,
+        "expected at least 48 mode rows updated by ingestion after memcmp/strcmp string bench capture, got {updated_modes}"
     );
 }
 
@@ -159,6 +159,34 @@ fn symbol_mode_records_have_required_fields() {
                     "{symbol}: {mode}.{field} missing"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn string_latency_wave_tracks_memcmp_and_strcmp_in_all_modes() {
+    let doc = load_artifact();
+    let symbols = doc["symbols"].as_array().unwrap();
+
+    for symbol in ["memcmp", "strcmp"] {
+        let row = symbols
+            .iter()
+            .find(|row| row["symbol"].as_str() == Some(symbol))
+            .unwrap_or_else(|| panic!("missing symbol row for {symbol}"));
+        let baseline = row["baseline"].as_object().unwrap();
+
+        for mode in ["raw", "strict", "hardened"] {
+            let mode_row = baseline[mode].as_object().unwrap();
+            assert_eq!(
+                mode_row["capture_state"].as_str(),
+                Some("measured"),
+                "{symbol}.{mode} should be measured after memcmp/strcmp string bench ingestion"
+            );
+            let source = mode_row["source"].as_str().unwrap_or_default();
+            assert!(
+                source.contains("string_hotpath:symbol_latency_samples.v1.log"),
+                "{symbol}.{mode} should retain string_hotpath sample provenance, got {source}"
+            );
         }
     }
 }

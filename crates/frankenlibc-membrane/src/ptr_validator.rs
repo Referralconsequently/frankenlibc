@@ -26,8 +26,8 @@ use crate::runtime_math::{ApiFamily, RuntimeContext, RuntimeMathKernel, Validati
 use crate::tls_cache::{CachedValidation, with_tls_cache};
 use crate::util::now_utc_iso_like;
 use parking_lot::Mutex;
+use serde::Serialize;
 use std::collections::VecDeque;
-use std::fmt::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 const VALIDATION_LOG_CAPACITY: usize = 2048;
@@ -37,6 +37,43 @@ const HARDENED_VALIDATION_BUDGET_NS: u64 = 200;
 const MAX_LEVEL_LABEL_CARDINALITY: usize = 5;
 #[cfg(test)]
 const MAX_STAGE_LABEL_CARDINALITY: usize = 16;
+
+#[derive(Debug, Clone, Serialize)]
+struct ValidationLogRow {
+    timestamp: String,
+    trace_id: String,
+    span_id: String,
+    parent_span_id: String,
+    decision_id: u64,
+    schema_version: &'static str,
+    level: &'static str,
+    event: &'static str,
+    controller_id: &'static str,
+    decision_path: &'static str,
+    decision_action: &'static str,
+    outcome: &'static str,
+    mode: &'static str,
+    api_family: &'static str,
+    symbol: &'static str,
+    stage: &'static str,
+    security_context: &'static str,
+    capability_scope: &'static str,
+    security_verdict: &'static str,
+    latency_ns: u64,
+    policy_id: u32,
+    risk_upper_bound_ppm: u32,
+    evidence_seqno: u64,
+    stage_inputs: ValidationLogInputs,
+    artifact_refs: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct ValidationLogInputs {
+    aligned: bool,
+    recent_page: bool,
+    bloom_negative: bool,
+    cache_hit: bool,
+}
 
 #[derive(Debug, Clone)]
 struct ValidationTraceContext {
@@ -361,24 +398,42 @@ impl ValidationPipeline {
                 | "post_pipeline"
         ));
 
-        let timestamp = now_utc_iso_like();
-        let mode_label = Self::mode_name(mode);
-        let policy_id = PolicyId::from_raw(policy_id);
-        let mut line = String::with_capacity(512);
-        let _ = write!(
-            &mut line,
-            "{{\"timestamp\":\"{timestamp}\",\"trace_id\":\"{}\",\"span_id\":\"{}\",\"parent_span_id\":\"{}\",\"decision_id\":{},\"schema_version\":\"{}\",\"level\":\"{level}\",\"event\":\"{event}\",\"controller_id\":\"tsm_validation_pipeline.v1\",\"decision_path\":\"{decision_path}\",\"decision_action\":\"{decision_action}\",\"outcome\":\"{outcome}\",\"mode\":\"{mode_label}\",\"api_family\":\"pointer_validation\",\"symbol\":\"membrane::ptr_validator::validate\",\"stage\":\"{stage}\",\"security_context\":\"{}\",\"capability_scope\":\"{}\",\"security_verdict\":\"{}\",\"latency_ns\":{latency_ns},\"policy_id\":{},\"risk_upper_bound_ppm\":{risk_upper_bound_ppm},\"evidence_seqno\":{evidence_seqno},\"stage_inputs\":{{\"aligned\":{aligned},\"recent_page\":{recent_page},\"bloom_negative\":{bloom_negative},\"cache_hit\":{cache_hit}}},\"artifact_refs\":[\"crates/frankenlibc-membrane/src/ptr_validator.rs\"]}}",
-            trace.trace_id.as_str(),
-            trace.span_id,
-            trace.parent_span_id,
-            trace.decision_id.as_u64(),
-            MEMBRANE_SCHEMA_VERSION,
-            trace.security_context,
-            trace.capability_scope,
-            trace.security_verdict,
-            policy_id.as_u32(),
-        );
-        self.push_validation_log_line(line);
+        let row = ValidationLogRow {
+            timestamp: now_utc_iso_like(),
+            trace_id: trace.trace_id.as_str().to_string(),
+            span_id: trace.span_id.clone(),
+            parent_span_id: trace.parent_span_id.clone(),
+            decision_id: trace.decision_id.as_u64(),
+            schema_version: MEMBRANE_SCHEMA_VERSION,
+            level,
+            event,
+            controller_id: "tsm_validation_pipeline.v1",
+            decision_path,
+            decision_action,
+            outcome,
+            mode: Self::mode_name(mode),
+            api_family: "pointer_validation",
+            symbol: "membrane::ptr_validator::validate",
+            stage,
+            security_context: trace.security_context,
+            capability_scope: trace.capability_scope,
+            security_verdict: trace.security_verdict,
+            latency_ns,
+            policy_id,
+            risk_upper_bound_ppm,
+            evidence_seqno,
+            stage_inputs: ValidationLogInputs {
+                aligned,
+                recent_page,
+                bloom_negative,
+                cache_hit,
+            },
+            artifact_refs: vec!["crates/frankenlibc-membrane/src/ptr_validator.rs"],
+        };
+
+        if let Ok(line) = serde_json::to_string(&row) {
+            self.push_validation_log_line(line);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -590,7 +645,7 @@ impl ValidationPipeline {
                 0,
                 0,
                 0,
-                true,
+                false, // invariant_violation = false (policy decision, not corruption)
             );
             return ValidationOutcome::Denied(PointerAbstraction {
                 addr,
@@ -655,6 +710,15 @@ impl ValidationPipeline {
                 ValidationProfile::Fast,
                 1,
                 false,
+            );
+            // Report outcome to bandit even for early exit (stage 0)
+            self.runtime_math.note_check_order_outcome(
+                mode,
+                ApiFamily::PointerValidation,
+                aligned,
+                recent_page,
+                &ordering,
+                Some(0),
             );
             self.emit_terminal_transition(
                 &trace,
@@ -1585,28 +1649,28 @@ impl ValidationPipeline {
     }
 
     /// Register a new allocation in all backing structures.
-    pub fn register_allocation(&self, user_base: usize, user_size: usize) {
+    pub fn register_allocation(&self, user_base: usize, raw_base: usize, total_size: usize) {
         self.bloom.insert(user_base);
-        self.page_oracle.insert(user_base, user_size);
+        self.page_oracle.insert(raw_base, total_size);
     }
 
     /// Allocate memory and register it with the safety model.
     pub fn allocate(&self, size: usize) -> Option<*mut u8> {
-        let ptr = self.arena.allocate(size)?;
-        self.register_allocation(ptr as usize, size);
-        Some(ptr)
+        let res = self.arena.allocate(size)?;
+        self.register_allocation(res.ptr as usize, res.raw_base, res.total_size);
+        Some(res.ptr)
     }
 
     /// Allocate aligned memory and register it with the safety model.
     pub fn allocate_aligned(&self, size: usize, align: usize) -> Option<*mut u8> {
-        let ptr = self.arena.allocate_aligned(size, align)?;
-        self.register_allocation(ptr as usize, size);
-        Some(ptr)
+        let res = self.arena.allocate_aligned(size, align)?;
+        self.register_allocation(res.ptr as usize, res.raw_base, res.total_size);
+        Some(res.ptr)
     }
 
     /// Deregister an allocation from backing structures (PageOracle only).
-    pub fn deregister_allocation(&self, user_base: usize, user_size: usize) {
-        self.page_oracle.remove(user_base, user_size);
+    pub fn deregister_allocation(&self, raw_base: usize, total_size: usize) {
+        self.page_oracle.remove(raw_base, total_size);
     }
 
     /// Free an allocation and update the safety model.
@@ -1617,8 +1681,7 @@ impl ValidationPipeline {
         let (result, drained) = self.arena.free(ptr);
 
         for entry in drained {
-            let user_size = entry.total_size - entry.align - CANARY_SIZE;
-            self.deregister_allocation(entry.user_base, user_size);
+            self.deregister_allocation(entry.raw_base, entry.total_size);
         }
 
         result
@@ -1657,35 +1720,60 @@ impl ValidationPipeline {
     fn dependency_safe_order(ordering: [CheckStage; 7]) -> [CheckStage; 7] {
         let mut out = [CheckStage::Null; 7];
         let mut n = 0_usize;
+        let mut seen_mask = 0u8;
 
-        for stage in ordering.iter().copied() {
-            if matches!(stage, CheckStage::Null) {
-                out[n] = stage;
-                n += 1;
-                break;
-            }
-        }
-        if n == 0 {
-            out[n] = CheckStage::Null;
-            n += 1;
-        }
+        // Stage 0: Always Null check first (cheapest, mandatory)
+        out[n] = CheckStage::Null;
+        n += 1;
+        seen_mask |= 1 << (CheckStage::Null as u8);
 
+        // Group 1: Lookup stages (must happen before integrity checks if we need the slot)
         for stage in ordering.iter().copied() {
             if matches!(
                 stage,
                 CheckStage::TlsCache | CheckStage::Bloom | CheckStage::Arena
             ) {
-                out[n] = stage;
-                n += 1;
+                let mask = 1 << (stage as u8);
+                if seen_mask & mask == 0 {
+                    out[n] = stage;
+                    n += 1;
+                    seen_mask |= mask;
+                }
             }
         }
+
+        // Group 2: Integrity and bounds stages
         for stage in ordering.iter().copied() {
             if matches!(
                 stage,
                 CheckStage::Fingerprint | CheckStage::Canary | CheckStage::Bounds
             ) {
-                out[n] = stage;
-                n += 1;
+                let mask = 1 << (stage as u8);
+                if seen_mask & mask == 0 {
+                    out[n] = stage;
+                    n += 1;
+                    seen_mask |= mask;
+                }
+            }
+        }
+
+        // Self-healing: if any stages were missing from the input ordering,
+        // add them now in default order to ensure we return a complete permutation.
+        if n < 7 {
+            for stage in [
+                CheckStage::TlsCache,
+                CheckStage::Bloom,
+                CheckStage::Arena,
+                CheckStage::Fingerprint,
+                CheckStage::Canary,
+                CheckStage::Bounds,
+            ] {
+                let mask = 1 << (stage as u8);
+                if seen_mask & mask == 0 {
+                    out[n] = stage;
+                    n += 1;
+                    seen_mask |= mask;
+                }
             }
         }
 
@@ -2018,8 +2106,9 @@ mod tests {
     fn bloom_false_positives_do_not_classify_foreign_as_validated() {
         let pipeline = ValidationPipeline::new();
         let mut allocated = Vec::new();
-        for _ in 0..256 {
-            allocated.push(pipeline.allocate(64).expect("alloc"));
+        for i in 0..256 {
+            let ptr = pipeline.allocate(64).expect("alloc");
+            allocated.push(ptr);
         }
 
         for i in 0..4096usize {
