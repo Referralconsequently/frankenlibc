@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use frankenlibc_core::string::{memcpy, strlen};
+use frankenlibc_core::string::{memcmp, memcpy, strcmp, strlen};
 
 #[derive(Default)]
 struct BenchStats {
@@ -134,12 +134,78 @@ fn bench_strlen(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_memcmp_sizes(c: &mut Criterion) {
+    let sizes: &[usize] = &[16, 64, 256, 1024, 4096];
+    let mode = mode_label();
+    let mut group = c.benchmark_group("memcmp");
+
+    for &size in sizes {
+        let left = vec![0x5Au8; size];
+        let right = vec![0x5Au8; size];
+        let bench_label = format!("memcmp_{size}");
+        group.throughput(Throughput::Bytes(size as u64));
+
+        for _ in 0..10_000 {
+            black_box(memcmp(&left, &right, size));
+        }
+
+        let stats = RefCell::new(BenchStats::default());
+        group.bench_with_input(BenchmarkId::new(mode, size), &size, |b, &sz| {
+            b.iter_custom(|iters| {
+                let start = Instant::now();
+                for _ in 0..iters {
+                    black_box(memcmp(&left, &right, sz));
+                }
+                let dur = start.elapsed().max(Duration::from_nanos(1));
+                stats.borrow_mut().record(iters, dur);
+                dur
+            });
+        });
+        stats.borrow().report(mode, &bench_label);
+    }
+    group.finish();
+}
+
+fn bench_strcmp(c: &mut Criterion) {
+    let sizes: &[usize] = &[16, 64, 256, 1024, 4096];
+    let mode = mode_label();
+    let mut group = c.benchmark_group("strcmp");
+
+    for &size in sizes {
+        let mut left = vec![b'Q'; size];
+        let mut right = vec![b'Q'; size];
+        let bench_label = format!("strcmp_{size}");
+        left.push(0);
+        right.push(0);
+        group.throughput(Throughput::Bytes(size as u64));
+
+        for _ in 0..10_000 {
+            black_box(strcmp(&left, &right));
+        }
+
+        let stats = RefCell::new(BenchStats::default());
+        group.bench_with_input(BenchmarkId::new(mode, size), &size, |b, _| {
+            b.iter_custom(|iters| {
+                let start = Instant::now();
+                for _ in 0..iters {
+                    black_box(strcmp(&left, &right));
+                }
+                let dur = start.elapsed().max(Duration::from_nanos(1));
+                stats.borrow_mut().record(iters, dur);
+                dur
+            });
+        });
+        stats.borrow().report(mode, &bench_label);
+    }
+    group.finish();
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default()
         .warm_up_time(Duration::from_millis(1))
         .measurement_time(Duration::from_secs(2))
         .sample_size(100);
-    targets = bench_memcpy_sizes, bench_strlen
+    targets = bench_memcpy_sizes, bench_strlen, bench_memcmp_sizes, bench_strcmp
 );
 criterion_main!(benches);

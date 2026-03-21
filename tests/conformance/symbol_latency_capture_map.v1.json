@@ -240,6 +240,66 @@
           "symbols": [
             "strlen"
           ]
+        },
+        {
+          "bench": "memcmp_16",
+          "symbols": [
+            "memcmp"
+          ]
+        },
+        {
+          "bench": "memcmp_64",
+          "symbols": [
+            "memcmp"
+          ]
+        },
+        {
+          "bench": "memcmp_256",
+          "symbols": [
+            "memcmp"
+          ]
+        },
+        {
+          "bench": "memcmp_1024",
+          "symbols": [
+            "memcmp"
+          ]
+        },
+        {
+          "bench": "memcmp_4096",
+          "symbols": [
+            "memcmp"
+          ]
+        },
+        {
+          "bench": "strcmp_16",
+          "symbols": [
+            "strcmp"
+          ]
+        },
+        {
+          "bench": "strcmp_64",
+          "symbols": [
+            "strcmp"
+          ]
+        },
+        {
+          "bench": "strcmp_256",
+          "symbols": [
+            "strcmp"
+          ]
+        },
+        {
+          "bench": "strcmp_1024",
+          "symbols": [
+            "strcmp"
+          ]
+        },
+        {
+          "bench": "strcmp_4096",
+          "symbols": [
+            "strcmp"
+          ]
         }
       ]
     }

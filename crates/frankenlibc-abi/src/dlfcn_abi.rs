@@ -16,27 +16,30 @@ use crate::runtime_policy;
 // Thread-local dlerror state
 // ---------------------------------------------------------------------------
 
-use std::cell::RefCell;
+use std::cell::Cell;
 
+// Thread-local dlerror state using `Cell` with static pointers.
+//
+// `RefCell` panics on reentrant `borrow_mut()`, which happens during early
+// startup when `dlsym` → `set_dlerror` → TLS init → `dlsym` → `clear_dlerror`
+// creates a reentrant access.  `Cell` with simple pointer `get`/`set` is
+// reentry-safe and avoids heap allocation entirely since all error messages
+// are `&'static [u8]`.
 std::thread_local! {
-    /// Current error message (not yet seen by dlerror).
-    static PENDING_ERROR: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
-    /// Last error message returned by dlerror (valid until next dlfcn call).
-    static STABLE_ERROR: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+    /// Pending error: pointer to static NUL-terminated error message, or null.
+    static PENDING_PTR: Cell<*const u8> = const { Cell::new(std::ptr::null()) };
+    /// Stable pointer returned by dlerror() — valid until next dlfcn call.
+    static STABLE_PTR: Cell<*const u8> = const { Cell::new(std::ptr::null()) };
 }
 
 /// Set the thread-local dlerror message from a static byte slice.
 fn set_dlerror(msg: &'static [u8]) {
-    PENDING_ERROR.with(|cell| {
-        *cell.borrow_mut() = Some(msg.to_vec());
-    });
+    let _ = PENDING_PTR.try_with(|cell| cell.set(msg.as_ptr()));
 }
 
 /// Clear the thread-local dlerror message.
 fn clear_dlerror() {
-    PENDING_ERROR.with(|cell| {
-        *cell.borrow_mut() = None;
-    });
+    let _ = PENDING_PTR.try_with(|cell| cell.set(std::ptr::null()));
 }
 
 #[inline]
@@ -334,16 +337,19 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> c_int {
 /// last call to `dlerror`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dlerror() -> *const c_char {
-    let pending = PENDING_ERROR.with(|cell| cell.borrow_mut().take());
-    if let Some(msg) = pending {
-        STABLE_ERROR.with(|cell| {
-            let mut stable = cell.borrow_mut();
-            *stable = Some(msg);
-            stable.as_ref().unwrap().as_ptr() as *const c_char
+    let ptr = PENDING_PTR
+        .try_with(|cell| {
+            let p = cell.get();
+            cell.set(std::ptr::null()); // consume the error
+            p
         })
-    } else {
-        std::ptr::null()
+        .unwrap_or(std::ptr::null());
+    if ptr.is_null() {
+        return std::ptr::null();
     }
+    // Move to stable slot so the pointer remains valid until next dlfcn call.
+    let _ = STABLE_PTR.try_with(|cell| cell.set(ptr));
+    ptr as *const c_char
 }
 
 // ---------------------------------------------------------------------------

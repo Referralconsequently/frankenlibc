@@ -4,7 +4,6 @@
 //! size-class bins, and large-allocation paths. This is the safe Rust
 //! layer managing allocation policy and metadata.
 
-use super::large::LargeAllocator;
 use super::size_class::{self, NUM_SIZE_CLASSES};
 use super::thread_cache::ThreadCache;
 use frankenlibc_membrane::runtime_math::sos_barrier::evaluate_size_class_barrier;
@@ -70,8 +69,6 @@ pub struct AllocatorLogRecord {
 pub struct MallocState {
     /// Per-bin central freelists (bin index -> stack of free pointers).
     central_bins: Vec<Vec<usize>>,
-    /// Large allocation manager.
-    large_allocator: LargeAllocator,
     /// Thread cache.
     thread_cache: ThreadCache,
     /// Monotonic lifecycle decision id.
@@ -101,7 +98,6 @@ impl MallocState {
         let central_bins = (0..NUM_SIZE_CLASSES).map(|_| Vec::new()).collect();
         Self {
             central_bins,
-            large_allocator: LargeAllocator::new(),
             thread_cache: ThreadCache::new(),
             next_decision_id: 1,
             lifecycle_logs: Vec::new(),
@@ -162,24 +158,6 @@ impl MallocState {
             spills_to_central: self.spills_to_central,
             cache_hit_rate_permille: self.cache_hit_rate_permille(),
         });
-    }
-
-    fn record_allocator_stats(&mut self, symbol: &'static str) {
-        let central_free_total: usize = self.central_bins.iter().map(Vec::len).sum();
-        self.record_lifecycle(
-            AllocatorLogLevel::Debug,
-            symbol,
-            "allocator_stats",
-            None,
-            None,
-            None,
-            "snapshot",
-            format!(
-                "cache_total={};central_free_total={}",
-                self.thread_cache.total_cached(),
-                central_free_total
-            ),
-        );
     }
 
     /// Allocates `size` bytes of memory using the given backend.

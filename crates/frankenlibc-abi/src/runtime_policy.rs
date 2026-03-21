@@ -790,6 +790,9 @@ fn kernel() -> Option<&'static RuntimeMathKernel> {
     let ptr = Box::into_raw(kernel);
     KERNEL_PTR.store(ptr, AtomicOrdering::Release);
     KERNEL_STATE.store(STATE_READY, AtomicOrdering::Release);
+    // Signal that the runtime is fully initialized — decide() can now
+    // use the full kernel path instead of passthrough.
+    RUNTIME_READY.store(1, AtomicOrdering::Release);
 
     Some(unsafe { &*ptr })
 }
@@ -969,6 +972,11 @@ fn note_cross_family_overlap(
     let _ = kernel.note_overlap(family_idx, peer_idx, witness);
 }
 
+/// Global startup guard.  Set to 1 after kernel initialization completes.
+/// Until then, `decide()` returns passthrough to avoid deadlocks during
+/// early startup when TLS, heap, and runtime state are not yet ready.
+static RUNTIME_READY: AtomicU8 = AtomicU8::new(0);
+
 pub(crate) fn decide(
     family: ApiFamily,
     addr_hint: usize,
@@ -977,10 +985,14 @@ pub(crate) fn decide(
     bloom_negative: bool,
     contention_hint: u16,
 ) -> (SafetyLevel, RuntimeDecision) {
+    // Fast passthrough during early startup to prevent deadlocks.
+    // The full decide path is only available after kernel init completes.
+    if RUNTIME_READY.load(AtomicOrdering::Relaxed) == 0 {
+        let mode = u8_to_mode(MODE_STATE.load(AtomicOrdering::Relaxed));
+        return (mode, passthrough_decision());
+    }
+
     let mode = mode();
-    // Enable mode event logging after the first successful mode() call.
-    // This is deferred from mode() itself because format!() allocations
-    // during early startup trigger OOM → write → decide → mode → recursion.
     MODE_LOG_READY.store(1, AtomicOrdering::Relaxed);
     let ctx = RuntimeContext {
         family,
