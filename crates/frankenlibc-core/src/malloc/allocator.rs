@@ -334,7 +334,7 @@ impl MallocState {
         self.total_allocated = self.total_allocated.saturating_sub(size);
         self.active_count = self.active_count.saturating_sub(1);
 
-        if self.thread_cache.free(bin, ptr) {
+        if self.thread_cache.dealloc(bin, ptr) {
             self.record_lifecycle(
                 AllocatorLogLevel::Trace,
                 "free",
@@ -417,7 +417,11 @@ mod tests {
     fn test_alloc(size: usize) -> Option<usize> {
         let layout = Layout::from_size_align(size, 16).ok()?;
         let ptr = unsafe { alloc(layout) };
-        if ptr.is_null() { None } else { Some(ptr as usize) }
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ptr as usize)
+        }
     }
 
     fn test_free(ptr: usize, size: usize) {
@@ -468,7 +472,9 @@ mod tests {
         }
 
         // Re-allocate - should reuse from thread cache (no new backend calls)
-        let new_ptr = state.malloc(size, |_| panic!("should not call backend")).unwrap();
+        let new_ptr = state
+            .malloc(size, |_| panic!("should not call backend"))
+            .unwrap();
         assert!(ptrs.contains(&new_ptr));
     }
 }
