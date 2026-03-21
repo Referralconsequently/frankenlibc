@@ -584,6 +584,12 @@ impl ValidationPipeline {
         }
     }
 
+    /// Prepare for a fork by acquiring all internal locks.
+    /// Returns a guard that, when dropped, releases the locks.
+    pub fn atfork_prepare(&self) -> crate::arena::ArenaAtforkGuard<'_> {
+        self.arena.atfork_prepare()
+    }
+
     /// Run a pointer through the validation pipeline.
     ///
     /// @separation-pre: `Owns(TsmMeta) * Readable(addr)`; caller memory outside membrane

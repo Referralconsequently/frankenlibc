@@ -97,11 +97,27 @@ pub struct AllocationResult {
     pub total_size: usize,
 }
 
+/// Guard representing all locked arena shards during a fork.
+pub struct ArenaAtforkGuard<'a> {
+    _guards: Vec<parking_lot::MutexGuard<'a, ArenaShard>>,
+}
+
 impl AllocationArena {
     /// Create a new empty arena.
     #[must_use]
     pub fn new() -> Self {
         Self::new_with_collector(None)
+    }
+
+    /// Prepare for a fork by acquiring all shard locks.
+    /// This ensures the arena is in a consistent state and no other thread
+    /// is actively modifying it when the fork occurs.
+    pub fn atfork_prepare(&self) -> ArenaAtforkGuard<'_> {
+        let mut guards = Vec::with_capacity(NUM_SHARDS);
+        for shard in self.shards.iter() {
+            guards.push(shard.lock());
+        }
+        ArenaAtforkGuard { _guards: guards }
     }
 
     /// Create a new empty arena with an EBR collector.

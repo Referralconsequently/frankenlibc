@@ -52,122 +52,29 @@ fn enter_string_membrane_guard() -> Option<StringMembraneGuard> {
 
 #[inline(never)]
 unsafe fn raw_memcpy_bytes(dst: *mut u8, src: *const u8, n: usize) {
-    // SAFETY: all operations require raw pointer arithmetic and FFI calls.
-    unsafe {
-        use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-        static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
-        static RESOLVING: AtomicBool = AtomicBool::new(false);
-
-        let mut ptr = PTR.load(Ordering::Relaxed);
-        if ptr.is_null() && !RESOLVING.swap(true, Ordering::SeqCst) {
-            ptr = crate::dlfcn_abi::dlvsym_next(c"memcpy".as_ptr(), c"GLIBC_2.14".as_ptr());
-            if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(c"memcpy".as_ptr(), c"GLIBC_2.2.5".as_ptr());
-            }
-            if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(c"memcpy".as_ptr(), c"GLIBC_2.17".as_ptr());
-            }
-            if !ptr.is_null() {
-                PTR.store(ptr, Ordering::Relaxed);
-            }
-            RESOLVING.store(false, Ordering::SeqCst);
-        }
-
-        if !ptr.is_null() {
-            let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void =
-                std::mem::transmute(ptr);
-            f(dst as *mut c_void, src as *const c_void, n);
-            return;
-        }
-
-        let mut i = 0usize;
-        while i < n {
-            let byte = std::ptr::read_volatile(src.add(i));
-            std::ptr::write_volatile(dst.add(i), byte);
-            i += 1;
-        }
-    }
+    // Use std::ptr::copy_nonoverlapping which compiles to inline `rep movsb` on x86_64.
+    // This avoids calling dlvsym (which goes through our interposed dlsym/strlen
+    // and triggers a PageOracle RwLock deadlock during membrane init).
+    // SAFETY: caller guarantees dst/src are valid and non-overlapping for n bytes.
+    unsafe { std::ptr::copy_nonoverlapping(src, dst, n) };
 }
 
 #[inline(never)]
 unsafe fn raw_memmove_bytes(dst: *mut u8, src: *const u8, n: usize) {
-    // SAFETY: all operations require raw pointer arithmetic and FFI calls.
-    unsafe {
-        use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-        static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
-        static RESOLVING: AtomicBool = AtomicBool::new(false);
-
-        let mut ptr = PTR.load(Ordering::Relaxed);
-        if ptr.is_null() && !RESOLVING.swap(true, Ordering::SeqCst) {
-            ptr = crate::dlfcn_abi::dlvsym_next(c"memmove".as_ptr(), c"GLIBC_2.2.5".as_ptr());
-            if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(c"memmove".as_ptr(), c"GLIBC_2.14".as_ptr());
-            }
-            if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(c"memmove".as_ptr(), c"GLIBC_2.17".as_ptr());
-            }
-            if !ptr.is_null() {
-                PTR.store(ptr, Ordering::Relaxed);
-            }
-            RESOLVING.store(false, Ordering::SeqCst);
-        }
-
-        if !ptr.is_null() {
-            let f: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void =
-                std::mem::transmute(ptr);
-            f(dst as *mut c_void, src as *const c_void, n);
-            return;
-        }
-
-        let dst_addr = dst as usize;
-        let src_addr = src as usize;
-        if dst_addr <= src_addr || dst_addr >= src_addr.saturating_add(n) {
-            raw_memcpy_bytes(dst, src, n);
-            return;
-        }
-
-        let mut i = n;
-        while i > 0 {
-            i -= 1;
-            let byte = std::ptr::read_volatile(src.add(i));
-            std::ptr::write_volatile(dst.add(i), byte);
-        }
-    }
+    // Use std::ptr::copy which handles overlapping regions correctly.
+    // This avoids calling dlvsym (which goes through our interposed dlsym/strlen
+    // and triggers a PageOracle RwLock deadlock during membrane init).
+    // SAFETY: caller guarantees dst/src are valid for n bytes (may overlap).
+    unsafe { std::ptr::copy(src, dst, n) };
 }
 
 #[inline(never)]
 unsafe fn raw_memset_bytes(dst: *mut u8, value: u8, n: usize) {
-    // SAFETY: all operations require raw pointer arithmetic and FFI calls.
-    unsafe {
-        use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-        static PTR: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
-        static RESOLVING: AtomicBool = AtomicBool::new(false);
-
-        let mut ptr = PTR.load(Ordering::Relaxed);
-        if ptr.is_null() && !RESOLVING.swap(true, Ordering::SeqCst) {
-            ptr = crate::dlfcn_abi::dlvsym_next(c"memset".as_ptr(), c"GLIBC_2.2.5".as_ptr());
-            if ptr.is_null() {
-                ptr = crate::dlfcn_abi::dlvsym_next(c"memset".as_ptr(), c"GLIBC_2.17".as_ptr());
-            }
-            if !ptr.is_null() {
-                PTR.store(ptr, Ordering::Relaxed);
-            }
-            RESOLVING.store(false, Ordering::SeqCst);
-        }
-
-        if !ptr.is_null() {
-            let f: unsafe extern "C" fn(*mut c_void, c_int, usize) -> *mut c_void =
-                std::mem::transmute(ptr);
-            f(dst as *mut c_void, value as c_int, n);
-            return;
-        }
-
-        let mut i = 0usize;
-        while i < n {
-            std::ptr::write_volatile(dst.add(i), value);
-            i += 1;
-        }
-    }
+    // Use std::ptr::write_bytes which compiles to inline `rep stosb` on x86_64.
+    // This avoids calling dlvsym (which goes through our interposed dlsym/strlen
+    // and triggers a PageOracle RwLock deadlock during membrane init).
+    // SAFETY: caller guarantees dst is valid for n bytes.
+    unsafe { std::ptr::write_bytes(dst, value, n) };
 }
 
 fn maybe_clamp_copy_len(
