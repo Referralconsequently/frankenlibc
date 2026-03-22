@@ -1829,9 +1829,108 @@ pub unsafe extern "C" fn sysconf(name: c_int) -> libc::c_long {
         }
         libc::_SC_HOST_NAME_MAX => 64,
         libc::_SC_LINE_MAX => 2048,
-        libc::_SC_ARG_MAX => 2097152, // 2 MiB
+        libc::_SC_ARG_MAX => {
+            // glibc calculates ARG_MAX as min(rlimit_stack / 4, 3/4 * 128KiB pages).
+            // The common result is 2097152 (for 8MB stack) or 3200000 (for >= 12.8MB stack).
+            let mut rlim = std::mem::MaybeUninit::<libc::rlimit>::zeroed();
+            let rc = unsafe {
+                libc::syscall(libc::SYS_getrlimit, libc::RLIMIT_STACK, rlim.as_mut_ptr())
+            };
+            if rc == 0 {
+                let rlim = unsafe { rlim.assume_init() };
+                let stack_based = (rlim.rlim_cur / 4) as libc::c_long;
+                let cap = 3200000i64 as libc::c_long;
+                return stack_based.min(cap).max(131072); // at least 128K
+            }
+            2097152
+        }
         libc::_SC_CHILD_MAX => 32768,
         libc::_SC_IOV_MAX => 1024,
+        libc::_SC_PHYS_PAGES => {
+            // Read MemTotal from /proc/meminfo, convert to pages.
+            let mut buf = [0u8; 256];
+            let fd = unsafe {
+                libc::syscall(libc::SYS_openat, libc::AT_FDCWD,
+                    c"/proc/meminfo".as_ptr(), libc::O_RDONLY, 0)
+            } as c_int;
+            if fd >= 0 {
+                let n = unsafe {
+                    libc::syscall(libc::SYS_read, fd, buf.as_mut_ptr(), buf.len() - 1)
+                } as isize;
+                unsafe { libc::syscall(libc::SYS_close, fd) };
+                if n > 0 {
+                    let s = std::str::from_utf8(&buf[..n as usize]).unwrap_or("");
+                    // Parse "MemTotal:   NNNNN kB"
+                    if let Some(line) = s.lines().next() {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            if let Ok(kb) = parts[1].parse::<u64>() {
+                                return (kb * 1024 / 4096) as libc::c_long;
+                            }
+                        }
+                    }
+                }
+            }
+            -1
+        }
+        libc::_SC_AVPHYS_PAGES => {
+            // Read MemAvailable from /proc/meminfo.
+            let mut buf = [0u8; 512];
+            let fd = unsafe {
+                libc::syscall(libc::SYS_openat, libc::AT_FDCWD,
+                    c"/proc/meminfo".as_ptr(), libc::O_RDONLY, 0)
+            } as c_int;
+            if fd >= 0 {
+                let n = unsafe {
+                    libc::syscall(libc::SYS_read, fd, buf.as_mut_ptr(), buf.len() - 1)
+                } as isize;
+                unsafe { libc::syscall(libc::SYS_close, fd) };
+                if n > 0 {
+                    let s = std::str::from_utf8(&buf[..n as usize]).unwrap_or("");
+                    for line in s.lines() {
+                        if line.starts_with("MemAvailable:") {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                if let Ok(kb) = parts[1].parse::<u64>() {
+                                    return (kb * 1024 / 4096) as libc::c_long;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            -1
+        }
+        libc::_SC_NGROUPS_MAX => 65536,
+        libc::_SC_GETPW_R_SIZE_MAX => 4096,
+        libc::_SC_GETGR_R_SIZE_MAX => 4096,
+        libc::_SC_LOGIN_NAME_MAX => 256,
+        libc::_SC_TTY_NAME_MAX => 32,
+        libc::_SC_SYMLOOP_MAX => 40,
+        libc::_SC_RE_DUP_MAX => 32767,
+        libc::_SC_2_VERSION => 200809,
+        libc::_SC_VERSION => 200809,
+        libc::_SC_THREAD_SAFE_FUNCTIONS => 1,
+        libc::_SC_THREADS => 1,
+        libc::_SC_THREAD_KEYS_MAX => 1024,
+        libc::_SC_THREAD_STACK_MIN => 16384,
+        libc::_SC_THREAD_THREADS_MAX => -1i64 as libc::c_long, // unlimited
+        libc::_SC_THREAD_DESTRUCTOR_ITERATIONS => 4,
+        libc::_SC_MONOTONIC_CLOCK => 1,
+        libc::_SC_CPUTIME => 1,
+        libc::_SC_THREAD_CPUTIME => 1,
+        libc::_SC_MAPPED_FILES => 1,
+        libc::_SC_MEMLOCK => 1,
+        libc::_SC_MEMLOCK_RANGE => 1,
+        libc::_SC_MEMORY_PROTECTION => 1,
+        libc::_SC_SEMAPHORES => 1,
+        libc::_SC_SHARED_MEMORY_OBJECTS => 1,
+        libc::_SC_SYNCHRONIZED_IO => 1,
+        libc::_SC_TIMERS => 1,
+        libc::_SC_REALTIME_SIGNALS => 1,
+        libc::_SC_PRIORITY_SCHEDULING => 1,
+        libc::_SC_FSYNC => 1,
+        libc::_SC_ASYNCHRONOUS_IO => 1,
         _ => {
             unsafe { set_abi_errno(errno::EINVAL) };
             -1
