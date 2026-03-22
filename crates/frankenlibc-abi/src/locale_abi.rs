@@ -173,14 +173,69 @@ pub unsafe extern "C" fn nl_langinfo(item: libc::nl_item) -> *const c_char {
         return std::ptr::null();
     }
 
-    let value = if item == libc::CODESET {
-        C_LOCALE_CODESET
-    } else if item == libc::RADIXCHAR {
-        C_LOCALE_RADIX
-    } else if item == libc::THOUSEP {
-        C_LOCALE_THOUSEP
-    } else {
-        EMPTY_LOCALE_STR
+    let value = match item {
+        libc::CODESET => C_LOCALE_CODESET,
+        libc::RADIXCHAR => C_LOCALE_RADIX,
+        libc::THOUSEP => C_LOCALE_THOUSEP,
+        // Day names (POSIX C locale, English)
+        libc::DAY_1 => b"Sunday\0",
+        libc::DAY_2 => b"Monday\0",
+        libc::DAY_3 => b"Tuesday\0",
+        libc::DAY_4 => b"Wednesday\0",
+        libc::DAY_5 => b"Thursday\0",
+        libc::DAY_6 => b"Friday\0",
+        libc::DAY_7 => b"Saturday\0",
+        // Abbreviated day names
+        libc::ABDAY_1 => b"Sun\0",
+        libc::ABDAY_2 => b"Mon\0",
+        libc::ABDAY_3 => b"Tue\0",
+        libc::ABDAY_4 => b"Wed\0",
+        libc::ABDAY_5 => b"Thu\0",
+        libc::ABDAY_6 => b"Fri\0",
+        libc::ABDAY_7 => b"Sat\0",
+        // Month names
+        libc::MON_1 => b"January\0",
+        libc::MON_2 => b"February\0",
+        libc::MON_3 => b"March\0",
+        libc::MON_4 => b"April\0",
+        libc::MON_5 => b"May\0",
+        libc::MON_6 => b"June\0",
+        libc::MON_7 => b"July\0",
+        libc::MON_8 => b"August\0",
+        libc::MON_9 => b"September\0",
+        libc::MON_10 => b"October\0",
+        libc::MON_11 => b"November\0",
+        libc::MON_12 => b"December\0",
+        // Abbreviated month names
+        libc::ABMON_1 => b"Jan\0",
+        libc::ABMON_2 => b"Feb\0",
+        libc::ABMON_3 => b"Mar\0",
+        libc::ABMON_4 => b"Apr\0",
+        libc::ABMON_5 => b"May\0",
+        libc::ABMON_6 => b"Jun\0",
+        libc::ABMON_7 => b"Jul\0",
+        libc::ABMON_8 => b"Aug\0",
+        libc::ABMON_9 => b"Sep\0",
+        libc::ABMON_10 => b"Oct\0",
+        libc::ABMON_11 => b"Nov\0",
+        libc::ABMON_12 => b"Dec\0",
+        // AM/PM
+        libc::AM_STR => b"AM\0",
+        libc::PM_STR => b"PM\0",
+        // Date/time format strings (POSIX C locale)
+        libc::D_T_FMT => b"%a %b %e %H:%M:%S %Y\0",
+        libc::D_FMT => b"%m/%d/%y\0",
+        libc::T_FMT => b"%H:%M:%S\0",
+        libc::T_FMT_AMPM => b"%I:%M:%S %p\0",
+        libc::ERA => b"\0",
+        libc::ERA_D_FMT => b"\0",
+        libc::ERA_D_T_FMT => b"\0",
+        libc::ERA_T_FMT => b"\0",
+        libc::ALT_DIGITS => b"\0",
+        libc::YESEXPR => b"^[yY]\0",
+        libc::NOEXPR => b"^[nN]\0",
+        libc::CRNCYSTR => b"\0",
+        _ => EMPTY_LOCALE_STR,
     };
     runtime_policy::observe(ApiFamily::Locale, decision.profile, 6, false);
     value.as_ptr() as *const c_char
