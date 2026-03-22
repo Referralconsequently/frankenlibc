@@ -315,7 +315,10 @@ unsafe fn build_addrinfo_v4(
         sin_family: libc::AF_INET as u16,
         sin_port: port.to_be(),
         sin_addr: libc::in_addr {
-            s_addr: u32::from_ne_bytes(ip.octets()).to_be(),
+            // s_addr must be in network byte order (big-endian bytes in memory).
+            // ip.octets() = [127,0,0,1]. We need memory bytes [0x7f,0x00,0x00,0x01].
+            // On LE x86_64, u32 0x0100007f stores as bytes [7f,00,00,01]. Use from_ne_bytes.
+            s_addr: u32::from_ne_bytes(ip.octets()),
         },
         sin_zero: [0; 8],
     });
@@ -662,7 +665,9 @@ pub unsafe extern "C" fn getnameinfo(
             }
             // SAFETY: size checked above.
             let sin = unsafe { &*sa.cast::<libc::sockaddr_in>() };
-            let ip = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+            // s_addr is in network byte order (big-endian bytes in memory).
+            // Read raw bytes via to_ne_bytes to get [a,b,c,d] in memory order.
+            let ip = Ipv4Addr::from(sin.sin_addr.s_addr.to_ne_bytes());
             let port = u16::from_be(sin.sin_port);
             (ip.to_string(), port.to_string())
         }
