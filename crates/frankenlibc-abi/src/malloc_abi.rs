@@ -1580,6 +1580,12 @@ pub unsafe extern "C" fn malloc_usable_size(ptr: *mut c_void) -> usize {
     if ptr.is_null() {
         return 0;
     }
+
+    // Bump/mmap allocations: size is unknown, return 0.
+    if is_bump_ptr(ptr) {
+        return 0;
+    }
+
     let addr = ptr as usize;
 
     // Look up in membrane arena first
@@ -1590,16 +1596,11 @@ pub unsafe extern "C" fn malloc_usable_size(ptr: *mut c_void) -> usize {
         return slot.user_size;
     }
 
-    // Check fallback allocation table - delegate to native
-    if fallback_contains(ptr) {
-        unsafe extern "C" {
-            #[link_name = "malloc_usable_size@GLIBC_2.2.5"]
-            fn native_malloc_usable_size(ptr: *mut c_void) -> usize;
-        }
-        // SAFETY: ptr is a valid native allocation tracked in fallback table.
-        return unsafe { native_malloc_usable_size(ptr) };
-    }
-
+    // For all other pointers (fallback, host-allocated), return 0.
+    // We cannot safely delegate to the host malloc_usable_size because
+    // our unversioned export shadows the host's versioned symbol, causing
+    // infinite recursion.  Returning 0 is safe — callers that need exact
+    // sizes should use their own tracking.
     0
 }
 
