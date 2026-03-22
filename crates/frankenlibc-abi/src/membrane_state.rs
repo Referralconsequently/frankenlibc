@@ -29,7 +29,7 @@ pub(crate) fn try_global_pipeline() -> Option<&'static ValidationPipeline> {
     // calls our interposed functions (strstr, memmove, strlen, etc.) before
     // TLS and locks are fully initialized, causing deadlocks in the
     // ValidationPipeline's PageOracle RwLock and RuntimeMathKernel Mutex.
-    if !crate::runtime_policy::is_runtime_ready() {
+    if crate::runtime_policy::bootstrap_passthrough_active() {
         return None;
     }
 

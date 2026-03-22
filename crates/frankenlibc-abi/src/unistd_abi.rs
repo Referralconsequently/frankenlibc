@@ -95,7 +95,7 @@ pub unsafe extern "C" fn read(fd: c_int, buf: *mut c_void, count: usize) -> libc
     }
 
     // Fast path during early startup: bypass membrane, do raw syscall.
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         return unsafe { sys_read_fd(fd, buf, count) };
     }
 
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn write(fd: c_int, buf: *const c_void, count: usize) -> l
     }
 
     // Fast path during early startup: bypass membrane, do raw syscall.
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         return unsafe { sys_write_fd(fd, buf, count) };
     }
 

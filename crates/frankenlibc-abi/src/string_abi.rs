@@ -266,7 +266,7 @@ pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) 
     }
 
     // Fast path during early startup: skip membrane entirely.
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         unsafe { raw_memcpy_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
         return dst;
     }
@@ -364,7 +364,7 @@ pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize)
     }
 
     // Fast path during early startup: skip membrane entirely.
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         unsafe { raw_memmove_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
         return dst;
     }
@@ -462,7 +462,7 @@ pub unsafe extern "C" fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_
     }
 
     // Fast path during early startup: skip membrane entirely.
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         unsafe { raw_memset_bytes(dst.cast::<u8>(), c as u8, n) };
         return dst;
     }
@@ -869,7 +869,7 @@ pub unsafe extern "C" fn strlen(s: *const c_char) -> usize {
     // Fast path during early startup: skip membrane validation entirely.
     // The membrane's ValidationPipeline uses PageOracle (RwLock) and TLS,
     // which deadlock during init when called from dlvsym → strlen chains.
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         unsafe {
             let mut len = 0usize;
             while *s.add(len) != 0 {
@@ -2038,7 +2038,7 @@ pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
 pub unsafe extern "C" fn strstr(haystack: *const c_char, needle: *const c_char) -> *mut c_char {
     // Fast path: skip membrane during early startup or when called from
     // within the membrane/allocator (prevents re-entrant deadlock).
-    if !runtime_policy::is_runtime_ready() {
+    if runtime_policy::bootstrap_passthrough_active() {
         return unsafe { raw_strstr(haystack, needle) };
     }
 

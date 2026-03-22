@@ -131,6 +131,7 @@ static LAST_PHASE: AtomicU8 = AtomicU8::new(StartupCheckpoint::Entry as u8);
 static LAST_POLICY_LATENCY_NS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(debug_assertions)]
 static HOST_START_MAIN_OVERRIDE: AtomicUsize = AtomicUsize::new(0);
+static HOST_DELEGATED_MAIN: AtomicUsize = AtomicUsize::new(0);
 
 #[repr(C)]
 pub struct StartupInvariantSnapshot {
@@ -361,6 +362,28 @@ fn startup_phase0_env_enabled() -> bool {
     false
 }
 
+unsafe extern "C" fn host_delegate_main_wrapper(
+    argc: c_int,
+    argv: *mut *mut c_char,
+    envp: *mut *mut c_char,
+) -> c_int {
+    init_program_name(argv);
+    runtime_policy::signal_runtime_ready();
+
+    let main_ptr = HOST_DELEGATED_MAIN.load(Ordering::Acquire);
+    if main_ptr == 0 {
+        return 0;
+    }
+
+    // SAFETY: `HOST_DELEGATED_MAIN` is set from a valid `MainFn` immediately
+    // before delegating into host `__libc_start_main`.
+    let main_fn: MainFn =
+        unsafe { std::mem::transmute::<*const c_void, MainFn>(main_ptr as *const c_void) };
+    // SAFETY: host `__libc_start_main` invokes the wrapper with the user
+    // process entrypoint ABI and argument vectors.
+    unsafe { main_fn(argc, argv, envp) }
+}
+
 unsafe fn delegate_to_host_libc_start_main(
     main: Option<MainFn>,
     argc: c_int,
@@ -370,6 +393,14 @@ unsafe fn delegate_to_host_libc_start_main(
     rtld_fini: Option<HookFn>,
     stack_end: *mut c_void,
 ) -> Option<c_int> {
+    let delegated_main = main.map_or(0usize, |f| f as usize);
+    HOST_DELEGATED_MAIN.store(delegated_main, Ordering::Release);
+    let wrapped_main = if delegated_main == 0 {
+        None
+    } else {
+        Some(host_delegate_main_wrapper as MainFn)
+    };
+
     #[cfg(debug_assertions)]
     {
         let override_ptr = HOST_START_MAIN_OVERRIDE.load(Ordering::Relaxed);
@@ -379,7 +410,9 @@ unsafe fn delegate_to_host_libc_start_main(
                 std::mem::transmute::<*const c_void, HostStartMainFn>(override_ptr as *const c_void)
             };
             // SAFETY: forwards startup ABI arguments to deterministic test delegate.
-            return Some(unsafe { host_fn(main, argc, ubp_av, init, fini, rtld_fini, stack_end) });
+            return Some(unsafe {
+                host_fn(wrapped_main, argc, ubp_av, init, fini, rtld_fini, stack_end)
+            });
         }
     }
 
@@ -420,7 +453,7 @@ unsafe fn delegate_to_host_libc_start_main(
     // SAFETY: symbol is expected to match HostStartMainFn ABI and signature.
     let host_fn: HostStartMainFn = unsafe { std::mem::transmute(ptr) };
     // SAFETY: forwards original startup ABI arguments to host libc.
-    Some(unsafe { host_fn(main, argc, ubp_av, init, fini, rtld_fini, stack_end) })
+    Some(unsafe { host_fn(wrapped_main, argc, ubp_av, init, fini, rtld_fini, stack_end) })
 }
 
 /// Test-only hook for overriding host `__libc_start_main` delegation.
@@ -682,17 +715,10 @@ pub unsafe extern "C" fn __libc_start_main(
     rtld_fini: Option<HookFn>,
     stack_end: *mut c_void,
 ) -> c_int {
-    // NOTE: We intentionally do NOT call signal_runtime_ready() here.
-    // The membrane's ValidationPipeline is not re-entrant: its internal
-    // operations (note_check_order_outcome, PageOracle::insert) call
-    // interposed functions (memmove, strlen) which re-enter the pipeline
-    // and deadlock on the RuntimeMathKernel mutex or PageOracle RwLock.
-    //
-    // With RUNTIME_READY=0, all interposed functions use raw fallback paths
-    // that bypass the membrane entirely.  The membrane validation is still
-    // available via the harness and test infrastructure (which call the
-    // pipeline APIs directly), but LD_PRELOAD interposition runs in
-    // passthrough mode until the re-entrancy issue is architecturally resolved.
+    // Keep loader/init in bootstrap passthrough mode and only flip runtime-ready
+    // from the wrapped `main` that host `__libc_start_main` invokes after libc
+    // initialization. This avoids enabling the membrane during loader-sensitive
+    // startup while still activating it before user code begins.
 
     if startup_phase0_env_enabled() {
         // SAFETY: explicit phase-0 opt-in path.
@@ -763,6 +789,8 @@ pub unsafe extern "C" fn __libc_start_main(
         // SAFETY: init is the .init function from the ELF; call it for C++ constructors etc.
         unsafe { init_fn() };
     }
+    init_program_name(ubp_av);
+    runtime_policy::signal_runtime_ready();
     let rc = match main {
         Some(main_fn) => unsafe { main_fn(argc, ubp_av, std::ptr::null_mut()) },
         None => 0,

@@ -979,11 +979,35 @@ fn note_cross_family_overlap(
 /// early startup when TLS, heap, and runtime state are not yet ready.
 static RUNTIME_READY: AtomicU8 = AtomicU8::new(0);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AbiRuntimePhase {
+    BootstrapPassthrough,
+    Active,
+}
+
 /// Returns true when the runtime is fully initialized and membrane
 /// validation can safely use TLS, locks, and the heap.
 #[inline]
 pub(crate) fn is_runtime_ready() -> bool {
     RUNTIME_READY.load(AtomicOrdering::Relaxed) != 0
+}
+
+/// Shared bootstrap/runtime contract for ABI families.
+#[inline]
+pub(crate) fn abi_runtime_phase() -> AbiRuntimePhase {
+    if is_runtime_ready() {
+        AbiRuntimePhase::Active
+    } else {
+        AbiRuntimePhase::BootstrapPassthrough
+    }
+}
+
+#[inline]
+pub(crate) fn bootstrap_passthrough_active() -> bool {
+    matches!(
+        abi_runtime_phase(),
+        AbiRuntimePhase::BootstrapPassthrough
+    )
 }
 
 /// Signal that the dynamic linker's init phase is complete and the
