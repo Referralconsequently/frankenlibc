@@ -418,7 +418,8 @@ unsafe extern "C" fn host_delegate_main_wrapper(
     init_process_globals(argv, resolved_envp);
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    runtime_policy::signal_runtime_ready();
+    // signal_runtime_ready() intentionally NOT called — membrane is not
+    // re-entrant and deadlocks under LD_PRELOAD. See commit cec8d00.
 
     let main_ptr = HOST_DELEGATED_MAIN.load(Ordering::Acquire);
     if main_ptr == 0 {
@@ -723,7 +724,8 @@ unsafe fn startup_phase0_impl(
     init_process_globals(ubp_av, resolved_envp);
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    runtime_policy::signal_runtime_ready();
+    // signal_runtime_ready() intentionally NOT called — membrane is not
+    // re-entrant and deadlocks under LD_PRELOAD. See commit cec8d00.
 
     if let Some(init_fn) = init {
         path.push(StartupCheckpoint::CallInitHook);
@@ -846,7 +848,8 @@ pub unsafe extern "C" fn __libc_start_main(
     init_process_globals(ubp_av, envp);
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    runtime_policy::signal_runtime_ready();
+    // signal_runtime_ready() intentionally NOT called — membrane is not
+    // re-entrant and deadlocks under LD_PRELOAD. See commit cec8d00.
     let rc = match main {
         Some(main_fn) => unsafe { main_fn(argc, ubp_av, envp) },
         None => 0,
