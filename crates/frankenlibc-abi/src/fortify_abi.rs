@@ -90,7 +90,7 @@ pub unsafe extern "C" fn __memcpy_chk(
     len: usize,
     destlen: usize,
 ) -> *mut c_void {
-    if len > destlen {
+    if destlen != usize::MAX && len > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memcpy(dest, src, len) }
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn __memmove_chk(
     len: usize,
     destlen: usize,
 ) -> *mut c_void {
-    if len > destlen {
+    if destlen != usize::MAX && len > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memmove(dest, src, len) }
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn __memset_chk(
     len: usize,
     destlen: usize,
 ) -> *mut c_void {
-    if len > destlen {
+    if destlen != usize::MAX && len > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memset(dest, c, len) }
@@ -124,7 +124,7 @@ pub unsafe extern "C" fn __memset_chk(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __explicit_bzero_chk(dest: *mut c_void, len: usize, destlen: usize) {
-    if len > destlen {
+    if destlen != usize::MAX && len > destlen {
         unsafe { __chk_fail() }
     }
     let p = dest as *mut u8;
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn __strcpy_chk(
     destlen: usize,
 ) -> *mut c_char {
     let len = unsafe { crate::string_abi::strlen(src) } + 1;
-    if len > destlen {
+    if destlen != usize::MAX && len > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memcpy(dest.cast(), src.cast(), len) };
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn __strncpy_chk(
     n: usize,
     destlen: usize,
 ) -> *mut c_char {
-    if n > destlen {
+    if destlen != usize::MAX && n > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::strncpy(dest, src, n) }
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn __strcat_chk(
 ) -> *mut c_char {
     let dlen = unsafe { crate::string_abi::strlen(dest) };
     let slen = unsafe { crate::string_abi::strlen(src) };
-    if dlen + slen + 1 > destlen {
+    if destlen != usize::MAX && dlen + slen + 1 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::strcat(dest, src) }
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn __strncat_chk(
         let full = unsafe { crate::string_abi::strlen(src) };
         if full < n { full } else { n }
     };
-    if dlen + slen + 1 > destlen {
+    if destlen != usize::MAX && dlen + slen + 1 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::strncat(dest, src, n) }
@@ -201,7 +201,7 @@ pub unsafe extern "C" fn __stpcpy_chk(
     destlen: usize,
 ) -> *mut c_char {
     let len = unsafe { crate::string_abi::strlen(src) } + 1;
-    if len > destlen {
+    if destlen != usize::MAX && len > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memcpy(dest.cast(), src.cast(), len) };
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn __stpncpy_chk(
     n: usize,
     destlen: usize,
 ) -> *mut c_char {
-    if n > destlen {
+    if destlen != usize::MAX && n > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::strncpy(dest, src, n) };
@@ -256,7 +256,7 @@ pub unsafe extern "C" fn __snprintf_chk(
     fmt: *const c_char,
     mut args: ...
 ) -> c_int {
-    if maxlen > buflen {
+    if buflen != usize::MAX && maxlen > buflen {
         unsafe { __chk_fail() }
     }
     let ap = &mut args as *mut _ as *mut c_void;
@@ -287,7 +287,7 @@ pub unsafe extern "C" fn __vsnprintf_chk(
     fmt: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    if maxlen > buflen {
+    if buflen != usize::MAX && maxlen > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { vsnprintf(buf, maxlen, fmt, ap) }
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn __fgets_chk(
     n: c_int,
     stream: *mut c_void,
 ) -> *mut c_char {
-    if n as usize > buflen {
+    if buflen != usize::MAX && n as usize > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { fgets(buf, n, stream) }
@@ -389,7 +389,7 @@ pub unsafe extern "C" fn __fgets_unlocked_chk(
     n: c_int,
     stream: *mut c_void,
 ) -> *mut c_char {
-    if n as usize > buflen {
+    if buflen != usize::MAX && n as usize > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { fgets(buf, n, stream) }
@@ -403,8 +403,11 @@ pub unsafe extern "C" fn __fread_chk(
     nmemb: usize,
     stream: *mut c_void,
 ) -> usize {
-    if size.checked_mul(nmemb).is_some_and(|total| total > buflen) {
-        unsafe { __chk_fail() }
+    // buflen == usize::MAX means "unknown buffer size" (no check needed).
+    if buflen != usize::MAX {
+        if size.checked_mul(nmemb).is_some_and(|total| total > buflen) {
+            unsafe { __chk_fail() }
+        }
     }
     unsafe { fread(buf, size, nmemb, stream) }
 }
@@ -417,8 +420,11 @@ pub unsafe extern "C" fn __fread_unlocked_chk(
     nmemb: usize,
     stream: *mut c_void,
 ) -> usize {
-    if size.checked_mul(nmemb).is_some_and(|total| total > buflen) {
-        unsafe { __chk_fail() }
+    // buflen == usize::MAX means "unknown buffer size" (no check needed).
+    if buflen != usize::MAX {
+        if size.checked_mul(nmemb).is_some_and(|total| total > buflen) {
+            unsafe { __chk_fail() }
+        }
     }
     unsafe { fread(buf, size, nmemb, stream) }
 }
@@ -457,7 +463,7 @@ pub unsafe extern "C" fn __read_chk(
     nbytes: usize,
     buflen: usize,
 ) -> isize {
-    if nbytes > buflen {
+    if buflen != usize::MAX && nbytes > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::unistd_abi::read(fd, buf, nbytes) }
@@ -471,7 +477,7 @@ pub unsafe extern "C" fn __pread_chk(
     offset: i64,
     buflen: usize,
 ) -> isize {
-    if nbytes > buflen {
+    if buflen != usize::MAX && nbytes > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::pread(fd, buf, nbytes, offset) }
@@ -485,7 +491,7 @@ pub unsafe extern "C" fn __pread64_chk(
     offset: i64,
     buflen: usize,
 ) -> isize {
-    if nbytes > buflen {
+    if buflen != usize::MAX && nbytes > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::pread64(fd, buf, nbytes, offset) }
@@ -499,7 +505,7 @@ pub unsafe extern "C" fn __recv_chk(
     buflen: usize,
     flags: c_int,
 ) -> isize {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::recv(fd, buf, len, flags) }
@@ -515,7 +521,7 @@ pub unsafe extern "C" fn __recvfrom_chk(
     addr: *mut c_void,
     addrlen: *mut u32,
 ) -> isize {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::recvfrom(fd, buf, len, flags, addr.cast(), addrlen) }
@@ -534,7 +540,7 @@ pub unsafe extern "C" fn __realpath_chk(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __getcwd_chk(buf: *mut c_char, len: usize, buflen: usize) -> *mut c_char {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::syscall(libc::SYS_getcwd as i64, buf, len) as *mut c_char }
@@ -552,7 +558,7 @@ pub unsafe extern "C" fn __readlink_chk(
     len: usize,
     buflen: usize,
 ) -> isize {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::readlink(path, buf, len) }
@@ -566,7 +572,7 @@ pub unsafe extern "C" fn __readlinkat_chk(
     len: usize,
     buflen: usize,
 ) -> isize {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::readlinkat(dirfd, path, buf, len) }
@@ -574,7 +580,7 @@ pub unsafe extern "C" fn __readlinkat_chk(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __gethostname_chk(buf: *mut c_char, len: usize, buflen: usize) -> c_int {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::unistd_abi::gethostname(buf, len) }
@@ -582,7 +588,7 @@ pub unsafe extern "C" fn __gethostname_chk(buf: *mut c_char, len: usize, buflen:
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __getdomainname_chk(buf: *mut c_char, len: usize, buflen: usize) -> c_int {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::getdomainname(buf, len) }
@@ -610,7 +616,7 @@ pub unsafe extern "C" fn __confstr_chk(
     len: usize,
     buflen: usize,
 ) -> usize {
-    if len > buflen {
+    if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { libc::confstr(name, buf, len) }
@@ -646,7 +652,7 @@ pub unsafe extern "C" fn __wcscpy_chk(
     while unsafe { *src.add(len) } != 0 {
         len += 1;
     }
-    if (len + 1) * 4 > destlen {
+    if destlen != usize::MAX && (len + 1) * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memcpy(dest.cast(), src.cast(), (len + 1) * 4) };
@@ -660,7 +666,7 @@ pub unsafe extern "C" fn __wcsncpy_chk(
     n: usize,
     destlen: usize,
 ) -> *mut WcharT {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     let mut i = 0;
@@ -689,7 +695,7 @@ pub unsafe extern "C" fn __wcscat_chk(
     while unsafe { *src.add(slen) } != 0 {
         slen += 1;
     }
-    if (dlen + slen + 1) * 4 > destlen {
+    if destlen != usize::MAX && (dlen + slen + 1) * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memcpy(dest.add(dlen).cast(), src.cast(), (slen + 1) * 4) };
@@ -711,7 +717,7 @@ pub unsafe extern "C" fn __wcsncat_chk(
     while slen < n && unsafe { *src.add(slen) } != 0 {
         slen += 1;
     }
-    if (dlen + slen + 1) * 4 > destlen {
+    if destlen != usize::MAX && (dlen + slen + 1) * 4 > destlen {
         unsafe { __chk_fail() }
     }
     for i in 0..slen {
@@ -728,7 +734,7 @@ pub unsafe extern "C" fn __wmemcpy_chk(
     n: usize,
     destlen: usize,
 ) -> *mut WcharT {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memcpy(dest.cast(), src.cast(), n * 4) };
@@ -742,7 +748,7 @@ pub unsafe extern "C" fn __wmemmove_chk(
     n: usize,
     destlen: usize,
 ) -> *mut WcharT {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { crate::string_abi::memmove(dest.cast(), src.cast(), n * 4) };
@@ -756,7 +762,7 @@ pub unsafe extern "C" fn __wmemset_chk(
     n: usize,
     destlen: usize,
 ) -> *mut WcharT {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     for i in 0..n {
@@ -776,7 +782,7 @@ pub unsafe extern "C" fn __swprintf_chk(
     fmt: *const WcharT,
     mut args: ...
 ) -> c_int {
-    if maxlen > buflen / 4 {
+    if buflen != usize::MAX && maxlen > buflen / 4 {
         unsafe { __chk_fail() }
     }
     let ap = &mut args as *mut _ as *mut c_void;
@@ -792,7 +798,7 @@ pub unsafe extern "C" fn __vswprintf_chk(
     fmt: *const WcharT,
     ap: *mut c_void,
 ) -> c_int {
-    if maxlen > buflen / 4 {
+    if buflen != usize::MAX && maxlen > buflen / 4 {
         unsafe { __chk_fail() }
     }
     unsafe { vswprintf(buf, maxlen, fmt, ap) }
@@ -843,7 +849,7 @@ pub unsafe extern "C" fn __fgetws_chk(
     n: c_int,
     stream: *mut c_void,
 ) -> *mut WcharT {
-    if (n as usize) * 4 > buflen {
+    if buflen != usize::MAX && (n as usize) * 4 > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { fgetws(buf, n, stream) }
@@ -856,7 +862,7 @@ pub unsafe extern "C" fn __fgetws_unlocked_chk(
     n: c_int,
     stream: *mut c_void,
 ) -> *mut WcharT {
-    if (n as usize) * 4 > buflen {
+    if buflen != usize::MAX && (n as usize) * 4 > buflen {
         unsafe { __chk_fail() }
     }
     unsafe { fgetws(buf, n, stream) }
@@ -871,7 +877,7 @@ pub unsafe extern "C" fn __mbstowcs_chk(
     n: usize,
     destlen: usize,
 ) -> usize {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { mbstowcs(dest, src, n) }
@@ -884,7 +890,7 @@ pub unsafe extern "C" fn __wcstombs_chk(
     n: usize,
     destlen: usize,
 ) -> usize {
-    if n > destlen {
+    if destlen != usize::MAX && n > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { wcstombs(dest, src, n) }
@@ -898,7 +904,7 @@ pub unsafe extern "C" fn __mbsrtowcs_chk(
     ps: *mut c_void,
     destlen: usize,
 ) -> usize {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { mbsrtowcs(dest, src, n, ps) }
@@ -912,7 +918,7 @@ pub unsafe extern "C" fn __wcsrtombs_chk(
     ps: *mut c_void,
     destlen: usize,
 ) -> usize {
-    if n > destlen {
+    if destlen != usize::MAX && n > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { wcsrtombs(dest, src, n, ps) }
@@ -927,7 +933,7 @@ pub unsafe extern "C" fn __mbsnrtowcs_chk(
     ps: *mut c_void,
     destlen: usize,
 ) -> usize {
-    if n * 4 > destlen {
+    if destlen != usize::MAX && n * 4 > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { mbsnrtowcs(dest, src, nms, n, ps) }
@@ -942,7 +948,7 @@ pub unsafe extern "C" fn __wcsnrtombs_chk(
     ps: *mut c_void,
     destlen: usize,
 ) -> usize {
-    if n > destlen {
+    if destlen != usize::MAX && n > destlen {
         unsafe { __chk_fail() }
     }
     unsafe { wcsnrtombs(dest, src, nwc, n, ps) }
