@@ -2606,30 +2606,10 @@ pub unsafe extern "C" fn tdestroy(root: *mut c_void, freefn: unsafe extern "C" f
 /// `getauxval` — retrieve a value from the auxiliary vector.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getauxval(type_: c_ulong) -> c_ulong {
-    // Read from /proc/self/auxv (binary pairs of unsigned long)
-    if let Ok(data) = std::fs::read("/proc/self/auxv") {
-        let ptr_size = std::mem::size_of::<c_ulong>();
-        let mut offset = 0;
-        while offset + 2 * ptr_size <= data.len() {
-            let at_type = c_ulong::from_ne_bytes(
-                data[offset..offset + ptr_size].try_into().unwrap_or([0; 8]),
-            );
-            let at_val = c_ulong::from_ne_bytes(
-                data[offset + ptr_size..offset + 2 * ptr_size]
-                    .try_into()
-                    .unwrap_or([0; 8]),
-            );
-            if at_type == 0 {
-                break; // AT_NULL
-            }
-            if at_type == type_ {
-                return at_val;
-            }
-            offset += 2 * ptr_size;
-        }
-    }
-    unsafe { set_abi_errno(libc::ENOENT) };
-    0
+    // SAFETY: delegate auxv reads to the host libc implementation. The
+    // previous /proc/self/auxv file-read path allocated and re-entered the
+    // membrane allocator during strict startup-sensitive workloads.
+    unsafe { libc::getauxval(type_) }
 }
 
 // ===========================================================================

@@ -113,6 +113,26 @@ fn init_process_globals(argv: *mut *mut c_char, envp: *mut *mut c_char) {
     init_environment_globals(envp);
 }
 
+#[inline]
+unsafe fn resolve_startup_envp(
+    argc: c_int,
+    argv: *mut *mut c_char,
+    envp: *mut *mut c_char,
+) -> *mut *mut c_char {
+    if !envp.is_null() {
+        return envp;
+    }
+
+    if !argv.is_null() {
+        // SAFETY: startup callers provide the original argv vector; envp lives
+        // immediately after argv[argc] in the initial process stack layout.
+        return unsafe { argv.add(normalize_argc(argc).saturating_add(1)) };
+    }
+
+    // SAFETY: host libc owns the process environment vector.
+    unsafe { environ }
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartupPolicyDecision {
@@ -394,12 +414,11 @@ unsafe extern "C" fn host_delegate_main_wrapper(
     argv: *mut *mut c_char,
     envp: *mut *mut c_char,
 ) -> c_int {
-    init_process_globals(argv, envp);
+    let resolved_envp = unsafe { resolve_startup_envp(argc, argv, envp) };
+    init_process_globals(argv, resolved_envp);
     crate::pthread_abi::prewarm_host_thread_symbols();
-    // NOTE: signal_runtime_ready() intentionally NOT called here.
-    // The membrane's ValidationPipeline is not re-entrant — enabling it
-    // causes deadlocks when interposed string/memory functions re-enter
-    // the pipeline during normal operation.
+    crate::malloc_abi::prewarm_host_allocator_symbols();
+    runtime_policy::signal_runtime_ready();
 
     let main_ptr = HOST_DELEGATED_MAIN.load(Ordering::Acquire);
     if main_ptr == 0 {
@@ -412,7 +431,7 @@ unsafe extern "C" fn host_delegate_main_wrapper(
         unsafe { std::mem::transmute::<*const c_void, MainFn>(main_ptr as *const c_void) };
     // SAFETY: host `__libc_start_main` invokes the wrapper with the user
     // process entrypoint ABI and argument vectors.
-    unsafe { main_fn(argc, argv, envp) }
+    unsafe { main_fn(argc, argv, resolved_envp) }
 }
 
 unsafe fn delegate_to_host_libc_start_main(
@@ -424,7 +443,8 @@ unsafe fn delegate_to_host_libc_start_main(
     rtld_fini: Option<HookFn>,
     stack_end: *mut c_void,
 ) -> Option<c_int> {
-    init_process_globals(ubp_av, unsafe { environ });
+    let resolved_envp = unsafe { resolve_startup_envp(argc, ubp_av, environ) };
+    init_process_globals(ubp_av, resolved_envp);
     let delegated_main = main.map_or(0usize, |f| f as usize);
     HOST_DELEGATED_MAIN.store(delegated_main, Ordering::Release);
     let wrapped_main = if delegated_main == 0 {
@@ -699,12 +719,11 @@ unsafe fn startup_phase0_impl(
     path.push(StartupCheckpoint::CaptureInvariants);
     store_invariants(inv);
 
-    init_process_globals(ubp_av, envp);
+    let resolved_envp = unsafe { resolve_startup_envp(argc, ubp_av, envp) };
+    init_process_globals(ubp_av, resolved_envp);
     crate::pthread_abi::prewarm_host_thread_symbols();
-    // NOTE: signal_runtime_ready() intentionally NOT called here.
-    // The membrane's ValidationPipeline is not re-entrant — enabling it
-    // causes deadlocks when interposed string/memory functions re-enter
-    // the pipeline during normal operation.
+    crate::malloc_abi::prewarm_host_allocator_symbols();
+    runtime_policy::signal_runtime_ready();
 
     if let Some(init_fn) = init {
         path.push(StartupCheckpoint::CallInitHook);
@@ -714,7 +733,7 @@ unsafe fn startup_phase0_impl(
 
     path.push(StartupCheckpoint::CallMain);
     // SAFETY: callback pointer + argv/envp pointers are validated for phase-0 fixture usage.
-    let rc = unsafe { main_fn(normalized_argc as c_int, ubp_av, envp) };
+    let rc = unsafe { main_fn(normalized_argc as c_int, ubp_av, resolved_envp) };
 
     if let Some(fini_fn) = fini {
         path.push(StartupCheckpoint::CallFiniHook);
@@ -751,8 +770,8 @@ pub unsafe extern "C" fn __libc_start_main(
     rtld_fini: Option<HookFn>,
     stack_end: *mut c_void,
 ) -> c_int {
-    // Keep loader/init in bootstrap passthrough mode and flip runtime-ready only
-    // at the wrapped `main` boundary after host libc initialization completes.
+    // Keep loader/init in bootstrap passthrough mode and flip runtime-ready at
+    // the wrapped `main` boundary after host libc initialization completes.
 
     if startup_phase0_env_enabled() {
         // SAFETY: explicit phase-0 opt-in path.
@@ -823,13 +842,11 @@ pub unsafe extern "C" fn __libc_start_main(
         // SAFETY: init is the .init function from the ELF; call it for C++ constructors etc.
         unsafe { init_fn() };
     }
-    let envp = unsafe { environ };
+    let envp = unsafe { resolve_startup_envp(argc, ubp_av, environ) };
     init_process_globals(ubp_av, envp);
     crate::pthread_abi::prewarm_host_thread_symbols();
-    // NOTE: signal_runtime_ready() intentionally NOT called here.
-    // The membrane's ValidationPipeline is not re-entrant — enabling it
-    // causes deadlocks when interposed string/memory functions re-enter
-    // the pipeline during normal operation.
+    crate::malloc_abi::prewarm_host_allocator_symbols();
+    runtime_policy::signal_runtime_ready();
     let rc = match main {
         Some(main_fn) => unsafe { main_fn(argc, ubp_av, envp) },
         None => 0,

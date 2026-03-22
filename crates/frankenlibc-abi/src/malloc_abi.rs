@@ -23,28 +23,26 @@ use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
 use crate::errno_abi::set_abi_errno;
 use crate::runtime_policy;
 
-unsafe extern "C" {
-    #[link_name = "__libc_malloc@GLIBC_2.2.5"]
-    fn native_libc_malloc_sym(size: usize) -> *mut c_void;
-    #[link_name = "__libc_calloc@GLIBC_2.2.5"]
-    fn native_libc_calloc_sym(nmemb: usize, size: usize) -> *mut c_void;
-    #[link_name = "__libc_realloc@GLIBC_2.2.5"]
-    fn native_libc_realloc_sym(ptr: *mut c_void, size: usize) -> *mut c_void;
-    #[link_name = "__libc_free@GLIBC_2.2.5"]
-    fn native_libc_free_sym(ptr: *mut c_void);
-    #[link_name = "__libc_memalign@GLIBC_2.2.5"]
-    fn native_libc_memalign_sym(alignment: usize, size: usize) -> *mut c_void;
-}
+type HostMallocFn = unsafe extern "C" fn(usize) -> *mut c_void;
+type HostCallocFn = unsafe extern "C" fn(usize, usize) -> *mut c_void;
+type HostReallocFn = unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void;
+type HostFreeFn = unsafe extern "C" fn(*mut c_void);
+type HostMemalignFn = unsafe extern "C" fn(usize, usize) -> *mut c_void;
+
+static HOST_MALLOC_FN: OnceLock<usize> = OnceLock::new();
+static HOST_CALLOC_FN: OnceLock<usize> = OnceLock::new();
+static HOST_REALLOC_FN: OnceLock<usize> = OnceLock::new();
+static HOST_FREE_FN: OnceLock<usize> = OnceLock::new();
+static HOST_MEMALIGN_FN: OnceLock<usize> = OnceLock::new();
 
 // ---------------------------------------------------------------------------
 // Pre-TLS bootstrap bump allocator
 // ---------------------------------------------------------------------------
 // During early process startup, TLS is not initialized and the TLS-based
-// reentry guard in `malloc` returns None.  This causes `malloc` to call
-// `native_libc_malloc_sym` (linked to `__libc_malloc@GLIBC_2.2.5`).
-// However, our `glibc_internal_abi` exports an unversioned `__libc_malloc`
-// alias that the dynamic linker resolves first, creating infinite recursion:
-//   malloc → native_libc_malloc_sym → __libc_malloc → malloc → …
+// reentry guard in `malloc` returns None. The host allocator path therefore
+// must bypass our interposed exports and resolve the next libc implementation
+// directly. When that resolution is unavailable or re-enters during bootstrap,
+// we fall back to a small bump allocator to break recursive startup cycles.
 //
 // The bump allocator breaks this cycle.  When the atomic reentry guard
 // detects recursion, we satisfy the allocation from a small static buffer.
@@ -140,6 +138,99 @@ fn is_bump_ptr(ptr: *mut c_void) -> bool {
 }
 
 #[inline]
+unsafe fn resolve_host_allocator_symbol(name: &'static [u8]) -> *mut c_void {
+    let glibc_v225 = b"GLIBC_2.2.5\0";
+    let glibc_v234 = b"GLIBC_2.34\0";
+    // SAFETY: versioned lookup in the next object after this interposed library.
+    let mut ptr = unsafe {
+        crate::dlfcn_abi::dlvsym_next(
+            name.as_ptr().cast::<libc::c_char>(),
+            glibc_v225.as_ptr().cast::<libc::c_char>(),
+        )
+    };
+    if ptr.is_null() {
+        // SAFETY: modern glibc baseline fallback.
+        ptr = unsafe {
+            crate::dlfcn_abi::dlvsym_next(
+                name.as_ptr().cast::<libc::c_char>(),
+                glibc_v234.as_ptr().cast::<libc::c_char>(),
+            )
+        };
+    }
+    if ptr.is_null() {
+        // SAFETY: unversioned RTLD_NEXT fallback for environments without versioned exports.
+        ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, name.as_ptr().cast::<libc::c_char>()) };
+    }
+    ptr
+}
+
+#[inline]
+unsafe fn host_malloc_fn() -> Option<HostMallocFn> {
+    let ptr = *HOST_MALLOC_FN
+        .get_or_init(|| unsafe { resolve_host_allocator_symbol(b"malloc\0") as usize });
+    if ptr == 0 {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute::<usize, HostMallocFn>(ptr) })
+    }
+}
+
+#[inline]
+unsafe fn host_calloc_fn() -> Option<HostCallocFn> {
+    let ptr = *HOST_CALLOC_FN
+        .get_or_init(|| unsafe { resolve_host_allocator_symbol(b"calloc\0") as usize });
+    if ptr == 0 {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute::<usize, HostCallocFn>(ptr) })
+    }
+}
+
+#[inline]
+unsafe fn host_realloc_fn() -> Option<HostReallocFn> {
+    let ptr = *HOST_REALLOC_FN
+        .get_or_init(|| unsafe { resolve_host_allocator_symbol(b"realloc\0") as usize });
+    if ptr == 0 {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute::<usize, HostReallocFn>(ptr) })
+    }
+}
+
+#[inline]
+unsafe fn host_free_fn() -> Option<HostFreeFn> {
+    let ptr =
+        *HOST_FREE_FN.get_or_init(|| unsafe { resolve_host_allocator_symbol(b"free\0") as usize });
+    if ptr == 0 {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute::<usize, HostFreeFn>(ptr) })
+    }
+}
+
+#[inline]
+unsafe fn host_memalign_fn() -> Option<HostMemalignFn> {
+    let ptr = *HOST_MEMALIGN_FN
+        .get_or_init(|| unsafe { resolve_host_allocator_symbol(b"memalign\0") as usize });
+    if ptr == 0 {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute::<usize, HostMemalignFn>(ptr) })
+    }
+}
+
+pub(crate) fn prewarm_host_allocator_symbols() {
+    // SAFETY: idempotent symbol resolution against RTLD_NEXT.
+    unsafe {
+        let _ = host_malloc_fn();
+        let _ = host_calloc_fn();
+        let _ = host_realloc_fn();
+        let _ = host_free_fn();
+        let _ = host_memalign_fn();
+    }
+}
+
+#[inline]
 unsafe fn native_libc_malloc(size: usize) -> *mut c_void {
     if NATIVE_MALLOC_REENTRY
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -147,7 +238,10 @@ unsafe fn native_libc_malloc(size: usize) -> *mut c_void {
     {
         return unsafe { bump_alloc(size) };
     }
-    let result = unsafe { native_libc_malloc_sym(size) };
+    let result = match unsafe { host_malloc_fn() } {
+        Some(host_malloc) => unsafe { host_malloc(size) },
+        None => unsafe { bump_alloc(size) },
+    };
     NATIVE_MALLOC_REENTRY.store(false, Ordering::Release);
     result
 }
@@ -163,7 +257,10 @@ unsafe fn native_libc_calloc(nmemb: usize, size: usize) -> *mut c_void {
         // bump_alloc returns zeroed memory (static initializer).
         return ptr;
     }
-    let result = unsafe { native_libc_calloc_sym(nmemb, size) };
+    let result = match unsafe { host_calloc_fn() } {
+        Some(host_calloc) => unsafe { host_calloc(nmemb, size) },
+        None => unsafe { bump_alloc(nmemb.saturating_mul(size)) },
+    };
     NATIVE_CALLOC_REENTRY.store(false, Ordering::Release);
     result
 }
@@ -174,13 +271,12 @@ unsafe fn native_libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        let new_ptr = unsafe { bump_alloc(size) };
-        if !new_ptr.is_null() && !ptr.is_null() {
-            unsafe { std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), new_ptr.cast::<u8>(), size) };
-        }
-        return new_ptr;
+        return unsafe { bump_alloc(size) };
     }
-    let result = unsafe { native_libc_realloc_sym(ptr, size) };
+    let result = match unsafe { host_realloc_fn() } {
+        Some(host_realloc) => unsafe { host_realloc(ptr, size) },
+        None => unsafe { bump_alloc(size) },
+    };
     NATIVE_REALLOC_REENTRY.store(false, Ordering::Release);
     result
 }
@@ -196,7 +292,9 @@ unsafe fn native_libc_free(ptr: *mut c_void) {
     {
         return; // Reentrant free of non-bump ptr: no-op to avoid recursion.
     }
-    unsafe { native_libc_free_sym(ptr) };
+    if let Some(host_free) = unsafe { host_free_fn() } {
+        unsafe { host_free(ptr) };
+    }
     NATIVE_FREE_REENTRY.store(false, Ordering::Release);
 }
 
@@ -243,7 +341,10 @@ unsafe fn native_libc_memalign(alignment: usize, size: usize) -> *mut c_void {
         let aligned = (addr + alignment - 1) & !(alignment - 1);
         return aligned as *mut c_void;
     }
-    let result = unsafe { native_libc_memalign_sym(alignment, size) };
+    let result = match unsafe { host_memalign_fn() } {
+        Some(host_memalign) => unsafe { host_memalign(alignment, size) },
+        None => unsafe { bump_alloc(size + alignment.max(16)) },
+    };
     NATIVE_MEMALIGN_REENTRY.store(false, Ordering::Release);
     result
 }
