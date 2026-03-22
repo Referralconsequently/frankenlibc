@@ -1811,6 +1811,25 @@ pub unsafe extern "C" fn dirname(path: *mut std::ffi::c_char) -> *mut std::ffi::
 
 /// POSIX `realpath` — resolve a pathname to an absolute path.
 ///
+/// Small integer to ASCII in a fixed buffer. Returns number of bytes written.
+fn itoa_small(mut n: u32, buf: &mut [u8]) -> usize {
+    if n == 0 {
+        buf[0] = b'0';
+        return 1;
+    }
+    let mut tmp = [0u8; 10];
+    let mut i = 0;
+    while n > 0 {
+        tmp[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+        i += 1;
+    }
+    for j in 0..i {
+        buf[j] = tmp[i - 1 - j];
+    }
+    i
+}
+
 /// If `resolved_path` is null, allocates a buffer via malloc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn realpath(
@@ -1839,17 +1858,54 @@ pub unsafe extern "C" fn realpath(
     }
 
     // SAFETY: `path` is non-null and must point to a NUL-terminated C string by ABI contract.
-    let path_bytes = unsafe { std::ffi::CStr::from_ptr(path) }.to_bytes();
-    let canonical = match std::fs::canonicalize(std::ffi::OsStr::from_bytes(path_bytes)) {
-        Ok(p) => p,
-        Err(e) => {
-            unsafe { set_abi_errno(e.raw_os_error().unwrap_or(errno::ENOENT)) };
-            runtime_policy::observe(ApiFamily::IoFd, decision.profile, 16, true);
-            return std::ptr::null_mut();
-        }
-    };
+    // Resolve path using the raw readlink(/proc/self/fd/N) approach via open+readlink.
+    // Cannot use std::fs::canonicalize because it calls libc realpath — which is
+    // our own interposed symbol, causing infinite recursion.
+    let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
 
-    let out = canonical.as_os_str().as_bytes();
+    // Open the path with O_PATH (no actual I/O, just get an fd for the kernel path).
+    let fd = unsafe {
+        libc::syscall(
+            libc::SYS_openat as i64,
+            libc::AT_FDCWD,
+            path_cstr.as_ptr(),
+            libc::O_PATH | libc::O_CLOEXEC,
+            0,
+        ) as i32
+    };
+    if fd < 0 {
+        unsafe { set_abi_errno(errno::ENOENT) };
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 16, true);
+        return std::ptr::null_mut();
+    }
+
+    // Read the kernel-resolved canonical path via /proc/self/fd/N.
+    let mut proc_path = [0u8; 64];
+    let prefix = b"/proc/self/fd/";
+    proc_path[..prefix.len()].copy_from_slice(prefix);
+    let fd_str = itoa_small(fd as u32, &mut proc_path[prefix.len()..]);
+    let proc_len = prefix.len() + fd_str;
+    proc_path[proc_len] = 0;
+
+    let mut buf = [0u8; libc::PATH_MAX as usize];
+    let n = unsafe {
+        libc::syscall(
+            libc::SYS_readlinkat as i64,
+            libc::AT_FDCWD,
+            proc_path.as_ptr(),
+            buf.as_mut_ptr(),
+            buf.len() - 1,
+        ) as isize
+    };
+    unsafe { libc::syscall(libc::SYS_close as i64, fd) };
+
+    if n <= 0 {
+        unsafe { set_abi_errno(errno::ENOENT) };
+        runtime_policy::observe(ApiFamily::IoFd, decision.profile, 16, true);
+        return std::ptr::null_mut();
+    }
+
+    let out = &buf[..n as usize];
     if out.contains(&0) {
         unsafe { set_abi_errno(errno::EINVAL) };
         runtime_policy::observe(ApiFamily::IoFd, decision.profile, 16, true);

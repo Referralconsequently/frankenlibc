@@ -52,29 +52,95 @@ fn enter_string_membrane_guard() -> Option<StringMembraneGuard> {
 
 #[inline(never)]
 unsafe fn raw_memcpy_bytes(dst: *mut u8, src: *const u8, n: usize) {
-    // Use std::ptr::copy_nonoverlapping which compiles to inline `rep movsb` on x86_64.
-    // This avoids calling dlvsym (which goes through our interposed dlsym/strlen
-    // and triggers a PageOracle RwLock deadlock during membrane init).
-    // SAFETY: caller guarantees dst/src are valid and non-overlapping for n bytes.
-    unsafe { std::ptr::copy_nonoverlapping(src, dst, n) };
+    // Byte-by-byte copy using volatile operations to prevent the compiler
+    // from optimizing this into a memcpy call (which would recurse through
+    // our interposed memcpy symbol).  Also avoids dlvsym during init.
+    // SAFETY: caller guarantees dst/src are valid for n bytes.
+    unsafe {
+        let mut i = 0usize;
+        while i < n {
+            std::ptr::write_volatile(dst.add(i), std::ptr::read_volatile(src.add(i)));
+            i += 1;
+        }
+    }
 }
 
 #[inline(never)]
 unsafe fn raw_memmove_bytes(dst: *mut u8, src: *const u8, n: usize) {
-    // Use std::ptr::copy which handles overlapping regions correctly.
-    // This avoids calling dlvsym (which goes through our interposed dlsym/strlen
-    // and triggers a PageOracle RwLock deadlock during membrane init).
+    // Byte-by-byte move using volatile operations with overlap awareness.
+    // Cannot use std::ptr::copy (compiles to memmove → our interposed symbol).
     // SAFETY: caller guarantees dst/src are valid for n bytes (may overlap).
-    unsafe { std::ptr::copy(src, dst, n) };
+    unsafe {
+        let dst_addr = dst as usize;
+        let src_addr = src as usize;
+        if dst_addr <= src_addr || dst_addr >= src_addr.saturating_add(n) {
+            // Non-overlapping or dst < src: forward copy
+            let mut i = 0usize;
+            while i < n {
+                std::ptr::write_volatile(dst.add(i), std::ptr::read_volatile(src.add(i)));
+                i += 1;
+            }
+        } else {
+            // Overlapping with dst > src: backward copy
+            let mut i = n;
+            while i > 0 {
+                i -= 1;
+                std::ptr::write_volatile(dst.add(i), std::ptr::read_volatile(src.add(i)));
+            }
+        }
+    }
+}
+
+/// Raw strstr without membrane validation. Used during early startup and
+/// when called from within the membrane/allocator to prevent re-entrant deadlock.
+unsafe fn raw_strstr(haystack: *const c_char, needle: *const c_char) -> *mut c_char {
+    if haystack.is_null() {
+        return std::ptr::null_mut();
+    }
+    if needle.is_null() {
+        return haystack as *mut c_char;
+    }
+    // SAFETY: both pointers are valid NUL-terminated strings.
+    unsafe {
+        let needle_first = *needle;
+        if needle_first == 0 {
+            return haystack as *mut c_char;
+        }
+        let mut h = haystack;
+        while *h != 0 {
+            if *h == needle_first {
+                let mut hi = h;
+                let mut ni = needle;
+                loop {
+                    ni = ni.add(1);
+                    if *ni == 0 {
+                        return h as *mut c_char; // found
+                    }
+                    hi = hi.add(1);
+                    if *hi == 0 || *hi != *ni {
+                        break;
+                    }
+                }
+            }
+            h = h.add(1);
+        }
+        std::ptr::null_mut()
+    }
 }
 
 #[inline(never)]
 unsafe fn raw_memset_bytes(dst: *mut u8, value: u8, n: usize) {
-    // Use std::ptr::write_bytes which compiles to inline `rep stosb` on x86_64.
-    // This avoids calling dlvsym (which goes through our interposed dlsym/strlen
-    // and triggers a PageOracle RwLock deadlock during membrane init).
+    // Byte-by-byte fill using volatile writes to prevent the compiler
+    // from optimizing this into a memset call (which would recurse through
+    // our interposed memset symbol).
     // SAFETY: caller guarantees dst is valid for n bytes.
-    unsafe { std::ptr::write_bytes(dst, value, n) };
+    unsafe {
+        let mut i = 0usize;
+        while i < n {
+            std::ptr::write_volatile(dst.add(i), value);
+            i += 1;
+        }
+    }
 }
 
 fn maybe_clamp_copy_len(
@@ -199,6 +265,12 @@ pub unsafe extern "C" fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) 
         return std::ptr::null_mut();
     }
 
+    // Fast path during early startup: skip membrane entirely.
+    if !runtime_policy::is_runtime_ready() {
+        unsafe { raw_memcpy_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
+        return dst;
+    }
+
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memcpy semantics.
         unsafe {
@@ -291,6 +363,12 @@ pub unsafe extern "C" fn memmove(dst: *mut c_void, src: *const c_void, n: usize)
         return std::ptr::null_mut();
     }
 
+    // Fast path during early startup: skip membrane entirely.
+    if !runtime_policy::is_runtime_ready() {
+        unsafe { raw_memmove_bytes(dst.cast::<u8>(), src.cast::<u8>(), n) };
+        return dst;
+    }
+
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
         // SAFETY: reentrant fallback avoids runtime-policy recursion and mirrors memmove semantics.
         unsafe {
@@ -381,6 +459,12 @@ pub unsafe extern "C" fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_
     }
     if dst.is_null() {
         return std::ptr::null_mut();
+    }
+
+    // Fast path during early startup: skip membrane entirely.
+    if !runtime_policy::is_runtime_ready() {
+        unsafe { raw_memset_bytes(dst.cast::<u8>(), c as u8, n) };
+        return dst;
     }
 
     let Some(_membrane_guard) = enter_string_membrane_guard() else {
@@ -780,6 +864,19 @@ pub unsafe extern "C" fn memrchr(s: *const c_void, c: c_int, n: usize) -> *mut c
 pub unsafe extern "C" fn strlen(s: *const c_char) -> usize {
     if s.is_null() {
         return 0;
+    }
+
+    // Fast path during early startup: skip membrane validation entirely.
+    // The membrane's ValidationPipeline uses PageOracle (RwLock) and TLS,
+    // which deadlock during init when called from dlvsym → strlen chains.
+    if !runtime_policy::is_runtime_ready() {
+        unsafe {
+            let mut len = 0usize;
+            while *s.add(len) != 0 {
+                len += 1;
+            }
+            return len;
+        }
     }
 
     let rem = known_remaining(s as usize);
@@ -1939,6 +2036,12 @@ pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
 /// Caller must ensure both `haystack` and `needle` are valid null-terminated strings.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn strstr(haystack: *const c_char, needle: *const c_char) -> *mut c_char {
+    // Fast path: skip membrane during early startup or when called from
+    // within the membrane/allocator (prevents re-entrant deadlock).
+    if !runtime_policy::is_runtime_ready() {
+        return unsafe { raw_strstr(haystack, needle) };
+    }
+
     let (aligned, recent_page, ordering) = stage_context_two(haystack as usize, needle as usize);
     if haystack.is_null() {
         record_string_stage_outcome(

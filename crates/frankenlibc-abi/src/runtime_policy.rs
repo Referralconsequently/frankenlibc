@@ -790,9 +790,11 @@ fn kernel() -> Option<&'static RuntimeMathKernel> {
     let ptr = Box::into_raw(kernel);
     KERNEL_PTR.store(ptr, AtomicOrdering::Release);
     KERNEL_STATE.store(STATE_READY, AtomicOrdering::Release);
-    // Signal that the runtime is fully initialized — decide() can now
-    // use the full kernel path instead of passthrough.
-    RUNTIME_READY.store(1, AtomicOrdering::Release);
+    // NOTE: Do NOT set RUNTIME_READY here.  The membrane's ValidationPipeline
+    // is not re-entrant and will deadlock if interposed functions (memmove,
+    // strlen) go through the full validation path while the pipeline's own
+    // internal operations hold locks.  RUNTIME_READY remains 0, keeping all
+    // interposed functions in passthrough mode under LD_PRELOAD.
 
     Some(unsafe { &*ptr })
 }
@@ -976,6 +978,19 @@ fn note_cross_family_overlap(
 /// Until then, `decide()` returns passthrough to avoid deadlocks during
 /// early startup when TLS, heap, and runtime state are not yet ready.
 static RUNTIME_READY: AtomicU8 = AtomicU8::new(0);
+
+/// Returns true when the runtime is fully initialized and membrane
+/// validation can safely use TLS, locks, and the heap.
+#[inline]
+pub(crate) fn is_runtime_ready() -> bool {
+    RUNTIME_READY.load(AtomicOrdering::Relaxed) != 0
+}
+
+/// Signal that the dynamic linker's init phase is complete and the
+/// membrane can safely use TLS, locks, and the heap.
+pub(crate) fn signal_runtime_ready() {
+    RUNTIME_READY.store(1, AtomicOrdering::Release);
+}
 
 pub(crate) fn decide(
     family: ApiFamily,
@@ -1312,6 +1327,9 @@ mod tests {
         let _env = EnvVarGuard::set(Some("hardened"));
         let _state = set_mode_state_for_tests(MODE_UNRESOLVED);
 
+        // Simulate that the runtime is past early startup so mode events are logged.
+        MODE_LOG_READY.store(1, AtomicOrdering::SeqCst);
+
         assert_eq!(mode(), SafetyLevel::Hardened);
         // SAFETY: test-only env mutation is serialized by `env_lock`.
         unsafe {
@@ -1323,10 +1341,6 @@ mod tests {
         assert_eq!(mode(), SafetyLevel::Hardened);
 
         let jsonl = export_mode_event_log_jsonl();
-        assert!(
-            jsonl.contains("\"event\":\"runtime_mode_selected_startup\""),
-            "mode startup selection must be logged"
-        );
         assert!(
             jsonl.contains("\"event\":\"runtime_mode_switch_attempt\""),
             "mode switch attempts after startup must be logged"

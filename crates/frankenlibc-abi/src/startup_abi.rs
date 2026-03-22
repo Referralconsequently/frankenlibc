@@ -682,6 +682,18 @@ pub unsafe extern "C" fn __libc_start_main(
     rtld_fini: Option<HookFn>,
     stack_end: *mut c_void,
 ) -> c_int {
+    // NOTE: We intentionally do NOT call signal_runtime_ready() here.
+    // The membrane's ValidationPipeline is not re-entrant: its internal
+    // operations (note_check_order_outcome, PageOracle::insert) call
+    // interposed functions (memmove, strlen) which re-enter the pipeline
+    // and deadlock on the RuntimeMathKernel mutex or PageOracle RwLock.
+    //
+    // With RUNTIME_READY=0, all interposed functions use raw fallback paths
+    // that bypass the membrane entirely.  The membrane validation is still
+    // available via the harness and test infrastructure (which call the
+    // pipeline APIs directly), but LD_PRELOAD interposition runs in
+    // passthrough mode until the re-entrancy issue is architecturally resolved.
+
     if startup_phase0_env_enabled() {
         // SAFETY: explicit phase-0 opt-in path.
         let phase0_rc =
@@ -744,18 +756,25 @@ pub unsafe extern "C" fn __libc_start_main(
         return rc;
     }
 
-    // SAFETY: writes TLS errno.
-    unsafe { set_abi_errno(libc::ENOSYS) };
-    store_policy_snapshot(
-        StartupPolicyDecision::Deny,
-        StartupInvariantStatus::Invalid,
-        StartupFailureReason::HostDelegateUnavailable,
-        SecureModeState::Unknown,
-        true,
-        StartupCheckpoint::FallbackHost,
-        0,
-    );
-    -1
+    // Host delegation failed (dlvsym couldn't find host __libc_start_main).
+    // Fall back to calling main() directly with minimal init.
+    // This is sufficient for most LD_PRELOAD scenarios.
+    if let Some(init_fn) = init {
+        // SAFETY: init is the .init function from the ELF; call it for C++ constructors etc.
+        unsafe { init_fn() };
+    }
+    let rc = match main {
+        Some(main_fn) => unsafe { main_fn(argc, ubp_av, std::ptr::null_mut()) },
+        None => 0,
+    };
+    if let Some(fini_fn) = fini {
+        // SAFETY: fini is the .fini function.
+        unsafe { fini_fn() };
+    }
+    // __libc_start_main must NEVER return to _start — the crt0 stub
+    // assumes it diverges.
+    // SAFETY: raw syscall exit after main() completes.
+    frankenlibc_core::syscall::sys_exit_group(rc)
 }
 
 /// Test-hook alias that always executes the phase-0 startup path.

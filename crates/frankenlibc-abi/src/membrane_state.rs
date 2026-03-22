@@ -24,6 +24,15 @@ static PIPELINE_PTR: AtomicPtr<ValidationPipeline> = AtomicPtr::new(std::ptr::nu
 /// Returns `None` during initialization (reentrant guard) to allow
 /// ABI functions to fall through to raw C behavior under LD_PRELOAD.
 pub(crate) fn try_global_pipeline() -> Option<&'static ValidationPipeline> {
+    // During early startup (before RuntimeMathKernel is ready), disable the
+    // membrane entirely.  The dynamic linker's constructor phase (_dl_init)
+    // calls our interposed functions (strstr, memmove, strlen, etc.) before
+    // TLS and locks are fully initialized, causing deadlocks in the
+    // ValidationPipeline's PageOracle RwLock and RuntimeMathKernel Mutex.
+    if !crate::runtime_policy::is_runtime_ready() {
+        return None;
+    }
+
     let state = PIPELINE_STATE.load(Ordering::Acquire);
 
     if state == STATE_READY {

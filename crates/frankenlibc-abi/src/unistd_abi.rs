@@ -94,6 +94,11 @@ pub unsafe extern "C" fn read(fd: c_int, buf: *mut c_void, count: usize) -> libc
         return -1;
     }
 
+    // Fast path during early startup: bypass membrane, do raw syscall.
+    if !runtime_policy::is_runtime_ready() {
+        return unsafe { sys_read_fd(fd, buf, count) };
+    }
+
     let (mode, decision) = runtime_policy::decide(
         ApiFamily::Stdio,
         buf as usize,
@@ -138,6 +143,11 @@ pub unsafe extern "C" fn read(fd: c_int, buf: *mut c_void, count: usize) -> libc
 pub unsafe extern "C" fn write(fd: c_int, buf: *const c_void, count: usize) -> libc::ssize_t {
     if buf.is_null() && count > 0 {
         return -1;
+    }
+
+    // Fast path during early startup: bypass membrane, do raw syscall.
+    if !runtime_policy::is_runtime_ready() {
+        return unsafe { sys_write_fd(fd, buf, count) };
     }
 
     let (mode, decision) = runtime_policy::decide(
@@ -5039,7 +5049,20 @@ pub unsafe extern "C" fn forkpty(
         return -1;
     }
 
+    crate::pthread_abi::run_atfork_prepare();
+    let _pipeline_guard = crate::membrane_state::try_global_pipeline()
+        .map(|pipeline| pipeline.atfork_prepare());
+
     let pid = unsafe { libc::syscall(libc::SYS_clone, libc::SIGCHLD as i64, 0i64) } as libc::pid_t;
+    
+    drop(_pipeline_guard);
+
+    if pid == 0 {
+        crate::pthread_abi::run_atfork_child();
+    } else if pid > 0 {
+        crate::pthread_abi::run_atfork_parent();
+    }
+
     if pid < 0 {
         unsafe {
             libc::syscall(libc::SYS_close, master as i64);
@@ -14319,7 +14342,13 @@ pub unsafe extern "C" fn pkey_set(pkey: c_int, rights: c_int) -> c_int {
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn _Fork() -> c_int {
     // _Fork is async-signal-safe fork (C23), no atfork handlers
+    let _pipeline_guard = crate::membrane_state::try_global_pipeline()
+        .map(|pipeline| pipeline.atfork_prepare());
+
     let ret = unsafe { libc::syscall(libc::SYS_clone, libc::SIGCHLD, 0, 0, 0, 0) };
+    
+    drop(_pipeline_guard);
+    
     if ret < 0 { -1 } else { ret as c_int }
 }
 
