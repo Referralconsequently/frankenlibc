@@ -27,6 +27,7 @@ use crate::tls_cache::{CachedValidation, with_tls_cache};
 use crate::util::now_utc_iso_like;
 use parking_lot::Mutex;
 use serde::Serialize;
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -263,6 +264,29 @@ thread_local! {
     /// collector remains alive as long as the handle is cached, preventing
     /// Use-After-Free if the original ValidationPipeline is dropped.
     static EBR_HANDLE: std::cell::RefCell<Option<(std::sync::Arc<crate::ebr::QuarantineEbr>, crate::ebr::EbrHandle<'static>)>> = const { std::cell::RefCell::new(None) };
+    static VALIDATION_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+struct ValidationExecutionGuard;
+
+impl Drop for ValidationExecutionGuard {
+    fn drop(&mut self) {
+        let _ = VALIDATION_DEPTH.try_with(|depth| {
+            depth.set(depth.get().saturating_sub(1));
+        });
+    }
+}
+
+fn enter_validation_execution_context() -> ValidationExecutionGuard {
+    let _ = VALIDATION_DEPTH.try_with(|depth| {
+        depth.set(depth.get().saturating_add(1));
+    });
+    ValidationExecutionGuard
+}
+
+#[must_use]
+pub fn in_validation_context() -> bool {
+    VALIDATION_DEPTH.try_with(|depth| depth.get() > 0).unwrap_or(false)
 }
 
 impl ValidationPipeline {
@@ -610,6 +634,7 @@ impl ValidationPipeline {
         addr: usize,
         security_context: ValidationSecurityContext,
     ) -> ValidationOutcome {
+        let _validation_context = enter_validation_execution_context();
         let _guard = self.pin_epoch();
         let metrics = global_metrics();
         MembraneMetrics::inc(&metrics.validations);

@@ -34,6 +34,7 @@ fn enter_string_membrane_guard() -> Option<StringMembraneGuard> {
     if runtime_policy::in_policy_reentry_context()
         || crate::malloc_abi::in_allocator_reentry_context()
         || crate::pthread_abi::in_threading_policy_context()
+        || frankenlibc_membrane::ptr_validator::in_validation_context()
     {
         return None;
     }
