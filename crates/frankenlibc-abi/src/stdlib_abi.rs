@@ -2606,10 +2606,36 @@ pub unsafe extern "C" fn tdestroy(root: *mut c_void, freefn: unsafe extern "C" f
 /// `getauxval` — retrieve a value from the auxiliary vector.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getauxval(type_: c_ulong) -> c_ulong {
-    // SAFETY: delegate auxv reads to the host libc implementation. The
-    // previous /proc/self/auxv file-read path allocated and re-entered the
-    // membrane allocator during strict startup-sensitive workloads.
-    unsafe { libc::getauxval(type_) }
+    // Read from /proc/self/auxv using raw syscalls to avoid recursion
+    // (libc::getauxval goes through our interposed getauxval).
+    let fd = unsafe {
+        libc::syscall(libc::SYS_openat, libc::AT_FDCWD, c"/proc/self/auxv".as_ptr(), libc::O_RDONLY, 0)
+    } as c_int;
+    if fd < 0 {
+        unsafe { set_abi_errno(libc::ENOENT) };
+        return 0;
+    }
+    // auxv is pairs of (type: ulong, value: ulong)
+    let entry_size = 2 * std::mem::size_of::<c_ulong>();
+    let mut buf = [0u8; 4096];
+    let n = unsafe { libc::syscall(libc::SYS_read, fd, buf.as_mut_ptr(), buf.len()) } as isize;
+    unsafe { libc::syscall(libc::SYS_close, fd) };
+    if n <= 0 {
+        return 0;
+    }
+    let entries = n as usize / entry_size;
+    for i in 0..entries {
+        let offset = i * entry_size;
+        let at = c_ulong::from_ne_bytes(buf[offset..offset + 8].try_into().unwrap_or([0; 8]));
+        let av = c_ulong::from_ne_bytes(buf[offset + 8..offset + 16].try_into().unwrap_or([0; 8]));
+        if at == type_ {
+            return av;
+        }
+        if at == 0 {
+            break; // AT_NULL terminates
+        }
+    }
+    0
 }
 
 // ===========================================================================

@@ -575,8 +575,10 @@ thread_local! {
     static ALLOC_STATS_SLOT_INDEX: Cell<Option<usize>> = const { Cell::new(None) };
 }
 
-fn global_alloc_stats() -> &'static FlatCombiningStats {
-    GLOBAL_ALLOC_STATS.get_or_init(FlatCombiningStats::new)
+fn global_alloc_stats() -> Option<&'static FlatCombiningStats> {
+    // Use get() not get_or_init() — OnceLock futex deadlocks during early init.
+    // Stats are populated after prewarm. Before that, returns None (stats skipped).
+    GLOBAL_ALLOC_STATS.get()
 }
 
 #[inline]
@@ -589,7 +591,9 @@ fn record_alloc_stats(size: usize) {
     if size == 0 {
         return;
     }
-    global_alloc_stats().record_alloc(size, stats_bin_for_size(size));
+    if let Some(stats) = global_alloc_stats() {
+        stats.record_alloc(size, stats_bin_for_size(size));
+    }
 }
 
 #[inline]
@@ -597,12 +601,16 @@ fn record_free_stats(size: usize) {
     if size == 0 {
         return;
     }
-    global_alloc_stats().record_free(size, stats_bin_for_size(size));
+    if let Some(stats) = global_alloc_stats() {
+        stats.record_free(size, stats_bin_for_size(size));
+    }
 }
 
 #[inline]
 fn snapshot_alloc_stats() -> MallocStatsSnapshot {
-    global_alloc_stats().snapshot()
+    global_alloc_stats()
+        .map(|s| s.snapshot())
+        .unwrap_or_default()
 }
 
 // Native-fallback allocation tracking.

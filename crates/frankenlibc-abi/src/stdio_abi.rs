@@ -245,8 +245,27 @@ impl StreamRegistry {
 }
 
 fn registry() -> &'static Mutex<StreamRegistry> {
-    static REG: OnceLock<Mutex<StreamRegistry>> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(StreamRegistry::new()))
+    use std::sync::atomic::{AtomicPtr, Ordering};
+    static PTR: AtomicPtr<Mutex<StreamRegistry>> = AtomicPtr::new(std::ptr::null_mut());
+    static INIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let p = PTR.load(Ordering::Acquire);
+    if !p.is_null() {
+        return unsafe { &*p };
+    }
+    // First call — initialize without futex.
+    if INIT.compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+        let reg = Box::new(Mutex::new(StreamRegistry::new()));
+        PTR.store(Box::into_raw(reg), Ordering::Release);
+        return unsafe { &*PTR.load(Ordering::Acquire) };
+    }
+    // Another thread is initializing — spin wait (no futex).
+    loop {
+        let p = PTR.load(Ordering::Acquire);
+        if !p.is_null() {
+            return unsafe { &*p };
+        }
+        std::hint::spin_loop();
+    }
 }
 
 fn alloc_stream_id() -> usize {
