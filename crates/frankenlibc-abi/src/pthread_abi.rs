@@ -11,7 +11,7 @@ use std::ffi::{CStr, c_int, c_void};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, OnceLock};
 
 use frankenlibc_core::pthread::tls::{
     PthreadKey, pthread_key_create as core_pthread_key_create,
@@ -116,6 +116,12 @@ static CANCEL_PENDING_REGISTRY: LazyLock<Mutex<HashMap<usize, bool>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static HOST_SYMBOL_CACHE: LazyLock<Mutex<HashMap<&'static [u8], usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static HOST_PTHREAD_KEY_CREATE_PTR: OnceLock<usize> = OnceLock::new();
+static HOST_PTHREAD_KEY_DELETE_PTR: OnceLock<usize> = OnceLock::new();
+#[cfg(target_arch = "x86_64")]
+static HOST_PTHREAD_GETSPECIFIC_PTR: OnceLock<usize> = OnceLock::new();
+#[cfg(target_arch = "x86_64")]
+static HOST_PTHREAD_SETSPECIFIC_PTR: OnceLock<usize> = OnceLock::new();
 
 thread_local! {
     static THREADING_POLICY_DEPTH: Cell<u32> = const { Cell::new(0) };
@@ -178,6 +184,53 @@ unsafe fn resolve_host_symbol(name: &'static [u8]) -> *mut c_void {
     resolved
 }
 
+unsafe fn resolve_host_symbol_nocache(name: &'static [u8]) -> *mut c_void {
+    let glibc_v225 = b"GLIBC_2.2.5\0";
+    let glibc_v232 = b"GLIBC_2.3.2\0";
+    let glibc_v34 = b"GLIBC_2.34\0";
+    // SAFETY: versioned lookup in next object after this interposed library.
+    let mut ptr = unsafe {
+        crate::dlfcn_abi::dlvsym_next(
+            name.as_ptr().cast::<libc::c_char>(),
+            glibc_v34.as_ptr().cast::<libc::c_char>(),
+        )
+    };
+    if ptr.is_null() {
+        // SAFETY: older pthread/libc baseline.
+        ptr = unsafe {
+            crate::dlfcn_abi::dlvsym_next(
+                name.as_ptr().cast::<libc::c_char>(),
+                glibc_v225.as_ptr().cast::<libc::c_char>(),
+            )
+        };
+    }
+    if ptr.is_null() {
+        // SAFETY: common intermediary pthread baseline.
+        ptr = unsafe {
+            crate::dlfcn_abi::dlvsym_next(
+                name.as_ptr().cast::<libc::c_char>(),
+                glibc_v232.as_ptr().cast::<libc::c_char>(),
+            )
+        };
+    }
+    if ptr.is_null() {
+        // SAFETY: final RTLD_NEXT fallback.
+        ptr = unsafe { libc::dlsym(libc::RTLD_NEXT, name.as_ptr().cast::<libc::c_char>()) };
+    }
+    ptr
+}
+
+unsafe fn resolve_host_symbol_with_aliases(names: &[&'static [u8]]) -> *mut c_void {
+    for name in names {
+        // SAFETY: each symbol name is a static NUL-terminated C string.
+        let ptr = unsafe { resolve_host_symbol_nocache(name) };
+        if !ptr.is_null() {
+            return ptr;
+        }
+    }
+    std::ptr::null_mut()
+}
+
 unsafe fn host_pthread_create_fn() -> Option<HostPthreadCreateFn> {
     let ptr = unsafe { resolve_host_symbol(b"pthread_create\0") };
     if ptr.is_null() {
@@ -229,7 +282,10 @@ unsafe fn host_pthread_equal_fn() -> Option<HostPthreadEqualFn> {
 }
 
 unsafe fn host_pthread_key_create_fn() -> Option<HostPthreadKeyCreateFn> {
-    let ptr = unsafe { resolve_host_symbol(b"pthread_key_create\0") };
+    let ptr = *HOST_PTHREAD_KEY_CREATE_PTR.get_or_init(|| unsafe {
+        resolve_host_symbol_with_aliases(&[b"pthread_key_create\0", b"__pthread_key_create\0"])
+            as usize
+    }) as *mut c_void;
     if ptr.is_null() {
         None
     } else {
@@ -239,7 +295,10 @@ unsafe fn host_pthread_key_create_fn() -> Option<HostPthreadKeyCreateFn> {
 }
 
 unsafe fn host_pthread_key_delete_fn() -> Option<HostPthreadKeyDeleteFn> {
-    let ptr = unsafe { resolve_host_symbol(b"pthread_key_delete\0") };
+    let ptr = *HOST_PTHREAD_KEY_DELETE_PTR.get_or_init(|| unsafe {
+        resolve_host_symbol_with_aliases(&[b"pthread_key_delete\0", b"__pthread_key_delete\0"])
+            as usize
+    }) as *mut c_void;
     if ptr.is_null() {
         None
     } else {
@@ -250,7 +309,10 @@ unsafe fn host_pthread_key_delete_fn() -> Option<HostPthreadKeyDeleteFn> {
 
 #[cfg(target_arch = "x86_64")]
 unsafe fn host_pthread_getspecific_fn() -> Option<HostPthreadGetspecificFn> {
-    let ptr = unsafe { resolve_host_symbol(b"pthread_getspecific\0") };
+    let ptr = *HOST_PTHREAD_GETSPECIFIC_PTR.get_or_init(|| unsafe {
+        resolve_host_symbol_with_aliases(&[b"pthread_getspecific\0", b"__pthread_getspecific\0"])
+            as usize
+    }) as *mut c_void;
     if ptr.is_null() {
         None
     } else {
@@ -261,7 +323,10 @@ unsafe fn host_pthread_getspecific_fn() -> Option<HostPthreadGetspecificFn> {
 
 #[cfg(target_arch = "x86_64")]
 unsafe fn host_pthread_setspecific_fn() -> Option<HostPthreadSetspecificFn> {
-    let ptr = unsafe { resolve_host_symbol(b"pthread_setspecific\0") };
+    let ptr = *HOST_PTHREAD_SETSPECIFIC_PTR.get_or_init(|| unsafe {
+        resolve_host_symbol_with_aliases(&[b"pthread_setspecific\0", b"__pthread_setspecific\0"])
+            as usize
+    }) as *mut c_void;
     if ptr.is_null() {
         None
     } else {
@@ -2072,11 +2137,17 @@ pub unsafe extern "C" fn pthread_key_create(
     if key.is_null() {
         return libc::EINVAL;
     }
+    let sensitive_context = runtime_policy::bootstrap_passthrough_active()
+        || crate::malloc_abi::in_allocator_reentry_context()
+        || frankenlibc_membrane::ptr_validator::in_validation_context();
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_key_create) = unsafe { host_pthread_key_create_fn() } {
             // SAFETY: direct call through resolved host symbol.
             return unsafe { host_key_create(key, destructor) };
+        }
+        if sensitive_context {
+            return libc::EAGAIN;
         }
     }
     let mut internal_key = PthreadKey::default();
@@ -2092,11 +2163,17 @@ pub unsafe extern "C" fn pthread_key_create(
 /// POSIX `pthread_key_delete`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_key_delete(key: libc::pthread_key_t) -> c_int {
+    let sensitive_context = runtime_policy::bootstrap_passthrough_active()
+        || crate::malloc_abi::in_allocator_reentry_context()
+        || frankenlibc_membrane::ptr_validator::in_validation_context();
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_key_delete) = unsafe { host_pthread_key_delete_fn() } {
             // SAFETY: direct call through resolved host symbol.
             return unsafe { host_key_delete(key) };
+        }
+        if sensitive_context {
+            return libc::EINVAL;
         }
     }
     let internal_key = PthreadKey { id: key };
@@ -2107,11 +2184,17 @@ pub unsafe extern "C" fn pthread_key_delete(key: libc::pthread_key_t) -> c_int {
 #[cfg(target_arch = "x86_64")]
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_getspecific(key: libc::pthread_key_t) -> *mut c_void {
+    let sensitive_context = runtime_policy::bootstrap_passthrough_active()
+        || crate::malloc_abi::in_allocator_reentry_context()
+        || frankenlibc_membrane::ptr_validator::in_validation_context();
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_getspecific) = unsafe { host_pthread_getspecific_fn() } {
             // SAFETY: direct call through resolved host symbol.
             return unsafe { host_getspecific(key) };
+        }
+        if sensitive_context {
+            return std::ptr::null_mut();
         }
     }
     let internal_key = PthreadKey { id: key };
@@ -2125,11 +2208,17 @@ pub unsafe extern "C" fn pthread_setspecific(
     key: libc::pthread_key_t,
     value: *const c_void,
 ) -> c_int {
+    let sensitive_context = runtime_policy::bootstrap_passthrough_active()
+        || crate::malloc_abi::in_allocator_reentry_context()
+        || frankenlibc_membrane::ptr_validator::in_validation_context();
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_setspecific) = unsafe { host_pthread_setspecific_fn() } {
             // SAFETY: direct call through resolved host symbol.
             return unsafe { host_setspecific(key, value) };
+        }
+        if sensitive_context {
+            return libc::EINVAL;
         }
     }
     let internal_key = PthreadKey { id: key };
