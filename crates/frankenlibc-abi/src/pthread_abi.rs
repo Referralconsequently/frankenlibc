@@ -13,7 +13,9 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock};
 
-use frankenlibc_core::elf::ElfLoader;
+use frankenlibc_core::elf::Elf64Header;
+use frankenlibc_core::elf::section::{SectionType, parse_section_headers};
+use frankenlibc_core::elf::symbol::{get_string, parse_symbols};
 use frankenlibc_core::pthread::tls::{
     PthreadKey, pthread_key_create as core_pthread_key_create,
     pthread_key_delete as core_pthread_key_delete,
@@ -220,9 +222,19 @@ fn resolve_loaded_libc_symbol_direct(symbol: &'static str) -> Option<usize> {
 
     let (base, path) = loaded_libc_base_and_path()?;
     let data = std::fs::read(path).ok()?;
-    let object = ElfLoader::new(0).parse(&data).ok()?;
-    let symbol_addr = object
-        .lookup_symbol(symbol)
+    let header = Elf64Header::parse(&data).ok()?;
+    let sections = parse_section_headers(&data, header.e_shoff, header.e_shentsize, header.e_shnum).ok()?;
+    let dynsym_section = sections
+        .iter()
+        .find(|section| matches!(section.sh_type, SectionType::Dynsym))?;
+    let dynstr_section = sections.get(dynsym_section.sh_link as usize)?;
+    let dynstr_start = dynstr_section.sh_offset as usize;
+    let dynstr_end = dynstr_start.checked_add(dynstr_section.sh_size as usize)?;
+    let dynstr = data.get(dynstr_start..dynstr_end)?;
+    let dynsym = parse_symbols(&data, dynsym_section.sh_offset, dynsym_section.sh_size).ok()?;
+    let symbol_addr = dynsym
+        .iter()
+        .find(|sym| sym.is_defined() && get_string(dynstr, sym.st_name).ok() == Some(symbol))
         .map(|sym| base.saturating_add(sym.st_value) as usize)
         .unwrap_or(0);
     HOST_LIBC_SYMBOL_CACHE
