@@ -143,49 +143,14 @@ unsafe fn resolve_host_symbol(name: &'static [u8]) -> *mut c_void {
     {
         return ptr as *mut c_void;
     }
-
-    let glibc_v225 = b"GLIBC_2.2.5\0";
-    let glibc_v232 = b"GLIBC_2.3.2\0";
-    let glibc_v34 = b"GLIBC_2.34\0";
-    // SAFETY: versioned lookup in next object after this interposed library.
-    let mut ptr = unsafe {
-        libc::dlvsym(
-            libc::RTLD_NEXT,
-            name.as_ptr().cast::<libc::c_char>(),
-            glibc_v225.as_ptr().cast::<libc::c_char>(),
-        )
-    };
-    if ptr.is_null() {
-        // SAFETY: common modern pthread baseline.
-        ptr = unsafe {
-            libc::dlvsym(
-                libc::RTLD_NEXT,
-                name.as_ptr().cast::<libc::c_char>(),
-                glibc_v232.as_ptr().cast::<libc::c_char>(),
-            )
-        };
+    // SAFETY: the symbol name is a static NUL-terminated C string.
+    let resolved = unsafe { resolve_host_symbol_nocache(name) };
+    if !resolved.is_null() {
+        HOST_SYMBOL_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(name, resolved as usize);
     }
-    if ptr.is_null() {
-        // SAFETY: symbols that only exist in newer libc.
-        ptr = unsafe {
-            libc::dlvsym(
-                libc::RTLD_NEXT,
-                name.as_ptr().cast::<libc::c_char>(),
-                glibc_v34.as_ptr().cast::<libc::c_char>(),
-            )
-        };
-    }
-    let resolved = if ptr.is_null() {
-        // SAFETY: final unversioned fallback.
-        unsafe { libc::dlsym(libc::RTLD_NEXT, name.as_ptr().cast::<libc::c_char>()) }
-    } else {
-        ptr
-    };
-
-    HOST_SYMBOL_CACHE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(name, resolved as usize);
     resolved
 }
 
@@ -235,13 +200,12 @@ fn resolve_loaded_libc_symbol_direct(symbol: &'static str) -> Option<usize> {
     let symbol_addr = dynsym
         .iter()
         .find(|sym| sym.is_defined() && get_string(dynstr, sym.st_name).ok() == Some(symbol))
-        .map(|sym| base.saturating_add(sym.st_value) as usize)
-        .unwrap_or(0);
+        .map(|sym| base.saturating_add(sym.st_value) as usize)?;
     HOST_LIBC_SYMBOL_CACHE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(symbol, symbol_addr);
-    (symbol_addr != 0).then_some(symbol_addr)
+    Some(symbol_addr)
 }
 
 unsafe fn resolve_host_symbol_nocache(name: &'static [u8]) -> *mut c_void {
@@ -4906,6 +4870,16 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Barrier};
     use std::time::Duration;
+
+    #[test]
+    fn direct_libc_resolution_finds_host_pthread_symbols() {
+        let create = resolve_loaded_libc_symbol_direct("pthread_create");
+        let join = resolve_loaded_libc_symbol_direct("pthread_join");
+        let self_fn = resolve_loaded_libc_symbol_direct("pthread_self");
+        assert!(create.is_some(), "pthread_create not found in loaded libc");
+        assert!(join.is_some(), "pthread_join not found in loaded libc");
+        assert!(self_fn.is_some(), "pthread_self not found in loaded libc");
+    }
 
     fn alloc_mutex_ptr() -> *mut libc::pthread_mutex_t {
         let boxed: Box<libc::pthread_mutex_t> = Box::new(unsafe { std::mem::zeroed() });
