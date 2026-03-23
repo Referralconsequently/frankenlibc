@@ -56,7 +56,11 @@ static NATIVE_REALLOC_REENTRY: AtomicBool = AtomicBool::new(false);
 static NATIVE_FREE_REENTRY: AtomicBool = AtomicBool::new(false);
 
 static BUMP_POS: AtomicUsize = AtomicUsize::new(0);
-const BUMP_SIZE: usize = 4 * 1024 * 1024; // 4 MiB for Rust runtime init
+const BUMP_SIZE: usize = 256 * 1024 * 1024; // 256 MiB to cover strict preload startup.
+const BUMP_ALIGN: usize = 16;
+const BUMP_HEADER_WORDS: usize = 2;
+const BUMP_HEADER_SIZE: usize = std::mem::size_of::<usize>() * BUMP_HEADER_WORDS;
+const BUMP_MAGIC: usize = 0x4652_414E_4B42_554D;
 
 /// Bump heap uses `UnsafeCell` to avoid mutable-static references
 /// (forbidden in Rust 2024 edition).  Access is synchronized via
@@ -87,21 +91,28 @@ pub(crate) unsafe fn raw_free(ptr: *mut c_void) {
 
 #[cold]
 unsafe fn bump_alloc(size: usize) -> *mut c_void {
-    let align = 16;
+    let request = size.max(1);
+    let total = BUMP_HEADER_SIZE.saturating_add(request);
     loop {
         let pos = BUMP_POS.load(Ordering::Relaxed);
-        let aligned_pos = (pos + align - 1) & !(align - 1);
-        let new_pos = aligned_pos + size;
+        let aligned_pos = (pos + BUMP_ALIGN - 1) & !(BUMP_ALIGN - 1);
+        let new_pos = aligned_pos.saturating_add(total);
         if new_pos > BUMP_SIZE {
             // Static bump heap exhausted — fall back to mmap.
-            return unsafe { mmap_alloc(size) };
+            return unsafe { mmap_alloc(total) };
         }
         if BUMP_POS
             .compare_exchange_weak(pos, new_pos, Ordering::AcqRel, Ordering::Relaxed)
             .is_ok()
         {
             let base = BUMP_HEAP.0.get().cast::<u8>();
-            return unsafe { base.add(aligned_pos).cast() };
+            // SAFETY: aligned_pos..new_pos is reserved for this allocation.
+            unsafe {
+                let header = base.add(aligned_pos).cast::<usize>();
+                header.write(BUMP_MAGIC);
+                header.add(1).write(request);
+                return header.add(BUMP_HEADER_WORDS).cast();
+            }
         }
     }
 }
@@ -134,7 +145,24 @@ unsafe fn mmap_alloc(size: usize) -> *mut c_void {
 fn is_bump_ptr(ptr: *mut c_void) -> bool {
     let addr = ptr as usize;
     let base = BUMP_HEAP.0.get() as usize;
-    addr >= base && addr < base + BUMP_SIZE
+    addr >= base + BUMP_HEADER_SIZE && addr < base + BUMP_SIZE
+}
+
+#[inline]
+unsafe fn bump_allocation_size(ptr: *mut c_void) -> Option<usize> {
+    if !is_bump_ptr(ptr) {
+        return None;
+    }
+    // SAFETY: bump allocations reserve a fixed-size header immediately before
+    // the user pointer.
+    let header = unsafe { (ptr as *mut u8).sub(BUMP_HEADER_SIZE).cast::<usize>() };
+    // SAFETY: header points into the bump heap allocation record.
+    let magic = unsafe { header.read() };
+    if magic != BUMP_MAGIC {
+        return None;
+    }
+    // SAFETY: second header word stores the requested user size.
+    Some(unsafe { header.add(1).read() })
 }
 
 #[inline]
@@ -207,16 +235,16 @@ unsafe fn native_libc_malloc(size: usize) -> *mut c_void {
     {
         return unsafe { bump_alloc(size) };
     }
-    // Try cached host malloc first. If not yet resolved, use bump allocator.
-    // OnceLock::get_or_init deadlocks during _dl_init because the dlvsym
-    // resolution calls our interposed dlsym which needs malloc.
-    let result = if let Some(&ptr) = HOST_MALLOC_FN.get() {
-        if ptr != 0 {
-            let f: HostMallocFn = unsafe { std::mem::transmute(ptr) };
-            unsafe { f(size) }
-        } else {
-            unsafe { bump_alloc(size) }
-        }
+    let ptr = if let Some(&ptr) = HOST_MALLOC_FN.get() {
+        ptr
+    } else {
+        let resolved = unsafe { resolve_host_allocator_symbol(b"malloc\0") as usize };
+        let _ = HOST_MALLOC_FN.set(resolved);
+        resolved
+    };
+    let result = if ptr != 0 {
+        let f: HostMallocFn = unsafe { std::mem::transmute(ptr) };
+        unsafe { f(size) }
     } else {
         unsafe { bump_alloc(size) }
     };
@@ -235,9 +263,18 @@ unsafe fn native_libc_calloc(nmemb: usize, size: usize) -> *mut c_void {
         // bump_alloc returns zeroed memory (static initializer).
         return ptr;
     }
-    let result = match unsafe { host_calloc_fn() } {
-        Some(host_calloc) => unsafe { host_calloc(nmemb, size) },
-        None => unsafe { bump_alloc(nmemb.saturating_mul(size)) },
+    let ptr = if let Some(&ptr) = HOST_CALLOC_FN.get() {
+        ptr
+    } else {
+        let resolved = unsafe { resolve_host_allocator_symbol(b"calloc\0") as usize };
+        let _ = HOST_CALLOC_FN.set(resolved);
+        resolved
+    };
+    let result = if ptr != 0 {
+        let host_calloc: HostCallocFn = unsafe { std::mem::transmute(ptr) };
+        unsafe { host_calloc(nmemb, size) }
+    } else {
+        unsafe { bump_alloc(nmemb.saturating_mul(size)) }
     };
     NATIVE_CALLOC_REENTRY.store(false, Ordering::Release);
     result
@@ -249,11 +286,39 @@ unsafe fn native_libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
+        if let Some(old_size) = unsafe { bump_allocation_size(ptr) } {
+            let out = unsafe { bump_alloc(size) };
+            if !out.is_null() {
+                let copy_size = old_size.min(size);
+                unsafe {
+                    std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), out.cast::<u8>(), copy_size);
+                }
+            }
+            return out;
+        }
         return unsafe { bump_alloc(size) };
     }
-    let result = match unsafe { host_realloc_fn() } {
-        Some(host_realloc) => unsafe { host_realloc(ptr, size) },
-        None => unsafe { bump_alloc(size) },
+    let host_ptr = if let Some(&host_ptr) = HOST_REALLOC_FN.get() {
+        host_ptr
+    } else {
+        let resolved = unsafe { resolve_host_allocator_symbol(b"realloc\0") as usize };
+        let _ = HOST_REALLOC_FN.set(resolved);
+        resolved
+    };
+    let result = if host_ptr != 0 {
+        let host_realloc: HostReallocFn = unsafe { std::mem::transmute(host_ptr) };
+        unsafe { host_realloc(ptr, size) }
+    } else if let Some(old_size) = unsafe { bump_allocation_size(ptr) } {
+        let out = unsafe { bump_alloc(size) };
+        if !out.is_null() {
+            let copy_size = old_size.min(size);
+            unsafe {
+                std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), out.cast::<u8>(), copy_size);
+            }
+        }
+        out
+    } else {
+        unsafe { bump_alloc(size) }
     };
     NATIVE_REALLOC_REENTRY.store(false, Ordering::Release);
     result
@@ -270,7 +335,15 @@ unsafe fn native_libc_free(ptr: *mut c_void) {
     {
         return; // Reentrant free of non-bump ptr: no-op to avoid recursion.
     }
-    if let Some(host_free) = unsafe { host_free_fn() } {
+    let host_ptr = if let Some(&host_ptr) = HOST_FREE_FN.get() {
+        host_ptr
+    } else {
+        let resolved = unsafe { resolve_host_allocator_symbol(b"free\0") as usize };
+        let _ = HOST_FREE_FN.set(resolved);
+        resolved
+    };
+    if host_ptr != 0 {
+        let host_free: HostFreeFn = unsafe { std::mem::transmute(host_ptr) };
         unsafe { host_free(ptr) };
     }
     NATIVE_FREE_REENTRY.store(false, Ordering::Release);
@@ -785,6 +858,11 @@ fn enter_allocator_reentry_guard() -> Option<AllocatorReentryGuard> {
 }
 
 #[inline]
+fn strict_allocator_host_path_active() -> bool {
+    !runtime_policy::mode().heals_enabled()
+}
+
+#[inline]
 fn stage_index(ordering: &[CheckStage; 7], stage: CheckStage) -> usize {
     ordering.iter().position(|s| *s == stage).unwrap_or(0)
 }
@@ -863,6 +941,17 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
 
     let _trace_scope = runtime_policy::entrypoint_scope("malloc");
     let req = size.max(1);
+    if strict_allocator_host_path_active() {
+        // SAFETY: strict-mode preload delegates allocator semantics to host libc
+        // to preserve process compatibility while hardened mode exercises the
+        // membrane allocator and repair pipeline.
+        let out = unsafe { native_libc_malloc(req) };
+        fallback_insert(out);
+        if !out.is_null() {
+            record_alloc_stats(req);
+        }
+        return out;
+    }
     let (aligned, recent_page, ordering) = allocator_stage_context(0);
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, req, req, true, false, 0);
 
@@ -940,6 +1029,13 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
     };
 
     let _trace_scope = runtime_policy::entrypoint_scope("free");
+    if strict_allocator_host_path_active() && fallback_remove(ptr) {
+        // SAFETY: strict-mode allocations are tracked in the fallback table and
+        // must be released by the host allocator to preserve host heap
+        // semantics.
+        unsafe { native_libc_free(ptr) };
+        return;
+    }
     let (aligned, recent_page, ordering) = allocator_stage_context(ptr as usize);
     if ptr.is_null() {
         record_allocator_stage_outcome(
@@ -1076,6 +1172,16 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
         }
     };
 
+    if strict_allocator_host_path_active() {
+        // SAFETY: strict-mode preload delegates allocator semantics to host libc.
+        let out = unsafe { native_libc_calloc(nmemb, size) };
+        fallback_insert(out);
+        if !out.is_null() {
+            record_alloc_stats(total);
+        }
+        return out;
+    }
+
     let (_, decision) = runtime_policy::decide(ApiFamily::Allocator, total, total, true, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         unsafe { set_abi_errno(ENOMEM as c_int) };
@@ -1167,6 +1273,45 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     if size == 0 {
         unsafe { free(ptr) };
         return std::ptr::null_mut();
+    }
+
+    if strict_allocator_host_path_active() {
+        if fallback_contains(ptr) {
+            // SAFETY: fallback-tracked pointers originate from the host allocator.
+            let out = unsafe { native_libc_realloc(ptr, size) };
+            if !out.is_null() {
+                let _ = fallback_remove(ptr);
+                fallback_insert(out);
+            }
+            return out;
+        }
+
+        if let Some(pipeline) = crate::membrane_state::try_global_pipeline()
+            && let Some(slot) = pipeline.arena.lookup(ptr as usize)
+            && slot.user_base == ptr as usize
+        {
+            // SAFETY: host allocation succeeds or returns null; copy stays within
+            // the old/new allocation bounds, then the legacy membrane allocation
+            // is retired through the pipeline.
+            let out = unsafe { native_libc_malloc(size.max(1)) };
+            if out.is_null() {
+                return out;
+            }
+            let copy_size = slot.user_size.min(size);
+            unsafe {
+                std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), out.cast::<u8>(), copy_size);
+            }
+            let _ = pipeline.free(ptr.cast());
+            fallback_insert(out);
+            return out;
+        }
+
+        // Unknown pointer in strict mode: preserve historical behavior by
+        // allocating a fresh host buffer rather than invoking undefined
+        // realloc semantics on a foreign pointer.
+        let out = unsafe { native_libc_malloc(size.max(1)) };
+        fallback_insert(out);
+        return out;
     }
 
     let (aligned, recent_page, ordering) = allocator_stage_context(ptr as usize);
