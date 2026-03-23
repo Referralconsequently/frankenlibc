@@ -148,6 +148,23 @@ fn close_main_program_handle() -> c_int {
 /// `RTLD_LAZY` or `RTLD_NOW` set; additional modifier flags are allowed.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void {
+    if runtime_policy::bootstrap_passthrough_active() {
+        if filename.is_null() {
+            return open_main_program_handle();
+        }
+        if !dlfcn_core::valid_flags(flags) {
+            return std::ptr::null_mut();
+        }
+        let name = unsafe { CStr::from_ptr(filename) }.to_bytes();
+        return if name.is_empty()
+            || ((flags & dlfcn_core::RTLD_NOLOAD) != 0 && library_alias_matches(name))
+        {
+            open_main_program_handle()
+        } else {
+            std::ptr::null_mut()
+        };
+    }
+
     let (mode, decision) =
         runtime_policy::decide(ApiFamily::Loader, filename as usize, 0, false, true, 0);
     if matches!(decision.action, MembraneAction::Deny) {
@@ -212,6 +229,14 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
 /// `RTLD_DEFAULT` / `RTLD_NEXT`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
+    if runtime_policy::bootstrap_passthrough_active() {
+        if symbol.is_null() || !is_native_handle(handle) {
+            return std::ptr::null_mut();
+        }
+        let symbol_name = unsafe { CStr::from_ptr(symbol) }.to_bytes();
+        return resolve_exported_symbol(symbol_name);
+    }
+
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Loader, handle as usize, 0, false, true, 0);
     if matches!(decision.action, MembraneAction::Deny) {
@@ -274,6 +299,19 @@ pub unsafe extern "C" fn dlvsym(
     symbol: *const c_char,
     version: *const c_char,
 ) -> *mut c_void {
+    if runtime_policy::bootstrap_passthrough_active() {
+        if symbol.is_null() || version.is_null() || !is_native_handle(handle) {
+            return std::ptr::null_mut();
+        }
+        let symbol_name = unsafe { CStr::from_ptr(symbol) }.to_bytes();
+        let version_name = unsafe { CStr::from_ptr(version) }.to_bytes();
+        return if version_supported(version_name) {
+            resolve_exported_symbol(symbol_name)
+        } else {
+            std::ptr::null_mut()
+        };
+    }
+
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Loader, handle as usize, 0, false, true, 0);
     if matches!(decision.action, MembraneAction::Deny) {
@@ -321,6 +359,13 @@ pub unsafe extern "C" fn dlvsym(
 /// Returns 0 on success, non-zero on error.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> c_int {
+    if runtime_policy::bootstrap_passthrough_active() {
+        if handle.is_null() || !is_main_program_handle(handle) {
+            return -1;
+        }
+        return close_main_program_handle();
+    }
+
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Loader, handle as usize, 0, false, true, 0);
     if matches!(decision.action, MembraneAction::Deny) {

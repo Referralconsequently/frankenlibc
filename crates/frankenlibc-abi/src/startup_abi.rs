@@ -416,6 +416,7 @@ unsafe extern "C" fn host_delegate_main_wrapper(
 ) -> c_int {
     let resolved_envp = unsafe { resolve_startup_envp(argc, argv, envp) };
     init_process_globals(argv, resolved_envp);
+    crate::host_resolve::bootstrap_host_symbols();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
     crate::runtime_policy::signal_runtime_ready();
@@ -445,6 +446,7 @@ unsafe fn delegate_to_host_libc_start_main(
 ) -> Option<c_int> {
     let resolved_envp = unsafe { resolve_startup_envp(argc, ubp_av, environ) };
     init_process_globals(ubp_av, resolved_envp);
+    crate::host_resolve::bootstrap_host_symbols();
     let delegated_main = main.map_or(0usize, |f| f as usize);
     HOST_DELEGATED_MAIN.store(delegated_main, Ordering::Release);
     let wrapped_main = if delegated_main == 0 {
@@ -721,6 +723,7 @@ unsafe fn startup_phase0_impl(
 
     let resolved_envp = unsafe { resolve_startup_envp(argc, ubp_av, envp) };
     init_process_globals(ubp_av, resolved_envp);
+    crate::host_resolve::bootstrap_host_symbols();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
     crate::runtime_policy::signal_runtime_ready();
@@ -844,6 +847,7 @@ pub unsafe extern "C" fn __libc_start_main(
     }
     let envp = unsafe { resolve_startup_envp(argc, ubp_av, environ) };
     init_process_globals(ubp_av, envp);
+    crate::host_resolve::bootstrap_host_symbols();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
     crate::runtime_policy::signal_runtime_ready();

@@ -238,7 +238,9 @@ unsafe fn native_libc_malloc(size: usize) -> *mut c_void {
     {
         return unsafe { bump_alloc(size) };
     }
-    let ptr = if let Some(&ptr) = HOST_MALLOC_FN.get() {
+    let ptr = if let Some(raw_host_malloc) = crate::host_resolve::host_malloc_raw() {
+        raw_host_malloc as usize
+    } else if let Some(&ptr) = HOST_MALLOC_FN.get() {
         ptr
     } else {
         let resolved = unsafe { resolve_host_allocator_symbol(b"malloc\0") as usize };
@@ -266,7 +268,9 @@ unsafe fn native_libc_calloc(nmemb: usize, size: usize) -> *mut c_void {
         // bump_alloc returns zeroed memory (static initializer).
         return ptr;
     }
-    let ptr = if let Some(&ptr) = HOST_CALLOC_FN.get() {
+    let ptr = if let Some(raw_host_calloc) = crate::host_resolve::host_calloc_raw() {
+        raw_host_calloc as usize
+    } else if let Some(&ptr) = HOST_CALLOC_FN.get() {
         ptr
     } else {
         let resolved = unsafe { resolve_host_allocator_symbol(b"calloc\0") as usize };
@@ -301,7 +305,9 @@ unsafe fn native_libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         }
         return unsafe { bump_alloc(size) };
     }
-    let host_ptr = if let Some(&host_ptr) = HOST_REALLOC_FN.get() {
+    let host_ptr = if let Some(raw_host_realloc) = crate::host_resolve::host_realloc_raw() {
+        raw_host_realloc as usize
+    } else if let Some(&host_ptr) = HOST_REALLOC_FN.get() {
         host_ptr
     } else {
         let resolved = unsafe { resolve_host_allocator_symbol(b"realloc\0") as usize };
@@ -338,7 +344,9 @@ unsafe fn native_libc_free(ptr: *mut c_void) {
     {
         return; // Reentrant free of non-bump ptr: no-op to avoid recursion.
     }
-    let host_ptr = if let Some(&host_ptr) = HOST_FREE_FN.get() {
+    let host_ptr = if let Some(raw_host_free) = crate::host_resolve::host_free_raw() {
+        raw_host_free as usize
+    } else if let Some(&host_ptr) = HOST_FREE_FN.get() {
         host_ptr
     } else {
         let resolved = unsafe { resolve_host_allocator_symbol(b"free\0") as usize };

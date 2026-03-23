@@ -147,6 +147,19 @@ thread_local! {
     static THREAD_CANCEL_TYPE: Cell<c_int> = const { Cell::new(PTHREAD_CANCEL_DEFERRED_TYPE) };
 }
 
+#[inline]
+fn debug_write_stderr(message: &'static [u8]) {
+    // SAFETY: best-effort diagnostic write on a fixed FD with a static buffer.
+    unsafe {
+        libc::syscall(
+            libc::SYS_write,
+            libc::STDERR_FILENO,
+            message.as_ptr(),
+            message.len(),
+        );
+    }
+}
+
 unsafe fn resolve_host_symbol(name: &'static [u8]) -> *mut c_void {
     if let Some(ptr) = HOST_SYMBOL_CACHE
         .lock()
@@ -550,6 +563,7 @@ pub(crate) fn prewarm_host_thread_lifecycle_symbols() {
     // Resolve the thread lifecycle surface while startup is still in bootstrap
     // passthrough, before constructors or early runtime paths can create or
     // detach threads.
+    crate::host_resolve::bootstrap_host_symbols();
     unsafe {
         let _ = host_pthread_self_fn();
         let _ = host_pthread_equal_fn();
@@ -806,6 +820,9 @@ fn condvar_data_ptr(cond: *mut libc::pthread_cond_t) -> Option<*mut CondvarData>
 #[inline]
 fn native_pthread_self() -> libc::pthread_t {
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
+        if let Some(host_self) = crate::host_resolve::host_pthread_self_raw() {
+            return unsafe { host_self() };
+        }
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_self) = unsafe { host_pthread_self_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -828,6 +845,9 @@ fn native_pthread_self() -> libc::pthread_t {
 #[inline]
 fn native_pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_int {
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
+        if let Some(host_equal) = crate::host_resolve::host_pthread_equal_raw() {
+            return unsafe { host_equal(a, b) };
+        }
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_equal) = unsafe { host_pthread_equal_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -920,30 +940,20 @@ unsafe fn native_pthread_create(
     arg: *mut c_void,
 ) -> c_int {
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        // === ALIEN-ARTIFACT PATH ===
-        // Resolve host pthread_create by directly parsing glibc's in-memory
-        // ELF image using only raw syscalls + pointer math. This completely
-        // bypasses the dynamic linker interposition that makes dlsym/dlvsym
-        // recursion unbreakable.
         if let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
-            return unsafe {
-                host_create(
-                    thread_out,
-                    attr,
-                    Some(start_routine),
-                    arg,
-                )
-            };
+            return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
         }
+        debug_write_stderr(b"frankenlibc: raw host pthread_create unavailable\n");
 
-        // Fallback: try the OnceLock-cached path (works after prewarm).
         if let Some(host_create) = unsafe { host_pthread_create_fn() } {
             return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
         }
+        debug_write_stderr(b"frankenlibc: cached host pthread_create unavailable\n");
         prewarm_host_thread_lifecycle_symbols();
         if let Some(host_create) = unsafe { host_pthread_create_fn() } {
             return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
         }
+        debug_write_stderr(b"frankenlibc: pthread_create falling back to native clone path after prewarm\n");
     }
     if thread_out.is_null() {
         return libc::EINVAL;
@@ -1018,6 +1028,9 @@ unsafe fn native_pthread_create(
 #[allow(unsafe_code)]
 unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void) -> c_int {
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
+        if let Some(host_join) = crate::host_resolve::host_pthread_join_raw() {
+            return unsafe { host_join(thread, retval) };
+        }
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_join) = unsafe { host_pthread_join_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1076,6 +1089,9 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
 #[allow(unsafe_code)]
 unsafe fn native_pthread_detach(thread: libc::pthread_t) -> c_int {
     if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
+        if let Some(host_detach) = crate::host_resolve::host_pthread_detach_raw() {
+            return unsafe { host_detach(thread) };
+        }
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_detach) = unsafe { host_pthread_detach_fn() } {
             // SAFETY: direct call through resolved host symbol.

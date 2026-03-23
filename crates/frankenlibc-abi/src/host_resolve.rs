@@ -9,6 +9,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static HOST_PTHREAD_CREATE: AtomicUsize = AtomicUsize::new(0);
 static HOST_PTHREAD_JOIN: AtomicUsize = AtomicUsize::new(0);
 static HOST_PTHREAD_DETACH: AtomicUsize = AtomicUsize::new(0);
+static HOST_PTHREAD_SELF: AtomicUsize = AtomicUsize::new(0);
+static HOST_PTHREAD_EQUAL: AtomicUsize = AtomicUsize::new(0);
+static HOST_MALLOC: AtomicUsize = AtomicUsize::new(0);
+static HOST_CALLOC: AtomicUsize = AtomicUsize::new(0);
+static HOST_REALLOC: AtomicUsize = AtomicUsize::new(0);
+static HOST_FREE: AtomicUsize = AtomicUsize::new(0);
 static RESOLVED: AtomicUsize = AtomicUsize::new(0);
 
 unsafe fn raw_read(fd: i32, buf: *mut u8, count: usize) -> isize {
@@ -93,6 +99,12 @@ pub(crate) fn bootstrap_host_symbols() {
         (&b"pthread_create"[..], &HOST_PTHREAD_CREATE),
         (b"pthread_join", &HOST_PTHREAD_JOIN),
         (b"pthread_detach", &HOST_PTHREAD_DETACH),
+        (b"pthread_self", &HOST_PTHREAD_SELF),
+        (b"pthread_equal", &HOST_PTHREAD_EQUAL),
+        (b"malloc", &HOST_MALLOC),
+        (b"calloc", &HOST_CALLOC),
+        (b"realloc", &HOST_REALLOC),
+        (b"free", &HOST_FREE),
     ] {
         let a = unsafe { resolve_elf_symbol(base, name) };
         if a != 0 { cache.store(a, Ordering::Release); }
@@ -100,11 +112,54 @@ pub(crate) fn bootstrap_host_symbols() {
     RESOLVED.store(1, Ordering::Release);
 }
 
+#[inline]
+fn load_host_symbol(cache: &AtomicUsize) -> Option<usize> {
+    bootstrap_host_symbols();
+    let addr = cache.load(Ordering::Acquire);
+    (addr != 0).then_some(addr)
+}
+
 pub(crate) fn host_pthread_create_raw() -> Option<
     unsafe extern "C" fn(*mut libc::pthread_t, *const libc::pthread_attr_t,
         Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>, *mut c_void) -> i32>
 {
-    bootstrap_host_symbols();
-    let a = HOST_PTHREAD_CREATE.load(Ordering::Acquire);
-    (a != 0).then(|| unsafe { core::mem::transmute(a) })
+    load_host_symbol(&HOST_PTHREAD_CREATE).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_pthread_join_raw()
+    -> Option<unsafe extern "C" fn(libc::pthread_t, *mut *mut c_void) -> i32>
+{
+    load_host_symbol(&HOST_PTHREAD_JOIN).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_pthread_detach_raw() -> Option<unsafe extern "C" fn(libc::pthread_t) -> i32> {
+    load_host_symbol(&HOST_PTHREAD_DETACH).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_pthread_self_raw() -> Option<unsafe extern "C" fn() -> libc::pthread_t> {
+    load_host_symbol(&HOST_PTHREAD_SELF).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_pthread_equal_raw()
+    -> Option<unsafe extern "C" fn(libc::pthread_t, libc::pthread_t) -> i32>
+{
+    load_host_symbol(&HOST_PTHREAD_EQUAL).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_malloc_raw() -> Option<unsafe extern "C" fn(usize) -> *mut c_void> {
+    load_host_symbol(&HOST_MALLOC).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_calloc_raw() -> Option<unsafe extern "C" fn(usize, usize) -> *mut c_void> {
+    load_host_symbol(&HOST_CALLOC).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_realloc_raw()
+    -> Option<unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void>
+{
+    load_host_symbol(&HOST_REALLOC).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_free_raw() -> Option<unsafe extern "C" fn(*mut c_void)> {
+    load_host_symbol(&HOST_FREE).map(|addr| unsafe { core::mem::transmute(addr) })
 }
