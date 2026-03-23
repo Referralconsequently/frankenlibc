@@ -147,19 +147,6 @@ thread_local! {
     static THREAD_CANCEL_TYPE: Cell<c_int> = const { Cell::new(PTHREAD_CANCEL_DEFERRED_TYPE) };
 }
 
-#[inline]
-fn debug_write_stderr(message: &'static [u8]) {
-    // SAFETY: best-effort diagnostic write on a fixed FD with a static buffer.
-    unsafe {
-        libc::syscall(
-            libc::SYS_write,
-            libc::STDERR_FILENO,
-            message.as_ptr(),
-            message.len(),
-        );
-    }
-}
-
 unsafe fn resolve_host_symbol(name: &'static [u8]) -> *mut c_void {
     if let Some(ptr) = HOST_SYMBOL_CACHE
         .lock()
@@ -943,17 +930,14 @@ unsafe fn native_pthread_create(
         if let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
             return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
         }
-        debug_write_stderr(b"frankenlibc: raw host pthread_create unavailable\n");
 
         if let Some(host_create) = unsafe { host_pthread_create_fn() } {
             return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
         }
-        debug_write_stderr(b"frankenlibc: cached host pthread_create unavailable\n");
         prewarm_host_thread_lifecycle_symbols();
         if let Some(host_create) = unsafe { host_pthread_create_fn() } {
             return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
         }
-        debug_write_stderr(b"frankenlibc: pthread_create falling back to native clone path after prewarm\n");
     }
     if thread_out.is_null() {
         return libc::EINVAL;

@@ -289,20 +289,23 @@ unsafe fn native_libc_calloc(nmemb: usize, size: usize) -> *mut c_void {
 
 #[inline]
 unsafe fn native_libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    if ptr.is_null() {
+        return unsafe { native_libc_malloc(size) };
+    }
+    if let Some(old_size) = unsafe { bump_allocation_size(ptr) } {
+        let out = unsafe { native_libc_malloc(size) };
+        if !out.is_null() {
+            let copy_size = old_size.min(size);
+            unsafe {
+                std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), out.cast::<u8>(), copy_size);
+            }
+        }
+        return out;
+    }
     if NATIVE_REALLOC_REENTRY
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        if let Some(old_size) = unsafe { bump_allocation_size(ptr) } {
-            let out = unsafe { bump_alloc(size) };
-            if !out.is_null() {
-                let copy_size = old_size.min(size);
-                unsafe {
-                    std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), out.cast::<u8>(), copy_size);
-                }
-            }
-            return out;
-        }
         return unsafe { bump_alloc(size) };
     }
     let host_ptr = if let Some(raw_host_realloc) = crate::host_resolve::host_realloc_raw() {
@@ -743,6 +746,9 @@ fn fallback_contains(ptr: *mut c_void) -> bool {
 }
 
 fn fallback_insert(ptr: *mut c_void) {
+    if ptr.is_null() || is_bump_ptr(ptr) {
+        return;
+    }
     let Some(key) = fallback_key(ptr) else {
         return;
     };
@@ -1041,6 +1047,9 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
     };
 
     let _trace_scope = runtime_policy::entrypoint_scope("free");
+    if is_bump_ptr(ptr) {
+        return;
+    }
     if strict_allocator_host_path_active() && fallback_remove(ptr) {
         // SAFETY: strict-mode allocations are tracked in the fallback table and
         // must be released by the host allocator to preserve host heap
@@ -1285,6 +1294,20 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     if size == 0 {
         unsafe { free(ptr) };
         return std::ptr::null_mut();
+    }
+
+    if is_bump_ptr(ptr) {
+        let out = unsafe { native_libc_malloc(size.max(1)) };
+        if !out.is_null()
+            && let Some(old_size) = unsafe { bump_allocation_size(ptr) }
+        {
+            let copy_size = old_size.min(size);
+            unsafe {
+                std::ptr::copy_nonoverlapping(ptr.cast::<u8>(), out.cast::<u8>(), copy_size);
+            }
+        }
+        fallback_insert(out);
+        return out;
     }
 
     if strict_allocator_host_path_active() {

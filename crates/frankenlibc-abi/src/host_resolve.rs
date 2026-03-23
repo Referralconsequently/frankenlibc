@@ -4,6 +4,8 @@
 //! using only raw syscalls and pointer math. Zero libc calls, zero recursion.
 
 use std::ffi::c_void;
+use std::ffi::CStr;
+use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static HOST_PTHREAD_CREATE: AtomicUsize = AtomicUsize::new(0);
@@ -24,11 +26,68 @@ unsafe fn raw_open(path: *const u8) -> i32 {
     unsafe { libc::syscall(libc::SYS_openat, libc::AT_FDCWD, path, libc::O_RDONLY, 0) as i32 }
 }
 unsafe fn raw_close(fd: i32) { unsafe { libc::syscall(libc::SYS_close, fd) }; }
+unsafe fn raw_fstat(fd: i32, stat: *mut libc::stat) -> i32 {
+    unsafe { libc::syscall(libc::SYS_fstat, fd, stat) as i32 }
+}
 
-fn find_glibc_base() -> Option<usize> {
+#[repr(C)]
+struct DlIterateTarget {
+    base: usize,
+    path: [u8; 512],
+}
+
+unsafe extern "C" fn find_glibc_base_cb(
+    info: *mut libc::dl_phdr_info,
+    _size: usize,
+    data: *mut c_void,
+) -> libc::c_int {
+    if info.is_null() || data.is_null() {
+        return 0;
+    }
+    // SAFETY: callback arguments come from libc::dl_iterate_phdr for the life of the call.
+    let info = unsafe { &*info };
+    if info.dlpi_name.is_null() {
+        return 0;
+    }
+    // SAFETY: dlpi_name is a valid NUL-terminated C string for this callback invocation.
+    let Ok(name) = unsafe { CStr::from_ptr(info.dlpi_name) }.to_str() else {
+        return 0;
+    };
+    if !name.contains("libc.so") {
+        return 0;
+    }
+    // SAFETY: data points to our stack-owned DlIterateTarget for the duration of dl_iterate_phdr.
+    let target = unsafe { &mut *(data as *mut DlIterateTarget) };
+    target.base = info.dlpi_addr as usize;
+    let bytes = name.as_bytes();
+    let len = bytes.len().min(target.path.len().saturating_sub(1));
+    target.path[..len].copy_from_slice(&bytes[..len]);
+    target.path[len] = 0;
+    1
+}
+
+fn find_glibc_image_via_phdr() -> Option<(usize, [u8; 512])> {
+    let mut target = DlIterateTarget {
+        base: 0,
+        path: [0; 512],
+    };
+    // SAFETY: callback and out-pointer remain valid for the synchronous iteration.
+    unsafe {
+        libc::dl_iterate_phdr(
+            Some(find_glibc_base_cb),
+            (&mut target as *mut DlIterateTarget).cast(),
+        );
+    }
+    if target.base == 0 || target.path[0] == 0 {
+        return None;
+    }
+    Some((target.base, target.path))
+}
+
+fn find_glibc_image_via_maps() -> Option<(usize, [u8; 512])> {
     let fd = unsafe { raw_open(b"/proc/self/maps\0".as_ptr()) };
     if fd < 0 { return None; }
-    let mut buf = [0u8; 32768];
+    let mut buf = [0u8; 262144];
     let mut total = 0usize;
     loop {
         let n = unsafe { raw_read(fd, buf.as_mut_ptr().add(total), buf.len() - total) };
@@ -39,77 +98,212 @@ fn find_glibc_base() -> Option<usize> {
     unsafe { raw_close(fd) };
     let text = core::str::from_utf8(&buf[..total]).ok()?;
     for line in text.lines() {
-        if !line.contains("libc") || !line.contains(".so") { continue; }
+        if !line.contains("libc.so") {
+            continue;
+        }
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 3 { continue; }
+        if parts.len() < 6 { continue; }
         if parts[1].starts_with("r--p") && parts[2] == "00000000" {
             let dash = parts[0].find('-')?;
-            return usize::from_str_radix(&parts[0][..dash], 16).ok();
+            let base = usize::from_str_radix(&parts[0][..dash], 16).ok()?;
+            let mut path = [0u8; 512];
+            let bytes = parts[5].as_bytes();
+            let len = bytes.len().min(path.len().saturating_sub(1));
+            path[..len].copy_from_slice(&bytes[..len]);
+            path[len] = 0;
+            return Some((base, path));
         }
     }
     None
 }
 
+fn loaded_glibc_image() -> Option<(usize, [u8; 512])> {
+    find_glibc_image_via_phdr().or_else(find_glibc_image_via_maps)
+}
+
 const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
-const PT_DYNAMIC: u32 = 2;
-const DT_NULL: i64 = 0;
-const DT_STRTAB: i64 = 5;
-const DT_SYMTAB: i64 = 6;
-const DT_SYMENT: i64 = 11;
+const SHT_DYNSYM: u32 = 11;
 
-#[repr(C)] struct Ehdr { e_ident: [u8; 16], _pad: [u8; 24], e_phoff: u64, _e_shoff: u64, _e_flags: u32, _e_ehsize: u16, e_phentsize: u16, e_phnum: u16, _tail: [u8; 6] }
-#[repr(C)] struct Phdr { p_type: u32, _p_flags: u32, _p_offset: u64, p_vaddr: u64, _rest: [u8; 32] }
-#[repr(C)] struct Dyn { d_tag: i64, d_val: u64 }
-#[repr(C)] struct Sym { st_name: u32, _st_info: u8, _st_other: u8, st_shndx: u16, st_value: u64, _st_size: u64 }
+#[repr(C)]
+struct Elf64Ehdr {
+    e_ident: [u8; 16],
+    e_type: u16,
+    e_machine: u16,
+    e_version: u32,
+    e_entry: u64,
+    e_phoff: u64,
+    e_shoff: u64,
+    e_flags: u32,
+    e_ehsize: u16,
+    e_phentsize: u16,
+    e_phnum: u16,
+    e_shentsize: u16,
+    e_shnum: u16,
+    e_shstrndx: u16,
+}
 
-unsafe fn resolve_elf_symbol(base: usize, name: &[u8]) -> usize {
-    let ehdr = &*(base as *const Ehdr);
-    if ehdr.e_ident[..4] != ELF_MAGIC { return 0; }
-    let mut dyn_addr = 0usize;
-    for i in 0..ehdr.e_phnum as usize {
-        let ph = &*((base + ehdr.e_phoff as usize + i * ehdr.e_phentsize as usize) as *const Phdr);
-        if ph.p_type == PT_DYNAMIC { dyn_addr = base + ph.p_vaddr as usize; break; }
+#[repr(C)]
+struct Elf64Shdr {
+    sh_name: u32,
+    sh_type: u32,
+    sh_flags: u64,
+    sh_addr: u64,
+    sh_offset: u64,
+    sh_size: u64,
+    sh_link: u32,
+    sh_info: u32,
+    sh_addralign: u64,
+    sh_entsize: u64,
+}
+
+#[repr(C)]
+struct Elf64Sym {
+    st_name: u32,
+    st_info: u8,
+    st_other: u8,
+    st_shndx: u16,
+    st_value: u64,
+    st_size: u64,
+}
+
+fn symbol_name_matches(strtab: &[u8], name_offset: u32, symbol: &[u8]) -> bool {
+    let start = name_offset as usize;
+    if start >= strtab.len() {
+        return false;
     }
-    if dyn_addr == 0 { return 0; }
-    let (mut symtab, mut strtab, mut syment) = (0usize, 0usize, 24usize);
-    let mut dp = dyn_addr;
-    loop {
-        let d = &*(dp as *const Dyn);
-        match d.d_tag { DT_NULL => break, DT_SYMTAB => symtab = d.d_val as usize, DT_STRTAB => strtab = d.d_val as usize, DT_SYMENT => syment = d.d_val as usize, _ => {} }
-        dp += 16;
+    let rest = &strtab[start..];
+    let Some(end) = rest.iter().position(|byte| *byte == 0) else {
+        return false;
+    };
+    &rest[..end] == symbol
+}
+
+fn resolve_loaded_glibc_symbol(base: usize, path: &[u8; 512], symbol: &str) -> Option<usize> {
+    let fd = unsafe { raw_open(path.as_ptr()) };
+    if fd < 0 {
+        return None;
     }
-    if symtab == 0 || strtab == 0 { return 0; }
-    let max = if strtab > symtab { (strtab - symtab) / syment } else { 10000 };
-    for i in 0..max {
-        let s = &*((symtab + i * syment) as *const Sym);
-        if s.st_shndx == 0 || s.st_value == 0 { continue; }
-        let np = (strtab + s.st_name as usize) as *const u8;
-        let mut nl = 0; while *np.add(nl) != 0 && nl < 256 { nl += 1; }
-        if core::slice::from_raw_parts(np, nl) == name {
-            return base + s.st_value as usize;
+    let mut stat = MaybeUninit::<libc::stat>::uninit();
+    let stat_ok = unsafe { raw_fstat(fd, stat.as_mut_ptr()) } == 0;
+    if !stat_ok {
+        unsafe { raw_close(fd) };
+        return None;
+    }
+    // SAFETY: raw_fstat succeeded and fully initialized the struct.
+    let stat = unsafe { stat.assume_init() };
+    if stat.st_size <= 0 {
+        unsafe { raw_close(fd) };
+        return None;
+    }
+    let len = stat.st_size as usize;
+    // SAFETY: read-only private file mapping for ELF parsing.
+    let mapped = unsafe {
+        libc::mmap(
+            std::ptr::null_mut(),
+            len,
+            libc::PROT_READ,
+            libc::MAP_PRIVATE,
+            fd,
+            0,
+        )
+    };
+    unsafe { raw_close(fd) };
+    if mapped == libc::MAP_FAILED {
+        return None;
+    }
+    // SAFETY: successful mmap returns a readable memory range of `len` bytes.
+    let data = unsafe { core::slice::from_raw_parts(mapped.cast::<u8>(), len) };
+    let result = (|| {
+        let ehdr = data.get(..std::mem::size_of::<Elf64Ehdr>())?;
+        // SAFETY: slice length checked above and ELF header is plain-old-data.
+        let ehdr = unsafe { &*(ehdr.as_ptr().cast::<Elf64Ehdr>()) };
+        if ehdr.e_ident[..4] != ELF_MAGIC {
+            return None;
         }
-    }
-    0
+        let shoff = ehdr.e_shoff as usize;
+        let shentsize = ehdr.e_shentsize as usize;
+        let shnum = ehdr.e_shnum as usize;
+        if shentsize < std::mem::size_of::<Elf64Shdr>() || shnum == 0 {
+            return None;
+        }
+
+        let mut dynsym: Option<&Elf64Shdr> = None;
+        let mut dynstr: Option<&Elf64Shdr> = None;
+        for idx in 0..shnum {
+            let off = shoff.checked_add(idx.checked_mul(shentsize)?)?;
+            let end = off.checked_add(std::mem::size_of::<Elf64Shdr>())?;
+            let shdr_bytes = data.get(off..end)?;
+            // SAFETY: bounded by the mmap slice and section headers are POD.
+            let shdr = unsafe { &*(shdr_bytes.as_ptr().cast::<Elf64Shdr>()) };
+            if shdr.sh_type == SHT_DYNSYM {
+                dynsym = Some(shdr);
+                let linked = shdr.sh_link as usize;
+                if linked >= shnum {
+                    return None;
+                }
+                let linked_off = shoff.checked_add(linked.checked_mul(shentsize)?)?;
+                let linked_end = linked_off.checked_add(std::mem::size_of::<Elf64Shdr>())?;
+                let linked_bytes = data.get(linked_off..linked_end)?;
+                // SAFETY: bounded by the mmap slice and section headers are POD.
+                dynstr = Some(unsafe { &*(linked_bytes.as_ptr().cast::<Elf64Shdr>()) });
+                break;
+            }
+        }
+
+        let dynsym = dynsym?;
+        let dynstr = dynstr?;
+        let str_start = dynstr.sh_offset as usize;
+        let str_end = str_start.checked_add(dynstr.sh_size as usize)?;
+        let strtab = data.get(str_start..str_end)?;
+        let sym_start = dynsym.sh_offset as usize;
+        let sym_size = dynsym.sh_size as usize;
+        let sym_entsize = (dynsym.sh_entsize as usize).max(std::mem::size_of::<Elf64Sym>());
+        let sym_end = sym_start.checked_add(sym_size)?;
+        let sym_bytes = data.get(sym_start..sym_end)?;
+        let wanted = symbol.as_bytes();
+        let mut offset = 0usize;
+        while offset.checked_add(std::mem::size_of::<Elf64Sym>())? <= sym_bytes.len() {
+            let entry = &sym_bytes[offset..offset + std::mem::size_of::<Elf64Sym>()];
+            // SAFETY: bounded by the mmap slice and symbol entries are POD.
+            let sym = unsafe { &*(entry.as_ptr().cast::<Elf64Sym>()) };
+            if sym.st_shndx != 0
+                && sym.st_value != 0
+                && symbol_name_matches(strtab, sym.st_name, wanted)
+            {
+                return Some(base.saturating_add(sym.st_value as usize));
+            }
+            offset = offset.checked_add(sym_entsize)?;
+        }
+        None
+    })();
+    // SAFETY: unmapping the exact mapping returned by mmap above.
+    unsafe { libc::munmap(mapped, len) };
+    result
 }
 
 pub(crate) fn bootstrap_host_symbols() {
     if RESOLVED.load(Ordering::Relaxed) != 0 { return; }
-    let Some(base) = find_glibc_base() else { return; };
-    for (name, cache) in [
-        (&b"pthread_create"[..], &HOST_PTHREAD_CREATE),
-        (b"pthread_join", &HOST_PTHREAD_JOIN),
-        (b"pthread_detach", &HOST_PTHREAD_DETACH),
-        (b"pthread_self", &HOST_PTHREAD_SELF),
-        (b"pthread_equal", &HOST_PTHREAD_EQUAL),
-        (b"malloc", &HOST_MALLOC),
-        (b"calloc", &HOST_CALLOC),
-        (b"realloc", &HOST_REALLOC),
-        (b"free", &HOST_FREE),
+    let Some((base, path)) = loaded_glibc_image() else { return; };
+    for (symbol, cache) in [
+        ("pthread_create", &HOST_PTHREAD_CREATE),
+        ("pthread_join", &HOST_PTHREAD_JOIN),
+        ("pthread_detach", &HOST_PTHREAD_DETACH),
+        ("pthread_self", &HOST_PTHREAD_SELF),
+        ("pthread_equal", &HOST_PTHREAD_EQUAL),
+        ("malloc", &HOST_MALLOC),
+        ("calloc", &HOST_CALLOC),
+        ("realloc", &HOST_REALLOC),
+        ("free", &HOST_FREE),
     ] {
-        let a = unsafe { resolve_elf_symbol(base, name) };
+        let a = resolve_loaded_glibc_symbol(base, &path, symbol).unwrap_or(0);
         if a != 0 { cache.store(a, Ordering::Release); }
     }
     RESOLVED.store(1, Ordering::Release);
+}
+
+pub(crate) fn resolve_host_symbol_raw(symbol: &str) -> Option<usize> {
+    let (base, path) = loaded_glibc_image()?;
+    resolve_loaded_glibc_symbol(base, &path, symbol)
 }
 
 #[inline]
