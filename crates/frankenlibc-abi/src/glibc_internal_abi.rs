@@ -4436,12 +4436,8 @@ pub unsafe extern "C" fn getdirentries(
 ) -> SSizeT {
     if !basep.is_null() {
         unsafe {
-            *basep = libc::syscall(
-                libc::SYS_lseek,
-                fd as i64,
-                0 as i64,
-                libc::SEEK_CUR as i64,
-            ) as libc::off_t as c_long
+            *basep = libc::syscall(libc::SYS_lseek, fd as i64, 0_i64, libc::SEEK_CUR as i64)
+                as libc::off_t as c_long
         };
     }
     unsafe { libc::syscall(libc::SYS_getdents64, fd, buf, nbytes) as SSizeT }
@@ -4455,12 +4451,8 @@ pub unsafe extern "C" fn getdirentries64(
 ) -> SSizeT {
     if !basep.is_null() {
         unsafe {
-            *basep = libc::syscall(
-                libc::SYS_lseek,
-                fd as i64,
-                0 as i64,
-                libc::SEEK_CUR as i64,
-            ) as libc::off_t as i64
+            *basep = libc::syscall(libc::SYS_lseek, fd as i64, 0_i64, libc::SEEK_CUR as i64)
+                as libc::off_t as i64
         };
     }
     unsafe { libc::syscall(libc::SYS_getdents64, fd, buf, nbytes) as SSizeT }
@@ -5817,13 +5809,7 @@ pub unsafe extern "C" fn stime(t: *const c_long) -> c_int {
         tv_sec: unsafe { *t },
         tv_nsec: 0,
     };
-    unsafe {
-        libc::syscall(
-            libc::SYS_clock_settime,
-            libc::CLOCK_REALTIME as i64,
-            &ts,
-        ) as c_int
-    }
+    unsafe { libc::syscall(libc::SYS_clock_settime, libc::CLOCK_REALTIME as i64, &ts) as c_int }
 }
 // stty: legacy V7 — return ENOSYS
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -7873,15 +7859,8 @@ pub unsafe extern "C" fn __file_change_detection_for_path(
     }
     let fcd = result as *mut FileChangeDetection;
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe {
-        libc::syscall(
-            libc::SYS_newfstatat,
-            libc::AT_FDCWD,
-            path,
-            &mut st,
-            0,
-        ) as c_int
-    } != 0
+    if unsafe { libc::syscall(libc::SYS_newfstatat, libc::AT_FDCWD, path, &mut st, 0) as c_int }
+        != 0
     {
         // stat failed — zero out the detection struct
         unsafe { std::ptr::write_bytes(fcd, 0, 1) };

@@ -1868,10 +1868,10 @@ pub unsafe extern "C" fn sysconf(name: c_int) -> libc::c_long {
                     // Parse "MemTotal:   NNNNN kB"
                     if let Some(line) = s.lines().next() {
                         let parts: Vec<&str> = line.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            if let Ok(kb) = parts[1].parse::<u64>() {
-                                return (kb * 1024 / 4096) as libc::c_long;
-                            }
+                        if parts.len() >= 2
+                            && let Ok(kb) = parts[1].parse::<u64>()
+                        {
+                            return (kb * 1024 / 4096) as libc::c_long;
                         }
                     }
                 }
@@ -1900,10 +1900,10 @@ pub unsafe extern "C" fn sysconf(name: c_int) -> libc::c_long {
                     for line in s.lines() {
                         if line.starts_with("MemAvailable:") {
                             let parts: Vec<&str> = line.split_whitespace().collect();
-                            if parts.len() >= 2 {
-                                if let Ok(kb) = parts[1].parse::<u64>() {
-                                    return (kb * 1024 / 4096) as libc::c_long;
-                                }
+                            if parts.len() >= 2
+                                && let Ok(kb) = parts[1].parse::<u64>()
+                            {
+                                return (kb * 1024 / 4096) as libc::c_long;
                             }
                         }
                     }
@@ -2184,14 +2184,12 @@ unsafe fn parse_getopt_long(
             }
             let mut next_index = unsafe { libc_optind + 1 };
             match unsafe { (*opt_ptr).has_arg } {
-                0 => {
-                    if !inline_value.is_null() && unsafe { *inline_value != 0 } {
-                        unsafe {
-                            libc_optopt = (*opt_ptr).val;
-                            libc_optind = next_index;
-                        }
-                        return Some(b'?' as c_int);
+                0 if !inline_value.is_null() && unsafe { *inline_value != 0 } => {
+                    unsafe {
+                        libc_optopt = (*opt_ptr).val;
+                        libc_optind = next_index;
                     }
+                    return Some(b'?' as c_int);
                 }
                 1 => {
                     if !inline_value.is_null() && unsafe { *inline_value != 0 } {
@@ -2220,13 +2218,9 @@ unsafe fn parse_getopt_long(
                         next_index += 1;
                     }
                 }
-                2 => {
-                    if !inline_value.is_null() && unsafe { *inline_value != 0 } {
-                        unsafe {
-                            libc_optarg = inline_value as *mut c_char;
-                        }
-                    }
-                }
+                2 if !inline_value.is_null() && unsafe { *inline_value != 0 } => unsafe {
+                    libc_optarg = inline_value as *mut c_char;
+                },
                 _ => {}
             }
             unsafe {
@@ -2622,8 +2616,7 @@ static mut PTSNAME_FALLBACK: [c_char; PTSNAME_MAX_LEN] = [0; PTSNAME_MAX_LEN];
 
 #[inline]
 unsafe fn lookup_login_name_ptr() -> *const c_char {
-    let pwd =
-        unsafe { crate::pwd_abi::getpwuid(libc::syscall(libc::SYS_geteuid) as libc::uid_t) };
+    let pwd = unsafe { crate::pwd_abi::getpwuid(libc::syscall(libc::SYS_geteuid) as libc::uid_t) };
     if pwd.is_null() {
         return std::ptr::null();
     }
@@ -3144,15 +3137,8 @@ unsafe fn ftw_walk_dir(
     const FTW_NS: c_int = 3; // stat failed
 
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    let rc = unsafe {
-        libc::syscall(
-            libc::SYS_newfstatat,
-            libc::AT_FDCWD,
-            path,
-            &mut st,
-            0,
-        ) as c_int
-    };
+    let rc =
+        unsafe { libc::syscall(libc::SYS_newfstatat, libc::AT_FDCWD, path, &mut st, 0) as c_int };
     if rc != 0 {
         return unsafe { func(path, &st, FTW_NS) };
     }
@@ -3290,15 +3276,7 @@ unsafe fn nftw_walk_dir(
     let rc = if flags & FTW_PHYS != 0 {
         unsafe { libc::lstat(path, &mut st) }
     } else {
-        unsafe {
-            libc::syscall(
-                libc::SYS_newfstatat,
-                libc::AT_FDCWD,
-                path,
-                &mut st,
-                0,
-            ) as c_int
-        }
+        unsafe { libc::syscall(libc::SYS_newfstatat, libc::AT_FDCWD, path, &mut st, 0) as c_int }
     };
 
     // Compute base offset (last '/' + 1).

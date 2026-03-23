@@ -999,7 +999,7 @@ impl PosixObligationMatrixReport {
                     } else {
                         for mode in fixture.mode_expectations.keys() {
                             let mode = mode.to_ascii_lowercase();
-                            aggregate.modes.extend(expand_modes(&mode).into_iter());
+                            aggregate.modes.extend(expand_modes(&mode));
                             aggregate
                                 .test_refs
                                 .insert(format!("c_fixture::{}::{}", fixture.id, mode));

@@ -784,9 +784,7 @@ impl<'a> PikeVm<'a> {
                     continue;
                 }
                 match &self.nfa[t.pc] {
-                    NfaInstr::Match(mk)
-                        if self.matches(mk, sp, notbol, noteol) =>
-                    {
+                    NfaInstr::Match(mk) if self.matches(mk, sp, notbol, noteol) => {
                         let new_t = Thread {
                             pc: t.pc + 1,
                             slots: t.slots,

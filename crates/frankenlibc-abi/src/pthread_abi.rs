@@ -265,12 +265,7 @@ fn host_libc_handle() -> Option<*mut c_void> {
     }
 
     // SAFETY: loading the process' already-present glibc image by SONAME.
-    let handle = unsafe {
-        libc::dlopen(
-            b"libc.so.6\0".as_ptr().cast::<libc::c_char>(),
-            libc::RTLD_NOW | libc::RTLD_LOCAL,
-        )
-    };
+    let handle = unsafe { libc::dlopen(c"libc.so.6".as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
     if handle.is_null() {
         return None;
     }

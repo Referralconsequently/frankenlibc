@@ -1477,8 +1477,7 @@ pub unsafe extern "C" fn fseek(stream: *mut c_void, offset: c_long, whence: c_in
         (offset, whence)
     };
 
-    let new_off =
-        unsafe { libc::syscall(libc::SYS_lseek, fd, target_off, target_whence) as i64 };
+    let new_off = unsafe { libc::syscall(libc::SYS_lseek, fd, target_off, target_whence) as i64 };
     if new_off < 0 {
         let e = std::io::Error::last_os_error()
             .raw_os_error()
@@ -1906,11 +1905,11 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                             buf.extend_from_slice(b"Unknown error");
                         }
                     }
-                    b'n' => {
+                    b'n'
                         // %n: store count of bytes written so far.
                         // Respects length modifier: %hhn→i8, %hn→i16,
                         // %n→i32, %ln→i64, %lln→i64, %zn→isize, %jn→i64.
-                        if arg_idx < max_args {
+                        if arg_idx < max_args => {
                             let ptr_val = unsafe { *args.add(arg_idx) } as usize;
                             arg_idx += 1;
                             if ptr_val != 0 {
@@ -1986,9 +1985,8 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                                 );
                             }
                         }
-                    }
-                    b'd' | b'i' => {
-                        if arg_idx < max_args {
+                    b'd' | b'i'
+                        if arg_idx < max_args => {
                             let raw = unsafe { *args.add(arg_idx) };
                             arg_idx += 1;
                             let val = match spec.length {
@@ -1999,9 +1997,8 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                             };
                             format_signed(val, &resolved_spec, &mut buf);
                         }
-                    }
-                    b'u' | b'x' | b'X' | b'o' => {
-                        if arg_idx < max_args {
+                    b'u' | b'x' | b'X' | b'o'
+                        if arg_idx < max_args => {
                             let raw = unsafe { *args.add(arg_idx) };
                             arg_idx += 1;
                             let val = match spec.length {
@@ -2012,24 +2009,21 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                             };
                             format_unsigned(val, &resolved_spec, &mut buf);
                         }
-                    }
-                    b'f' | b'F' | b'e' | b'E' | b'g' | b'G' | b'a' | b'A' => {
-                        if arg_idx < max_args {
+                    b'f' | b'F' | b'e' | b'E' | b'g' | b'G' | b'a' | b'A'
+                        if arg_idx < max_args => {
                             let raw = unsafe { *args.add(arg_idx) };
                             arg_idx += 1;
                             let val = f64::from_bits(raw);
                             format_float(val, &resolved_spec, &mut buf);
                         }
-                    }
-                    b'c' => {
-                        if arg_idx < max_args {
+                    b'c'
+                        if arg_idx < max_args => {
                             let raw = unsafe { *args.add(arg_idx) };
                             arg_idx += 1;
                             format_char(raw as u8, &resolved_spec, &mut buf);
                         }
-                    }
-                    b's' => {
-                        if arg_idx < max_args {
+                    b's'
+                        if arg_idx < max_args => {
                             let raw = unsafe { *args.add(arg_idx) };
                             arg_idx += 1;
                             let ptr = raw as usize as *const u8;
@@ -2040,14 +2034,12 @@ pub(crate) unsafe fn render_printf(fmt: &[u8], args: *const u64, max_args: usize
                                 format_str(s_bytes, &resolved_spec, &mut buf);
                             }
                         }
-                    }
-                    b'p' => {
-                        if arg_idx < max_args {
+                    b'p'
+                        if arg_idx < max_args => {
                             let raw = unsafe { *args.add(arg_idx) };
                             arg_idx += 1;
                             format_pointer(raw as usize, &resolved_spec, &mut buf);
                         }
-                    }
                     _ => {}
                 }
             }
