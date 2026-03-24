@@ -71,7 +71,7 @@ unsafe fn apply_progress(
             let in_left = unsafe { *inbytesleft };
             unsafe {
                 *inbuf = in_cur.add(in_consumed);
-                *inbytesleft = in_left - in_consumed;
+                *inbytesleft = in_left.saturating_sub(in_consumed);
             }
         }
     }
@@ -82,7 +82,7 @@ unsafe fn apply_progress(
             let out_left = unsafe { *outbytesleft };
             unsafe {
                 *outbuf = out_cur.add(out_written);
-                *outbytesleft = out_left - out_written;
+                *outbytesleft = out_left.saturating_sub(out_written);
             }
         }
     }

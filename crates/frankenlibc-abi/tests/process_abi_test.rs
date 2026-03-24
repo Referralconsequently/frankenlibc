@@ -781,6 +781,18 @@ fn execve_nonexistent_returns_enoent() {
     assert_eq!(libc::WEXITSTATUS(status), libc::ENOENT);
 }
 
+#[test]
+fn execvp_direct_path_preserves_errno_on_failure() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let path = CString::new("/nonexistent_frankenlibc_execvp_errno_probe").unwrap();
+    let argv: [*const c_char; 2] = [path.as_ptr(), std::ptr::null()];
+
+    let rc = unsafe { execvp(path.as_ptr(), argv.as_ptr()) };
+    assert_eq!(rc, -1);
+    let err = unsafe { *frankenlibc_abi::errno_abi::__errno_location() };
+    assert_eq!(err, libc::ENOENT);
+}
+
 // ===========================================================================
 // execvpe (fork + exec with PATH search + custom env)
 // ===========================================================================
@@ -804,6 +816,19 @@ fn execvpe_finds_true_on_path() {
     unsafe { libc::waitpid(pid, &mut status, 0) };
     assert!(libc::WIFEXITED(status));
     assert_eq!(libc::WEXITSTATUS(status), 0);
+}
+
+#[test]
+fn execvpe_direct_path_preserves_errno_on_failure() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let path = CString::new("/nonexistent_frankenlibc_execvpe_errno_probe").unwrap();
+    let argv: [*const c_char; 2] = [path.as_ptr(), std::ptr::null()];
+    let envp: [*const c_char; 1] = [std::ptr::null()];
+
+    let rc = unsafe { execvpe(path.as_ptr(), argv.as_ptr(), envp.as_ptr()) };
+    assert_eq!(rc, -1);
+    let err = unsafe { *frankenlibc_abi::errno_abi::__errno_location() };
+    assert_eq!(err, libc::ENOENT);
 }
 
 // ===========================================================================
@@ -970,6 +995,53 @@ fn posix_spawnp_with_echo() {
     unsafe { libc::waitpid(pid, &mut status, 0) };
     assert!(libc::WIFEXITED(status));
     assert_eq!(libc::WEXITSTATUS(status), 0);
+}
+
+#[test]
+fn posix_spawnp_searches_path_from_envp() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let uniq = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let base = std::env::temp_dir().join(format!("frankenlibc_spawnp_envp_path_{uniq}"));
+    std::fs::create_dir_all(&base).unwrap();
+
+    let cmd_name = "frankenlibc_spawnp_envp_probe";
+    let cmd_path = base.join(cmd_name);
+    symlink("/bin/true", &cmd_path).unwrap();
+
+    let file = CString::new(cmd_name).unwrap();
+    let argv: [*const c_char; 2] = [file.as_ptr(), std::ptr::null()];
+    let path_env = CString::new(format!("PATH={}", base.display())).unwrap();
+    let envp: [*const c_char; 2] = [path_env.as_ptr(), std::ptr::null()];
+    let mut pid: libc::pid_t = -1;
+
+    let rc = unsafe {
+        posix_spawnp(
+            &mut pid,
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            argv.as_ptr().cast(),
+            envp.as_ptr().cast(),
+        )
+    };
+
+    assert_eq!(
+        rc, 0,
+        "posix_spawnp should search PATH from the supplied envp"
+    );
+    assert!(pid > 0, "spawned child pid must be populated on success");
+
+    let mut status: c_int = 0;
+    let waited = unsafe { libc::waitpid(pid, &mut status, 0) };
+    assert_eq!(waited, pid);
+    assert!(libc::WIFEXITED(status));
+    assert_eq!(libc::WEXITSTATUS(status), 0);
+
+    let _ = std::fs::remove_file(&cmd_path);
+    let _ = std::fs::remove_dir(&base);
 }
 
 // ===========================================================================

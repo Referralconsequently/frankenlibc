@@ -71,13 +71,14 @@ pub(crate) unsafe fn bootstrap_host_libio_exports() {
         return;
     }
 
+    let mut resolved_count = 0u8;
+
     if let Some(host_list_ptr_addr) = crate::host_resolve::resolve_host_symbol_raw("_IO_list_all") {
         // SAFETY: host `_IO_list_all` is an 8-byte object containing the list head pointer.
-        unsafe {
-            _IO_list_all = *(host_list_ptr_addr as *const *mut c_void);
-        }
-        let io_list_all = unsafe { _IO_list_all };
+        let io_list_all = unsafe { *(host_list_ptr_addr as *const *mut c_void) };
+        unsafe { _IO_list_all = io_list_all };
         HOST_IO_LIST_ALL.store(io_list_all, Ordering::Release);
+        resolved_count += 1;
     }
 
     if let Some(host_jumps) = crate::host_resolve::resolve_host_symbol_raw("_IO_file_jumps") {
@@ -90,6 +91,7 @@ pub(crate) unsafe fn bootstrap_host_libio_exports() {
                 IO_JUMPS_EXPORT_SIZE,
             );
         }
+        resolved_count += 1;
     }
 
     if let Some(host_wjumps) = crate::host_resolve::resolve_host_symbol_raw("_IO_wfile_jumps") {
@@ -102,6 +104,7 @@ pub(crate) unsafe fn bootstrap_host_libio_exports() {
                 IO_JUMPS_EXPORT_SIZE,
             );
         }
+        resolved_count += 1;
     }
 
     // NOTE: _IO_2_1_{stdin,stdout,stderr}_ exports have been removed.
@@ -110,7 +113,9 @@ pub(crate) unsafe fn bootstrap_host_libio_exports() {
     // The host's original _IO_2_1_* symbols remain visible since we no
     // longer shadow them.
 
-    HOST_LIBIO_BOOTSTRAPPED.store(true, Ordering::Release);
+    if resolved_count == 3 {
+        HOST_LIBIO_BOOTSTRAPPED.store(true, Ordering::Release);
+    }
 }
 
 /// Accessor: resolve `_IO_list_all` from glibc on first call.
@@ -136,6 +141,23 @@ pub unsafe extern "C" fn _IO_list_all_get() -> *mut c_void {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_jumps_get() -> *mut c_void {
     unsafe { bootstrap_host_libio_exports() };
+    if HOST_LIBIO_BOOTSTRAPPED.load(Ordering::Acquire) {
+        return ptr::addr_of_mut!(_IO_file_jumps).cast::<u8>().cast();
+    }
+    let cached = HOST_IO_FILE_JUMPS.load(Ordering::Acquire);
+    if cached != UNRESOLVED {
+        return cached;
+    }
+    if let Some(host_jumps) = crate::host_resolve::resolve_host_symbol_raw("_IO_file_jumps") {
+        let host_ptr = host_jumps as *mut c_void;
+        let _ = HOST_IO_FILE_JUMPS.compare_exchange(
+            UNRESOLVED,
+            host_ptr,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+        return host_ptr;
+    }
     ptr::addr_of_mut!(_IO_file_jumps).cast::<u8>().cast()
 }
 
@@ -143,6 +165,23 @@ pub unsafe extern "C" fn _IO_file_jumps_get() -> *mut c_void {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_wfile_jumps_get() -> *mut c_void {
     unsafe { bootstrap_host_libio_exports() };
+    if HOST_LIBIO_BOOTSTRAPPED.load(Ordering::Acquire) {
+        return ptr::addr_of_mut!(_IO_wfile_jumps).cast::<u8>().cast();
+    }
+    let cached = HOST_IO_WFILE_JUMPS.load(Ordering::Acquire);
+    if cached != UNRESOLVED {
+        return cached;
+    }
+    if let Some(host_wjumps) = crate::host_resolve::resolve_host_symbol_raw("_IO_wfile_jumps") {
+        let host_ptr = host_wjumps as *mut c_void;
+        let _ = HOST_IO_WFILE_JUMPS.compare_exchange(
+            UNRESOLVED,
+            host_ptr,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+        return host_ptr;
+    }
     ptr::addr_of_mut!(_IO_wfile_jumps).cast::<u8>().cast()
 }
 

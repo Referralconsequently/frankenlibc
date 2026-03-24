@@ -19,6 +19,30 @@ unsafe extern "C" {
     static mut environ: *mut *mut c_char;
 }
 
+unsafe fn path_bytes_from_env_vector(mut envp: *const *mut c_char) -> Vec<u8> {
+    if envp.is_null() {
+        // SAFETY: reading the process-global `environ` pointer is valid here.
+        envp = unsafe { environ as *const *mut c_char };
+    }
+
+    while !envp.is_null() {
+        // SAFETY: `envp` points to a NULL-terminated environment vector.
+        let entry = unsafe { *envp };
+        if entry.is_null() {
+            break;
+        }
+        // SAFETY: each environment entry is a valid NUL-terminated string.
+        let env_slice = unsafe { std::ffi::CStr::from_ptr(entry) }.to_bytes();
+        if let Some(path_value) = env_slice.strip_prefix(b"PATH=") {
+            return path_value.to_vec();
+        }
+        // SAFETY: advancing within a NULL-terminated environment vector.
+        envp = unsafe { envp.add(1) };
+    }
+
+    b"/bin:/usr/bin".to_vec()
+}
+
 #[inline]
 fn last_host_errno(default_errno: c_int) -> c_int {
     std::io::Error::last_os_error()
@@ -39,7 +63,11 @@ unsafe fn execvp_via_execve(file: *const c_char, argv: *const *const c_char) -> 
     }
 
     if file_bytes.contains(&b'/') {
-        return unsafe { libc::syscall(libc::SYS_execve as c_long, file, argv, environ) } as c_int;
+        let rc = unsafe { libc::syscall(libc::SYS_execve as c_long, file, argv, environ) } as c_int;
+        if rc < 0 {
+            unsafe { set_abi_errno(last_host_errno(libc::ENOENT)) };
+        }
+        return rc;
     }
 
     let path =
@@ -72,7 +100,10 @@ unsafe fn execvp_via_execve(file: *const c_char, argv: *const *const c_char) -> 
             libc::EACCES => {
                 saw_eacces = true;
             }
-            _ => return -1,
+            _ => {
+                unsafe { set_abi_errno(err) };
+                return -1;
+            }
         }
     }
 
@@ -104,7 +135,7 @@ pub unsafe extern "C" fn fork() -> libc::pid_t {
     let pid = rc as libc::pid_t;
     let adverse = pid < 0;
     if adverse {
-        unsafe { set_abi_errno(libc::EAGAIN) };
+        unsafe { set_abi_errno(last_host_errno(libc::EAGAIN)) };
     }
     runtime_policy::observe(ApiFamily::Process, decision.profile, 50, adverse);
     pid
@@ -384,7 +415,11 @@ pub unsafe extern "C" fn execvpe(
 
     // If file contains '/', execute directly without PATH search.
     if file_bytes.contains(&b'/') {
-        return unsafe { libc::syscall(libc::SYS_execve as c_long, file, argv, envp) as c_int };
+        let rc = unsafe { libc::syscall(libc::SYS_execve as c_long, file, argv, envp) } as c_int;
+        if rc < 0 {
+            unsafe { set_abi_errno(last_host_errno(libc::ENOENT)) };
+        }
+        return rc;
     }
 
     // Search PATH for the executable.
@@ -420,7 +455,10 @@ pub unsafe extern "C" fn execvpe(
             libc::EACCES => {
                 saw_eacces = true;
             }
-            _ => return -1,
+            _ => {
+                unsafe { set_abi_errno(err) };
+                return -1;
+            }
         }
     }
 
@@ -1076,21 +1114,8 @@ unsafe fn posix_spawn_impl(
         if file_bytes.contains(&b'/') {
             candidate_paths.push(std::ffi::CString::from(file_cstr));
         } else {
-            let mut path_bytes: &[u8] = b"/bin:/usr/bin";
-            unsafe {
-                let mut ep = environ;
-                if !ep.is_null() {
-                    while !(*ep).is_null() {
-                        let env_cstr = std::ffi::CStr::from_ptr(*ep);
-                        let env_slice = env_cstr.to_bytes();
-                        if env_slice.starts_with(b"PATH=") {
-                            path_bytes = &env_slice[5..];
-                            break;
-                        }
-                        ep = ep.add(1);
-                    }
-                }
-            }
+            let owned_path = unsafe { path_bytes_from_env_vector(envp) };
+            let path_bytes = owned_path.as_slice();
             for dir in path_bytes.split(|b| *b == b':') {
                 let mut full = dir.to_vec();
                 if !full.ends_with(b"/") && !full.is_empty() {

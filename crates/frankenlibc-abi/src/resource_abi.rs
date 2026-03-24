@@ -96,9 +96,7 @@ pub unsafe extern "C" fn setrlimit(resource: c_int, rlim: *const libc::rlimit) -
         if r.rlim_cur > r.rlim_max {
             let mut clamped = r;
             clamped.rlim_cur = clamped.rlim_max;
-            let boxed = Box::new(clamped);
-            let ptr: *const libc::rlimit = &*boxed;
-            let rc = unsafe { raw_prlimit64(resource, ptr, std::ptr::null_mut()) };
+            let rc = unsafe { raw_prlimit64(resource, &clamped, std::ptr::null_mut()) };
             let adverse = rc != 0;
             runtime_policy::observe(ApiFamily::IoFd, decision.profile, 10, adverse);
             return rc;

@@ -345,8 +345,9 @@ pub unsafe extern "C" fn if_indextoname(ifindex: libc::c_uint, ifname: *mut c_ch
 // ---------------------------------------------------------------------------
 
 /// `struct if_nameindex` layout: { if_index: c_uint, [pad], if_name: *mut c_char }
-/// On x86_64: 4 bytes index + 4 bytes padding + 8 bytes pointer = 16 bytes per entry.
-const IF_NAMEINDEX_ENTRY_SIZE: usize = 16;
+const IF_NAMEINDEX_ENTRY_SIZE: usize = std::mem::size_of::<libc::if_nameindex>();
+/// Byte offset of the `if_name` pointer within `struct if_nameindex`.
+const IF_NAMEINDEX_NAME_OFFSET: usize = std::mem::offset_of!(libc::if_nameindex, if_name);
 
 /// POSIX `if_nameindex` — enumerate all network interfaces.
 ///
@@ -405,7 +406,7 @@ pub unsafe extern "C" fn if_nameindex() -> *mut c_void {
             // Free everything allocated so far.
             for j in 0..i {
                 let prev = unsafe { array.add(j * IF_NAMEINDEX_ENTRY_SIZE) };
-                let prev_name = unsafe { *(prev.add(8) as *const *mut u8) };
+                let prev_name = unsafe { *(prev.add(IF_NAMEINDEX_NAME_OFFSET) as *const *mut u8) };
                 if !prev_name.is_null() {
                     unsafe { crate::malloc_abi::raw_free(prev_name.cast()) };
                 }
@@ -422,7 +423,7 @@ pub unsafe extern "C" fn if_nameindex() -> *mut c_void {
         // Write if_index (u32 at offset 0).
         unsafe { *(entry_ptr as *mut u32) = *idx };
         // Write if_name (*mut c_char at offset 8 on x86_64).
-        unsafe { *(entry_ptr.add(8) as *mut *mut u8) = name_buf };
+        unsafe { *(entry_ptr.add(IF_NAMEINDEX_NAME_OFFSET) as *mut *mut u8) = name_buf };
     }
 
     // Sentinel entry is already zeroed from write_bytes above.
@@ -440,7 +441,7 @@ pub unsafe extern "C" fn if_freenameindex(ptr: *mut c_void) {
     loop {
         let entry_ptr = unsafe { array.add(i * IF_NAMEINDEX_ENTRY_SIZE) };
         let idx = unsafe { *(entry_ptr as *const u32) };
-        let name = unsafe { *(entry_ptr.add(8) as *const *mut c_void) };
+        let name = unsafe { *(entry_ptr.add(IF_NAMEINDEX_NAME_OFFSET) as *const *mut c_void) };
         if idx == 0 && name.is_null() {
             break; // Sentinel reached.
         }

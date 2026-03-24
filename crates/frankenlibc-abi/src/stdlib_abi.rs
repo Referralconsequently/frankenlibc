@@ -2026,7 +2026,7 @@ pub unsafe extern "C" fn gcvt(value: c_double, ndigit: c_int, buf: *mut c_char) 
     }
 
     // Assume caller's buffer is at least ndigit + 16 bytes (glibc doesn't bounds-check).
-    let buf_size = (ndigit as usize).saturating_add(32).min(512);
+    let buf_size = (ndigit.max(0) as usize).saturating_add(32).min(512);
     let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, buf_size) };
     frankenlibc_core::stdlib::gcvt(value, ndigit, slice);
     runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 8, false);
@@ -3395,7 +3395,7 @@ pub unsafe extern "C" fn qgcvt(value: c_double, ndigit: c_int, buf: *mut c_char)
     if buf.is_null() {
         return std::ptr::null_mut();
     }
-    let s = format!("{value:.prec$}", prec = ndigit as usize);
+    let s = format!("{value:.prec$}", prec = ndigit.max(0) as usize);
     let bytes = s.as_bytes();
     let copy_len = bytes.len();
     unsafe {

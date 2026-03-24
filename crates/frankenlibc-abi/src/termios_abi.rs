@@ -132,6 +132,7 @@ pub unsafe extern "C" fn cfgetospeed(termios_p: *const libc::termios) -> u32 {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn cfsetispeed(termios_p: *mut libc::termios, speed: u32) -> c_int {
     if termios_p.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     if !termios_core::valid_baud_rate(speed) {
@@ -152,6 +153,7 @@ pub unsafe extern "C" fn cfsetispeed(termios_p: *mut libc::termios, speed: u32) 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn cfsetospeed(termios_p: *mut libc::termios, speed: u32) -> c_int {
     if termios_p.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     if !termios_core::valid_baud_rate(speed) {

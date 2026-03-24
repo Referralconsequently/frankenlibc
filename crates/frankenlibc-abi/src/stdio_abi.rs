@@ -1982,6 +1982,13 @@ pub unsafe extern "C" fn setvbuf(
             -1
         }
     } else {
+        drop(reg);
+        // Not in our registry — delegate to host libc setvbuf (real FILE*).
+        type HostSetvbufFn = unsafe extern "C" fn(*mut c_void, *mut c_char, c_int, usize) -> c_int;
+        if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setvbuf") {
+            let host_fn: HostSetvbufFn = unsafe { core::mem::transmute(addr) };
+            return unsafe { host_fn(stream, _buf, mode, size) };
+        }
         -1
     }
 }
@@ -2581,6 +2588,23 @@ pub unsafe extern "C" fn fprintf(
             }
         }
     } else {
+        drop(reg);
+        // Not in our registry — delegate to host via fwrite on the rendered output.
+        if let Some(host_fwrite) = unsafe { host_fwrite_fn() } {
+            let written =
+                unsafe { host_fwrite(rendered.as_ptr().cast(), 1, rendered.len(), stream) };
+            runtime_policy::observe(
+                ApiFamily::Stdio,
+                decision.profile,
+                runtime_policy::scaled_cost(15, total_len),
+                written < rendered.len(),
+            );
+            return if written == rendered.len() {
+                total_len as c_int
+            } else {
+                -1
+            };
+        }
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
     }
@@ -3033,6 +3057,23 @@ pub unsafe extern "C" fn vfprintf(
             }
         }
     } else {
+        drop(reg);
+        // Not in our registry — delegate to host via fwrite on the rendered output.
+        if let Some(host_fwrite) = unsafe { host_fwrite_fn() } {
+            let written =
+                unsafe { host_fwrite(rendered.as_ptr().cast(), 1, rendered.len(), stream) };
+            runtime_policy::observe(
+                ApiFamily::Stdio,
+                decision.profile,
+                runtime_policy::scaled_cost(15, total_len),
+                written < rendered.len(),
+            );
+            return if written == rendered.len() {
+                total_len as c_int
+            } else {
+                -1
+            };
+        }
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return -1;
     }
