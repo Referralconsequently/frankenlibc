@@ -1,7 +1,7 @@
 {
   "index_version": 1,
   "bead_id": "bd-24b6",
-  "generated_at": "2026-03-23T23:56:12Z",
+  "generated_at": "2026-03-24T00:51:24Z",
   "artifacts": [
     {
       "path": "crates/frankenlibc-abi/src/setjmp_abi.rs",
@@ -11,22 +11,22 @@
     {
       "path": "target/conformance/setjmp_abi_wiring.report.json",
       "kind": "report",
-      "sha256": "775014833162b2373be1f0f2713dbf23a7d04e7ca366b302238d6879d15e22d4"
+      "sha256": "8f9cccd7f5e1510a1a85f7f375e713c3dbb28a9cca77eae483d7d6c04befb0bc"
     },
     {
       "path": "target/conformance/setjmp_abi_wiring.log.jsonl",
       "kind": "log",
-      "sha256": "547ea62d8830f6a2f09e55b82b134605dbf0955ab0067500581963963e8061f7"
+      "sha256": "9c61ecfabd70717ba7571a743552eac1f50d4faa0e05a3e01424b4b0ce20a242"
     },
     {
       "path": "target/conformance/setjmp_abi_wiring.test_output.log",
       "kind": "unit_test_log",
-      "sha256": "1ecd2c40537ba737ddca830752edc67361f9e55257b4e61d79aa095fbde66fb5"
+      "sha256": "08c9714c1fa6b478173e6e2537759bf2f258d6c27b00e70e3ed71c1150cffc2f"
     },
     {
       "path": "tests/cve_arena/results/bd-24b6/trace.jsonl",
       "kind": "trace",
-      "sha256": "547ea62d8830f6a2f09e55b82b134605dbf0955ab0067500581963963e8061f7"
+      "sha256": "9c61ecfabd70717ba7571a743552eac1f50d4faa0e05a3e01424b4b0ce20a242"
     }
   ]
 }

@@ -44,48 +44,13 @@
     ]
   },
   "waivers": [
-    {
-      "symbol": "longjmp",
-      "scope": "exported_shadow_debt",
-      "risk_tier": "high",
-      "reason": "setjmp/longjmp transfer remains intentionally deferred to the backend stage until closure beads land.",
-      "owner_bead": "bd-2ry",
-      "approved_by": "maintainer",
-      "expires_utc": "2026-06-30T00:00:00Z"
-    },
-    {
-      "symbol": "setjmp",
-      "scope": "exported_shadow_debt",
-      "risk_tier": "high",
-      "reason": "setjmp context capture remains deferred pending the backend transfer implementation wave.",
-      "owner_bead": "bd-2ry",
-      "approved_by": "maintainer",
-      "expires_utc": "2026-06-30T00:00:00Z"
-    },
-    {
-      "symbol": "tcgetattr",
-      "scope": "exported_shadow_debt",
-      "risk_tier": "high",
-      "reason": "termios core syscall-backed implementation not yet landed; call-through/placeholder debt is explicitly tracked.",
-      "owner_bead": "bd-2vv",
-      "approved_by": "maintainer",
-      "expires_utc": "2026-06-30T00:00:00Z"
-    },
-    {
-      "symbol": "tcsetattr",
-      "scope": "exported_shadow_debt",
-      "risk_tier": "high",
-      "reason": "termios write-path semantics remain pending closure and conformance fixtures.",
-      "owner_bead": "bd-2vv",
-      "approved_by": "maintainer",
-      "expires_utc": "2026-06-30T00:00:00Z"
-    }
+    
   ],
   "matrix_waivers": [],
   "summary": {
-    "waiver_count": 4,
+    "waiver_count": 0,
     "critical_waiver_count": 0,
-    "high_waiver_count": 4,
+    "high_waiver_count": 0,
     "matrix_waiver_count": 0
   }
 }

@@ -1,26 +1,52 @@
 {
   "schema_version": "v1",
   "bead": "bd-24ug",
-  "description": "Deterministic phased strategy for eliminating stdio_abi host callthrough in replacement-relevant paths.",
+  "description": "Deterministic staged validation plan for the current 124-symbol stdio_abi surface, keeping bootstrap-critical handle/state primitives isolated from the broader formatted and scanning surface.",
   "generated_from": {
     "support_matrix": "support_matrix.json",
     "callthrough_census": "tests/conformance/callthrough_census.v1.json",
-    "generated_utc": "2026-02-13T18:07:59Z"
+    "generated_utc": "2026-03-24T00:00:00Z"
   },
   "phase_split": {
     "phase1_required": {
-      "description": "Bootstrap-safe stdio handle/state operations prioritized for first replacement tranche.",
+      "description": "Bootstrap-safe stdio globals, lock/state probes, and byte-level character primitives that must remain first in the migration order.",
       "target_status": "Implemented",
       "symbols": [
+        "_IO_2_1_stderr_",
+        "_IO_2_1_stdin_",
+        "_IO_2_1_stdout_",
+        "_IO_feof",
+        "_IO_ferror",
+        "_IO_flockfile",
+        "_IO_ftrylockfile",
+        "_IO_funlockfile",
+        "_IO_getc",
+        "_IO_putc",
         "clearerr",
+        "clearerr_unlocked",
         "feof",
+        "feof_unlocked",
         "ferror",
+        "ferror_unlocked",
         "fflush",
+        "fflush_unlocked",
         "fgetc",
+        "fgetc_unlocked",
         "fileno",
+        "fileno_unlocked",
+        "flockfile",
         "fputc",
+        "fputc_unlocked",
+        "ftrylockfile",
+        "funlockfile",
+        "getc",
+        "getc_unlocked",
         "getchar",
+        "getchar_unlocked",
+        "putc",
+        "putc_unlocked",
         "putchar",
+        "putchar_unlocked",
         "rewind",
         "stderr",
         "stdin",
@@ -29,54 +55,148 @@
       ]
     },
     "deferred_surface": {
-      "description": "Higher-behavioral-complexity stdio surface deferred behind parity and fixture gates.",
+      "description": "The remaining implemented stdio surface, deferred only in migration order because it has broader parity and fixture complexity.",
       "symbols": [
         "fclose",
+        "fcloseall",
+        "fdopen",
         "fgets",
+        "fgets_unlocked",
+        "fgetpos",
+        "fgetpos64",
+        "fmemopen",
         "fopen",
+        "fopen64",
+        "fopencookie",
+        "fread",
+        "fread_unlocked",
+        "freopen",
+        "freopen64",
+        "fseek",
+        "fseeko",
+        "fseeko64",
+        "fsetpos",
+        "fsetpos64",
+        "ftell",
+        "ftello",
+        "ftello64",
+        "fwrite",
+        "fwrite_unlocked",
+        "getdelim",
+        "getline",
+        "mktemp",
+        "open_memstream",
+        "pclose",
+        "popen",
+        "remove",
+        "setbuf",
+        "setbuffer",
+        "setlinebuf",
+        "setvbuf",
+        "tmpfile",
+        "tmpfile64",
+        "tmpnam",
+        "_IO_padn",
+        "_IO_puts",
+        "asprintf",
+        "dprintf",
         "fprintf",
         "fputs",
-        "fread",
-        "fseek",
-        "ftell",
-        "fwrite",
+        "fputs_unlocked",
+        "fputwc_unlocked",
+        "fputws_unlocked",
         "perror",
         "printf",
         "puts",
-        "setbuf",
-        "setvbuf",
         "snprintf",
-        "sprintf"
+        "sprintf",
+        "vasprintf",
+        "vdprintf",
+        "vfprintf",
+        "vprintf",
+        "vsnprintf",
+        "vsprintf",
+        "_IO_peekc_locked",
+        "_IO_seekoff",
+        "_IO_seekpos",
+        "_IO_sgetn",
+        "__isoc23_fscanf",
+        "__isoc23_scanf",
+        "__isoc23_sscanf",
+        "__isoc23_vfscanf",
+        "__isoc23_vscanf",
+        "__isoc23_vsscanf",
+        "__isoc99_fscanf",
+        "__isoc99_scanf",
+        "__isoc99_sscanf",
+        "__isoc99_vfscanf",
+        "__isoc99_vscanf",
+        "__isoc99_vsscanf",
+        "__isoc99_wscanf",
+        "fgetwc_unlocked",
+        "fgetws_unlocked",
+        "fscanf",
+        "scanf",
+        "sscanf",
+        "vfscanf",
+        "vscanf",
+        "vsscanf"
       ]
     }
   },
   "migration_plan": {
-    "strategy_version": 1,
+    "strategy_version": 2,
     "invariants": [
-      "phase split is a strict partition of stdio_abi exported symbols",
+      "phase split is a strict partition of the current stdio_abi support_matrix surface",
       "phase ordering is deterministic and strictly increasing",
-      "phase-1 required subset remains non-empty and gate-enforced",
-      "phase-1 required symbols are non-callthrough and deferred symbols remain explicit GlibcCallThrough in support_matrix"
+      "phase-1 required subset remains non-empty, implemented, and fully included in migration phase 1",
+      "deferred surface remains implemented but is sequenced after phase 1 because it has broader parity and validation complexity"
     ],
     "phases": [
       {
         "phase": 1,
-        "phase_id": "state-and-handle-primitives",
+        "phase_id": "bootstrap-handle-and-byte-primitives",
         "validation_profile": "Fast",
         "mode_scope": [
           "strict",
           "hardened"
         ],
         "symbols": [
+          "_IO_2_1_stderr_",
+          "_IO_2_1_stdin_",
+          "_IO_2_1_stdout_",
+          "_IO_feof",
+          "_IO_ferror",
+          "_IO_flockfile",
+          "_IO_ftrylockfile",
+          "_IO_funlockfile",
+          "_IO_getc",
+          "_IO_putc",
           "clearerr",
+          "clearerr_unlocked",
           "feof",
+          "feof_unlocked",
           "ferror",
+          "ferror_unlocked",
           "fflush",
+          "fflush_unlocked",
           "fgetc",
+          "fgetc_unlocked",
           "fileno",
+          "fileno_unlocked",
+          "flockfile",
           "fputc",
+          "fputc_unlocked",
+          "ftrylockfile",
+          "funlockfile",
+          "getc",
+          "getc_unlocked",
           "getchar",
+          "getchar_unlocked",
+          "putc",
+          "putc_unlocked",
           "putchar",
+          "putchar_unlocked",
           "rewind",
           "stderr",
           "stdin",
@@ -87,13 +207,13 @@
           "scripts/check_stdio_phase_strategy.sh"
         ],
         "completion_criteria": [
-          "phase-1 symbol list is non-callthrough in support_matrix and fully covered by migration phase 1",
-          "strict and hardened logs include deterministic phase-plan evidence"
+          "bootstrap-sensitive stdio globals and byte primitives remain implemented and partition-complete",
+          "strict and hardened evidence continues to emit deterministic phase-plan artifacts for the full stdio surface"
         ]
       },
       {
         "phase": 2,
-        "phase_id": "unformatted-stream-io",
+        "phase_id": "stream-lifecycle-and-buffering",
         "validation_profile": "Full",
         "mode_scope": [
           "strict",
@@ -101,46 +221,132 @@
         ],
         "symbols": [
           "fclose",
+          "fcloseall",
+          "fdopen",
           "fgets",
+          "fgets_unlocked",
+          "fgetpos",
+          "fgetpos64",
+          "fmemopen",
           "fopen",
-          "fputs",
+          "fopen64",
+          "fopencookie",
           "fread",
+          "fread_unlocked",
+          "freopen",
+          "freopen64",
           "fseek",
+          "fseeko",
+          "fseeko64",
+          "fsetpos",
+          "fsetpos64",
           "ftell",
+          "ftello",
+          "ftello64",
           "fwrite",
+          "fwrite_unlocked",
+          "getdelim",
+          "getline",
+          "mktemp",
+          "open_memstream",
+          "pclose",
+          "popen",
+          "remove",
           "setbuf",
-          "setvbuf"
+          "setbuffer",
+          "setlinebuf",
+          "setvbuf",
+          "tmpfile",
+          "tmpfile64",
+          "tmpnam"
         ],
         "entry_gates": [
           "scripts/check_stdio_phase_strategy.sh"
         ],
         "completion_criteria": [
-          "stream open/close/read/write state transitions are fixture-backed",
-          "deferred-surface list remains a strict complement of phase-1 symbols"
+          "open/close/read/write/seek lifecycle paths have parity fixtures and deterministic state transitions",
+          "buffering and memory-stream entrypoints stay partition-complete and migration-accounted"
         ]
       },
       {
         "phase": 3,
-        "phase_id": "formatted-and-diagnostics",
+        "phase_id": "formatted-output-and-diagnostics",
         "validation_profile": "Full",
         "mode_scope": [
           "strict",
           "hardened"
         ],
         "symbols": [
+          "_IO_padn",
+          "_IO_puts",
+          "asprintf",
+          "dprintf",
           "fprintf",
+          "fputs",
+          "fputs_unlocked",
+          "fputwc_unlocked",
+          "fputws_unlocked",
           "perror",
           "printf",
           "puts",
           "snprintf",
-          "sprintf"
+          "sprintf",
+          "vasprintf",
+          "vdprintf",
+          "vfprintf",
+          "vprintf",
+          "vsnprintf",
+          "vsprintf"
         ],
         "entry_gates": [
           "scripts/check_stdio_phase_strategy.sh"
         ],
         "completion_criteria": [
-          "formatting and diagnostic symbols have deterministic parity fixtures",
-          "no symbol remains outside the declared phase partition"
+          "formatted output and diagnostics retain deterministic fixture coverage",
+          "no formatted-output symbol falls outside the declared phase partition"
+        ]
+      },
+      {
+        "phase": 4,
+        "phase_id": "formatted-input-and-internal-scan-helpers",
+        "validation_profile": "Full",
+        "mode_scope": [
+          "strict",
+          "hardened"
+        ],
+        "symbols": [
+          "_IO_peekc_locked",
+          "_IO_seekoff",
+          "_IO_seekpos",
+          "_IO_sgetn",
+          "__isoc23_fscanf",
+          "__isoc23_scanf",
+          "__isoc23_sscanf",
+          "__isoc23_vfscanf",
+          "__isoc23_vscanf",
+          "__isoc23_vsscanf",
+          "__isoc99_fscanf",
+          "__isoc99_scanf",
+          "__isoc99_sscanf",
+          "__isoc99_vfscanf",
+          "__isoc99_vscanf",
+          "__isoc99_vsscanf",
+          "__isoc99_wscanf",
+          "fgetwc_unlocked",
+          "fgetws_unlocked",
+          "fscanf",
+          "scanf",
+          "sscanf",
+          "vfscanf",
+          "vscanf",
+          "vsscanf"
+        ],
+        "entry_gates": [
+          "scripts/check_stdio_phase_strategy.sh"
+        ],
+        "completion_criteria": [
+          "scanf-family and internal scan helpers stay explicitly partitioned and validation-tracked",
+          "wide and internal scan helpers remain aligned with the stdio support surface without orphaned symbols"
         ]
       }
     ]
@@ -154,18 +360,21 @@
     ]
   },
   "summary": {
-    "total_stdio_symbols": 30,
-    "phase_count": 3,
-    "phase1_required_count": 14,
-    "deferred_count": 16,
-    "phase1_non_callthrough_count": 14,
-    "deferred_callthrough_count": 16
+    "total_stdio_symbols": 124,
+    "phase_count": 4,
+    "phase1_required_count": 40,
+    "deferred_count": 84,
+    "phase1_ready_count": 40,
+    "deferred_ready_count": 84
   },
   "support_contract": {
     "phase1_required_statuses": [
       "Implemented",
       "RawSyscall"
     ],
-    "deferred_surface_status": "GlibcCallThrough"
+    "deferred_surface_statuses": [
+      "Implemented",
+      "RawSyscall"
+    ]
   }
 }
