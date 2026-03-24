@@ -115,6 +115,22 @@ row_by_symbol = {str(row.get("symbol")): row for row in rows}
 expected_status = policy["support_matrix_contract"]["expected_status"]
 expected_strict = policy["support_matrix_contract"]["strict_semantics"]
 expected_hardened = policy["support_matrix_contract"]["hardened_semantics"]
+expected_dlerror_status = policy["support_matrix_contract"].get(
+    "dlerror_expected_status",
+    "Implemented",
+)
+strict_by_symbol = policy["support_matrix_contract"].get("strict_semantics_by_symbol", {})
+hardened_by_symbol = policy["support_matrix_contract"].get(
+    "hardened_semantics_by_symbol", {}
+)
+expected_dlerror_strict = policy["support_matrix_contract"].get(
+    "dlerror_strict_semantics",
+    "Native thread-local dlerror: returns last dl* error message and clears error state per POSIX",
+)
+expected_dlerror_hardened = policy["support_matrix_contract"].get(
+    "dlerror_hardened_semantics",
+    "Native thread-local dlerror with deterministic error-message return and state clearing",
+)
 
 for symbol in symbols:
     if symbol not in row_by_symbol:
@@ -122,15 +138,26 @@ for symbol in symbols:
     row = row_by_symbol[symbol]
     if row.get("module") != "dlfcn_abi":
         raise SystemExit(f"FAIL: support_matrix {symbol} module mismatch: {row.get('module')!r}")
-    if row.get("status") != expected_status:
+    expected_row_status = expected_dlerror_status if symbol == "dlerror" else expected_status
+    if row.get("status") != expected_row_status:
         raise SystemExit(
-            f"FAIL: support_matrix {symbol} status mismatch: expected={expected_status} actual={row.get('status')!r}"
+            f"FAIL: support_matrix {symbol} status mismatch: expected={expected_row_status} actual={row.get('status')!r}"
         )
-    if row.get("strict_semantics") != expected_strict:
+    expected_row_strict = strict_by_symbol.get(
+        symbol,
+        expected_dlerror_strict if symbol == "dlerror" else expected_strict,
+    )
+    expected_row_hardened = (
+        hardened_by_symbol.get(
+            symbol,
+            expected_dlerror_hardened if symbol == "dlerror" else expected_hardened,
+        )
+    )
+    if row.get("strict_semantics") != expected_row_strict:
         raise SystemExit(
             f"FAIL: support_matrix {symbol} strict_semantics mismatch: {row.get('strict_semantics')!r}"
         )
-    if row.get("hardened_semantics") != expected_hardened:
+    if row.get("hardened_semantics") != expected_row_hardened:
         raise SystemExit(
             f"FAIL: support_matrix {symbol} hardened_semantics mismatch: {row.get('hardened_semantics')!r}"
         )
@@ -157,12 +184,12 @@ if replacement.get("replacement_forbidden", {}).get("enforcement") != "scripts/c
     raise SystemExit("FAIL: replacement_profile replacement_forbidden.enforcement drift")
 
 census = replacement.get("call_through_census", {}).get("modules", {}).get("dlfcn_abi", {})
-if census.get("count") != 4:
-    raise SystemExit("FAIL: replacement_profile dlfcn_abi call-through count must remain 4")
+if census.get("count") != 0:
+    raise SystemExit("FAIL: replacement_profile dlfcn_abi call-through count must remain 0")
 functions = set(census.get("functions", []))
-if functions != {"dlopen", "dlsym", "dlclose"}:
+if functions:
     raise SystemExit(
-        f"FAIL: replacement_profile dlfcn_abi functions must be dlopen/dlsym/dlclose, got {sorted(functions)!r}"
+        f"FAIL: replacement_profile dlfcn_abi functions must be empty for native phase-1 boundary, got {sorted(functions)!r}"
     )
 
 docs_contract = policy.get("docs_contract", {})

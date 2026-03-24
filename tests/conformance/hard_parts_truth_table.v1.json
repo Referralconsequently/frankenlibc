@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-8sho",
-  "generated_at": "2026-02-13T08:48:00Z",
+  "generated_at": "2026-03-23T23:30:00Z",
   "sources": {
     "readme": "README.md",
     "feature_parity": "FEATURE_PARITY.md",
@@ -9,12 +9,12 @@
     "reality_report": "tests/conformance/reality_report.v1.json"
   },
   "reality_snapshot": {
-    "generated_at_utc": "2026-02-11T19:17:31Z",
-    "total_exported": 250,
+    "generated_at_utc": "2026-02-18T04:49:26Z",
+    "total_exported": 3980,
     "counts": {
-      "implemented": 118,
-      "raw_syscall": 83,
-      "glibc_call_through": 49,
+      "implemented": 3576,
+      "raw_syscall": 404,
+      "glibc_call_through": 0,
       "stub": 0
     }
   },
@@ -45,23 +45,18 @@
     {
       "id": "threading",
       "status": "IN_PROGRESS",
-      "implemented_scope": "Runtime-math threading routing and selected pthread semantics are live.",
-      "deferred_scope": "`pthread_abi` still contains call-through surface; lifecycle/TLS/teardown closure beads remain open.",
+      "implemented_scope": "Runtime-math threading routing and selected pthread semantics are live, including lifecycle and rwlock native routing.",
+      "deferred_scope": "Close lifecycle/TLS stress beads.",
       "support_expectations": {
         "required_module_status": [
           {
             "module": "pthread_abi",
             "status": "Implemented",
             "min_count": 1
-          },
-          {
-            "module": "pthread_abi",
-            "status": "GlibcCallThrough",
-            "min_count": 1
           }
         ]
       },
-      "doc_line": "- `threading`: `IN_PROGRESS` — implemented scope: runtime-math threading routing and selected pthread semantics are live. Deferred scope: eliminate remaining `pthread_abi` call-through surface and close lifecycle/TLS stress beads."
+      "doc_line": "- `threading`: `IN_PROGRESS` — implemented scope: runtime-math threading routing and selected pthread semantics are live, including lifecycle and rwlock native routing. Deferred scope: close lifecycle/TLS stress beads."
     },
     {
       "id": "resolver",
@@ -176,7 +171,7 @@
           }
         ]
       },
-      "doc_line": "- `iconv`: `IMPLEMENTED_PARTIAL` — implemented scope: phase-1 `iconv_open`/`iconv`/`iconv_close` conversions with deterministic strict+hardened fixtures. Deferred scope: full `iconvdata` breadth and deterministic table-generation closure."
+      "doc_line": "- `iconv`: `IMPLEMENTED_PARTIAL` — implemented scope: phase-1 `iconv_open`/`iconv`/`iconv_close` conversions for UTF-8/ISO-8859-1/UTF-16LE/UTF-32 with deterministic strict+hardened fixtures; codec scope/exclusions are locked in `tests/conformance/iconv_codec_scope_ledger.v1.json`. Deferred scope: full `iconvdata` breadth and deterministic table-generation closure."
     }
   ],
   "contradictions": [],

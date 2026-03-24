@@ -30,6 +30,15 @@ fn load_dag() -> serde_json::Value {
     serde_json::from_str(&content).expect("release_gate_dag.v1.json should be valid JSON")
 }
 
+fn gate_index(dag: &serde_json::Value, gate_name: &str) -> usize {
+    dag["gates"]
+        .as_array()
+        .expect("gates should be an array")
+        .iter()
+        .position(|gate| gate["gate_name"].as_str() == Some(gate_name))
+        .unwrap_or_else(|| panic!("gate '{gate_name}' must exist in release_gate_dag.v1.json"))
+}
+
 fn unique_tmp_path(prefix: &str, suffix: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -157,6 +166,8 @@ fn dry_run_passes_and_emits_artifacts() {
 fn fail_fast_then_resume_is_deterministic() {
     let root = workspace_root();
     let script = root.join("scripts/release_dry_run.sh");
+    let dag = load_dag();
+    let expected_resume_index = gate_index(&dag, "e2e");
     let fail_log = unique_tmp_path("release-dry-run-fail-log", ".jsonl");
     let fail_state = unique_tmp_path("release-dry-run-fail-state", ".json");
     let fail_dossier = unique_tmp_path("release-dry-run-fail-dossier", ".json");
@@ -193,7 +204,10 @@ fn fail_fast_then_resume_is_deterministic() {
         Some("e2e"),
         "expected fail-fast at e2e gate"
     );
-    assert_eq!(state_json["failed_gate_index"].as_u64(), Some(3));
+    assert_eq!(
+        state_json["failed_gate_index"].as_u64(),
+        Some(expected_resume_index as u64)
+    );
     let token = state_json["resume_token"]
         .as_str()
         .expect("resume token should be emitted");
@@ -237,13 +251,13 @@ fn fail_fast_then_resume_is_deterministic() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("resume log row must be valid JSON"))
         .collect();
-    assert!(
-        rows.len() >= 4,
-        "resume run should emit rows for all gates, got {}",
-        rows.len()
+    assert_eq!(
+        rows.len(),
+        dag["gates"].as_array().unwrap().len(),
+        "resume run should emit one row per gate"
     );
 
-    for row in rows.iter().take(3) {
+    for row in rows.iter().take(expected_resume_index) {
         assert_eq!(
             row["status"].as_str(),
             Some("resume_skip"),
@@ -251,12 +265,12 @@ fn fail_fast_then_resume_is_deterministic() {
         );
     }
     assert_eq!(
-        rows[3]["gate_name"].as_str(),
+        rows[expected_resume_index]["gate_name"].as_str(),
         Some("e2e"),
         "resume should restart at e2e gate index"
     );
     assert_eq!(
-        rows[3]["status"].as_str(),
+        rows[expected_resume_index]["status"].as_str(),
         Some("pass"),
         "resume should execute failed gate successfully after clearing failure env"
     );

@@ -474,7 +474,7 @@ pub fn iconv_open_detailed(
         IconvDescriptor {
             from,
             to,
-            emit_bom: matches!(to, Encoding::Utf16Le | Encoding::Utf32),
+            emit_bom: matches!(to, Encoding::Utf32),
         },
         dispatch,
     ))
@@ -539,6 +539,25 @@ pub fn iconv(
             });
         }
     };
+
+    if cd.emit_bom {
+        let bom = match cd.to {
+            Encoding::Utf32 => &[0xFF, 0xFE, 0x00, 0x00][..],
+            _ => &[][..],
+        };
+        if !bom.is_empty() {
+            if outbuf.len() < bom.len() {
+                return Err(IconvError {
+                    code: ICONV_E2BIG,
+                    in_consumed: 0,
+                    out_written: 0,
+                });
+            }
+            outbuf[..bom.len()].copy_from_slice(bom);
+            out_pos = bom.len();
+        }
+        cd.emit_bom = false;
+    }
 
     while in_pos < input.len() {
         let (ch, consumed) = match decode_char(cd.from, &input[in_pos..]) {
@@ -715,6 +734,26 @@ mod tests {
         assert_eq!(res2.in_consumed, 1);
         assert_eq!(res2.out_written, 4);
         assert_eq!(&out[4..8], &[0x41, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn utf8_to_utf32_first_conversion_emits_bom() {
+        let mut cd = iconv_open(b"UTF-32", b"UTF-8").unwrap();
+        let mut out = [0u8; 8];
+        let res = iconv(&mut cd, Some(b"A"), &mut out).unwrap();
+        assert_eq!(res.in_consumed, 1);
+        assert_eq!(res.out_written, 8);
+        assert_eq!(&out[..8], &[0xFF, 0xFE, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn utf8_to_utf16le_first_conversion_does_not_emit_bom() {
+        let mut cd = iconv_open(b"UTF-16LE", b"UTF-8").unwrap();
+        let mut out = [0u8; 4];
+        let res = iconv(&mut cd, Some(b"A"), &mut out).unwrap();
+        assert_eq!(res.in_consumed, 1);
+        assert_eq!(res.out_written, 2);
+        assert_eq!(&out[..2], &[0x41, 0x00]);
     }
 
     #[test]

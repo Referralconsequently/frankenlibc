@@ -1,46 +1,46 @@
 {
   "schema_version": "v1",
   "bead": "bd-3g4p",
-  "generated_at": "2026-03-20T03:39:40Z",
+  "generated_at": "2026-03-23T23:06:23Z",
   "summary": {
     "total_symbols": 3980,
-    "status_validated": 3979,
-    "status_invalid": 1,
+    "status_validated": 3980,
+    "status_invalid": 0,
     "status_skipped": 0,
     "status_valid_pct": 100.0,
-    "fixture_linked": 203,
-    "fixture_unlinked": 3777,
-    "fixture_coverage_pct": 5.1,
-    "total_warnings": 1
+    "fixture_linked": 230,
+    "fixture_unlinked": 3750,
+    "fixture_coverage_pct": 5.8,
+    "total_warnings": 0
   },
   "coverage_dashboard": {
     "total_symbols": 3980,
     "status_counts": {
-      "Implemented": 3457,
-      "RawSyscall": 406,
-      "GlibcCallThrough": 117,
+      "Implemented": 3576,
+      "RawSyscall": 404,
+      "GlibcCallThrough": 0,
       "Stub": 0
     },
     "status_share_pct": {
-      "Implemented": 86.9,
+      "Implemented": 89.8,
       "RawSyscall": 10.2,
-      "GlibcCallThrough": 2.9,
+      "GlibcCallThrough": 0.0,
       "Stub": 0.0
     },
-    "native_coverage_pct": 97.1
+    "native_coverage_pct": 100.0
   },
   "trend": {
     "baseline_report_path": "/data/projects/frankenlibc/tests/conformance/support_matrix_maintenance_report.v1.json",
     "baseline_loaded": true,
     "baseline_symbol_map_loaded": true,
     "status_count_delta": {
-      "GlibcCallThrough": -16,
-      "Implemented": 16,
-      "RawSyscall": 0,
+      "GlibcCallThrough": -117,
+      "Implemented": 119,
+      "RawSyscall": -2,
       "Stub": 0
     },
-    "native_coverage_pct_delta": 0.36,
-    "reclassified_symbol_count": 16,
+    "native_coverage_pct_delta": 2.9,
+    "reclassified_symbol_count": 119,
     "new_symbol_count": 0,
     "removed_symbol_count": 0,
     "new_symbols": [],
@@ -56,10 +56,52 @@
     "reclassification_requires_conformance": {
       "status": "fail",
       "baseline_symbol_map_loaded": true,
-      "total_reclassified": 16,
+      "total_reclassified": 119,
       "violations": [
         {
-          "symbol": "_IO_adjust_column",
+          "symbol": "_IO_default_doallocate",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_default_finish",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_doallocbuf",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_file_attach",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -75,7 +117,7 @@
           ]
         },
         {
-          "symbol": "_IO_adjust_wcolumn",
+          "symbol": "_IO_file_doallocate",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -91,7 +133,7 @@
           ]
         },
         {
-          "symbol": "_IO_default_pbackfail",
+          "symbol": "_IO_file_finish",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -107,7 +149,7 @@
           ]
         },
         {
-          "symbol": "_IO_default_uflow",
+          "symbol": "_IO_file_fopen",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -123,7 +165,21 @@
           ]
         },
         {
-          "symbol": "_IO_default_xsgetn",
+          "symbol": "_IO_file_init",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_file_jumps",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -139,7 +195,7 @@
           ]
         },
         {
-          "symbol": "_IO_default_xsputn",
+          "symbol": "_IO_file_open",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -155,7 +211,49 @@
           ]
         },
         {
-          "symbol": "_IO_do_write",
+          "symbol": "_IO_free_backup_area",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_free_wbackup_area",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_init",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_init_marker",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -171,7 +269,7 @@
           ]
         },
         {
-          "symbol": "_IO_flush_all_linebuffered",
+          "symbol": "_IO_init_wmarker",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -187,7 +285,35 @@
           ]
         },
         {
-          "symbol": "_IO_getline",
+          "symbol": "_IO_iter_begin",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 2,
+          "hardened_fixture_count": 2,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_iter_end",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_iter_file",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -203,7 +329,7 @@
           ]
         },
         {
-          "symbol": "_IO_getline_info",
+          "symbol": "_IO_iter_next",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -219,7 +345,7 @@
           ]
         },
         {
-          "symbol": "_IO_gets",
+          "symbol": "_IO_least_wmarker",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -235,7 +361,21 @@
           ]
         },
         {
-          "symbol": "_IO_popen",
+          "symbol": "_IO_link_in",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_list_all",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -251,7 +391,77 @@
           ]
         },
         {
-          "symbol": "_IO_proc_close",
+          "symbol": "_IO_list_lock",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_list_resetlock",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_list_unlock",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_marker_delta",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_marker_difference",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_proc_open",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -267,7 +477,7 @@
           ]
         },
         {
-          "symbol": "_IO_sputbackc",
+          "symbol": "_IO_remove_marker",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -283,7 +493,21 @@
           ]
         },
         {
-          "symbol": "_IO_switch_to_get_mode",
+          "symbol": "_IO_seekmark",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_seekwmark",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -299,7 +523,1415 @@
           ]
         },
         {
-          "symbol": "_IO_vfscanf",
+          "symbol": "_IO_setb",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_sputbackwc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_str_init_readonly",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_str_init_static",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_str_overflow",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_str_pbackfail",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_str_seekoff",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_str_underflow",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_sungetc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_sungetwc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_switch_to_main_wget_area",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_switch_to_wbackup_area",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_switch_to_wget_mode",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_un_link",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_unsave_markers",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_unsave_wmarkers",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdefault_doallocate",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdefault_finish",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdefault_pbackfail",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdefault_uflow",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdefault_xsgetn",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdefault_xsputn",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdo_write",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wdoallocbuf",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wfile_jumps",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wfile_overflow",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wfile_seekoff",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wfile_sync",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wfile_underflow",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wfile_xsputn",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wmarker_delta",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_IO_wsetb",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_close",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_create_spec",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_destroy_spec",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_get_alias_db",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_get_cache",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_get_modules_db",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_open",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "__gconv_transliterate",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "_authenticate",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "authnone_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "authunix_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "authunix_create_default",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "callrpc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clnt_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clnt_perror",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clnt_sperror",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clntraw_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clnttcp_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clntudp_bufcreate",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clntudp_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "clntunix_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dladdr1",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dlclose",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 1,
+          "hardened_fixture_count": 1,
+          "strict_conformance": {
+            "total": 1,
+            "passed": 0,
+            "failed": 0,
+            "errors": 1,
+            "pass_rate_percent": 0.0
+          },
+          "hardened_conformance": {
+            "total": 1,
+            "passed": 0,
+            "failed": 0,
+            "errors": 1,
+            "pass_rate_percent": 0.0
+          },
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dlinfo",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 2,
+          "hardened_fixture_count": 1,
+          "strict_conformance": {
+            "total": 1,
+            "passed": 0,
+            "failed": 0,
+            "errors": 1,
+            "pass_rate_percent": 0.0
+          },
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dlmopen",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dlopen",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 3,
+          "hardened_fixture_count": 2,
+          "strict_conformance": {
+            "total": 3,
+            "passed": 0,
+            "failed": 0,
+            "errors": 3,
+            "pass_rate_percent": 0.0
+          },
+          "hardened_conformance": {
+            "total": 2,
+            "passed": 0,
+            "failed": 0,
+            "errors": 2,
+            "pass_rate_percent": 0.0
+          },
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dlsym",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 3,
+          "hardened_fixture_count": 1,
+          "strict_conformance": {
+            "total": 3,
+            "passed": 0,
+            "failed": 0,
+            "errors": 3,
+            "pass_rate_percent": 0.0
+          },
+          "hardened_conformance": {
+            "total": 1,
+            "passed": 0,
+            "failed": 0,
+            "errors": 1,
+            "pass_rate_percent": 0.0
+          },
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "dlvsym",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "if_indextoname",
+          "previous_status": "RawSyscall",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "if_nametoindex",
+          "previous_status": "RawSyscall",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "registerrpc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_exit",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_getreq",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_getreq_common",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_getreq_poll",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_getreqset",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_register",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_run",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_sendreply",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svc_unregister",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_auth",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_decode",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_noproc",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_noprog",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_progvers",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_systemerr",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcerr_weakauth",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcfd_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcraw_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svctcp_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcudp_bufcreate",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcudp_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcudp_enablecache",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcunix_create",
+          "previous_status": "GlibcCallThrough",
+          "current_status": "Implemented",
+          "strict_fixture_count": 0,
+          "hardened_fixture_count": 0,
+          "strict_conformance": null,
+          "hardened_conformance": null,
+          "conformance_evidence_passed": false,
+          "missing_evidence": [
+            "missing_strict_fixture",
+            "missing_hardened_fixture",
+            "strict_conformance_not_passing",
+            "hardened_conformance_not_passing"
+          ]
+        },
+        {
+          "symbol": "svcunixfd_create",
           "previous_status": "GlibcCallThrough",
           "current_status": "Implemented",
           "strict_fixture_count": 0,
@@ -318,16 +1950,12 @@
     }
   },
   "status_distribution": {
-    "GlibcCallThrough": {
-      "count": 117,
-      "fixture_linked": 4
-    },
     "Implemented": {
-      "count": 3457,
-      "fixture_linked": 146
+      "count": 3576,
+      "fixture_linked": 177
     },
     "RawSyscall": {
-      "count": 406,
+      "count": 404,
       "fixture_linked": 53
     }
   },
@@ -348,9 +1976,9 @@
       "coverage_pct": 21.4
     },
     "dlfcn_abi": {
-      "total": 6,
+      "total": 7,
       "linked": 5,
-      "coverage_pct": 83.3
+      "coverage_pct": 71.4
     },
     "err_abi": {
       "total": 8,
@@ -373,7 +2001,7 @@
       "coverage_pct": 0.0
     },
     "glibc_internal_abi": {
-      "total": 567,
+      "total": 566,
       "linked": 1,
       "coverage_pct": 0.2
     },
@@ -399,8 +2027,8 @@
     },
     "io_internal_abi": {
       "total": 114,
-      "linked": 0,
-      "coverage_pct": 0.0
+      "linked": 27,
+      "coverage_pct": 23.7
     },
     "isoc_abi": {
       "total": 5,
@@ -541,14 +2169,14 @@
     "_IO_2_1_stdout_": "Implemented",
     "_IO_adjust_column": "Implemented",
     "_IO_adjust_wcolumn": "Implemented",
-    "_IO_default_doallocate": "GlibcCallThrough",
-    "_IO_default_finish": "GlibcCallThrough",
+    "_IO_default_doallocate": "Implemented",
+    "_IO_default_finish": "Implemented",
     "_IO_default_pbackfail": "Implemented",
     "_IO_default_uflow": "Implemented",
     "_IO_default_xsgetn": "Implemented",
     "_IO_default_xsputn": "Implemented",
     "_IO_do_write": "Implemented",
-    "_IO_doallocbuf": "GlibcCallThrough",
+    "_IO_doallocbuf": "Implemented",
     "_IO_enable_locks": "Implemented",
     "_IO_fclose": "Implemented",
     "_IO_fdopen": "Implemented",
@@ -558,15 +2186,15 @@
     "_IO_fgetpos": "Implemented",
     "_IO_fgetpos64": "Implemented",
     "_IO_fgets": "Implemented",
-    "_IO_file_attach": "GlibcCallThrough",
+    "_IO_file_attach": "Implemented",
     "_IO_file_close": "Implemented",
     "_IO_file_close_it": "Implemented",
-    "_IO_file_doallocate": "GlibcCallThrough",
-    "_IO_file_finish": "GlibcCallThrough",
-    "_IO_file_fopen": "GlibcCallThrough",
-    "_IO_file_init": "GlibcCallThrough",
-    "_IO_file_jumps": "GlibcCallThrough",
-    "_IO_file_open": "GlibcCallThrough",
+    "_IO_file_doallocate": "Implemented",
+    "_IO_file_finish": "Implemented",
+    "_IO_file_fopen": "Implemented",
+    "_IO_file_init": "Implemented",
+    "_IO_file_jumps": "Implemented",
+    "_IO_file_open": "Implemented",
     "_IO_file_overflow": "Implemented",
     "_IO_file_read": "Implemented",
     "_IO_file_seek": "Implemented",
@@ -584,8 +2212,8 @@
     "_IO_fprintf": "Implemented",
     "_IO_fputs": "Implemented",
     "_IO_fread": "Implemented",
-    "_IO_free_backup_area": "GlibcCallThrough",
-    "_IO_free_wbackup_area": "GlibcCallThrough",
+    "_IO_free_backup_area": "Implemented",
+    "_IO_free_wbackup_area": "Implemented",
     "_IO_fsetpos": "Implemented",
     "_IO_fsetpos64": "Implemented",
     "_IO_ftell": "Implemented",
@@ -596,77 +2224,77 @@
     "_IO_getline": "Implemented",
     "_IO_getline_info": "Implemented",
     "_IO_gets": "Implemented",
-    "_IO_init": "GlibcCallThrough",
-    "_IO_init_marker": "GlibcCallThrough",
-    "_IO_init_wmarker": "GlibcCallThrough",
-    "_IO_iter_begin": "GlibcCallThrough",
-    "_IO_iter_end": "GlibcCallThrough",
-    "_IO_iter_file": "GlibcCallThrough",
-    "_IO_iter_next": "GlibcCallThrough",
-    "_IO_least_wmarker": "GlibcCallThrough",
-    "_IO_link_in": "GlibcCallThrough",
-    "_IO_list_all": "GlibcCallThrough",
-    "_IO_list_lock": "GlibcCallThrough",
-    "_IO_list_resetlock": "GlibcCallThrough",
-    "_IO_list_unlock": "GlibcCallThrough",
-    "_IO_marker_delta": "GlibcCallThrough",
-    "_IO_marker_difference": "GlibcCallThrough",
+    "_IO_init": "Implemented",
+    "_IO_init_marker": "Implemented",
+    "_IO_init_wmarker": "Implemented",
+    "_IO_iter_begin": "Implemented",
+    "_IO_iter_end": "Implemented",
+    "_IO_iter_file": "Implemented",
+    "_IO_iter_next": "Implemented",
+    "_IO_least_wmarker": "Implemented",
+    "_IO_link_in": "Implemented",
+    "_IO_list_all": "Implemented",
+    "_IO_list_lock": "Implemented",
+    "_IO_list_resetlock": "Implemented",
+    "_IO_list_unlock": "Implemented",
+    "_IO_marker_delta": "Implemented",
+    "_IO_marker_difference": "Implemented",
     "_IO_padn": "Implemented",
     "_IO_peekc_locked": "Implemented",
     "_IO_popen": "Implemented",
     "_IO_printf": "Implemented",
     "_IO_proc_close": "Implemented",
-    "_IO_proc_open": "GlibcCallThrough",
+    "_IO_proc_open": "Implemented",
     "_IO_putc": "Implemented",
     "_IO_puts": "Implemented",
-    "_IO_remove_marker": "GlibcCallThrough",
-    "_IO_seekmark": "GlibcCallThrough",
+    "_IO_remove_marker": "Implemented",
+    "_IO_seekmark": "Implemented",
     "_IO_seekoff": "Implemented",
     "_IO_seekpos": "Implemented",
-    "_IO_seekwmark": "GlibcCallThrough",
-    "_IO_setb": "GlibcCallThrough",
+    "_IO_seekwmark": "Implemented",
+    "_IO_setb": "Implemented",
     "_IO_setbuffer": "Implemented",
     "_IO_setvbuf": "Implemented",
     "_IO_sgetn": "Implemented",
     "_IO_sprintf": "Implemented",
     "_IO_sputbackc": "Implemented",
-    "_IO_sputbackwc": "GlibcCallThrough",
+    "_IO_sputbackwc": "Implemented",
     "_IO_sscanf": "Implemented",
-    "_IO_str_init_readonly": "GlibcCallThrough",
-    "_IO_str_init_static": "GlibcCallThrough",
-    "_IO_str_overflow": "GlibcCallThrough",
-    "_IO_str_pbackfail": "GlibcCallThrough",
-    "_IO_str_seekoff": "GlibcCallThrough",
-    "_IO_str_underflow": "GlibcCallThrough",
-    "_IO_sungetc": "GlibcCallThrough",
-    "_IO_sungetwc": "GlibcCallThrough",
+    "_IO_str_init_readonly": "Implemented",
+    "_IO_str_init_static": "Implemented",
+    "_IO_str_overflow": "Implemented",
+    "_IO_str_pbackfail": "Implemented",
+    "_IO_str_seekoff": "Implemented",
+    "_IO_str_underflow": "Implemented",
+    "_IO_sungetc": "Implemented",
+    "_IO_sungetwc": "Implemented",
     "_IO_switch_to_get_mode": "Implemented",
-    "_IO_switch_to_main_wget_area": "GlibcCallThrough",
-    "_IO_switch_to_wbackup_area": "GlibcCallThrough",
-    "_IO_switch_to_wget_mode": "GlibcCallThrough",
-    "_IO_un_link": "GlibcCallThrough",
+    "_IO_switch_to_main_wget_area": "Implemented",
+    "_IO_switch_to_wbackup_area": "Implemented",
+    "_IO_switch_to_wget_mode": "Implemented",
+    "_IO_un_link": "Implemented",
     "_IO_ungetc": "Implemented",
-    "_IO_unsave_markers": "GlibcCallThrough",
-    "_IO_unsave_wmarkers": "GlibcCallThrough",
+    "_IO_unsave_markers": "Implemented",
+    "_IO_unsave_wmarkers": "Implemented",
     "_IO_vfprintf": "Implemented",
     "_IO_vfscanf": "Implemented",
     "_IO_vsprintf": "Implemented",
-    "_IO_wdefault_doallocate": "GlibcCallThrough",
-    "_IO_wdefault_finish": "GlibcCallThrough",
-    "_IO_wdefault_pbackfail": "GlibcCallThrough",
-    "_IO_wdefault_uflow": "GlibcCallThrough",
-    "_IO_wdefault_xsgetn": "GlibcCallThrough",
-    "_IO_wdefault_xsputn": "GlibcCallThrough",
-    "_IO_wdo_write": "GlibcCallThrough",
-    "_IO_wdoallocbuf": "GlibcCallThrough",
-    "_IO_wfile_jumps": "GlibcCallThrough",
-    "_IO_wfile_overflow": "GlibcCallThrough",
-    "_IO_wfile_seekoff": "GlibcCallThrough",
-    "_IO_wfile_sync": "GlibcCallThrough",
-    "_IO_wfile_underflow": "GlibcCallThrough",
-    "_IO_wfile_xsputn": "GlibcCallThrough",
-    "_IO_wmarker_delta": "GlibcCallThrough",
-    "_IO_wsetb": "GlibcCallThrough",
+    "_IO_wdefault_doallocate": "Implemented",
+    "_IO_wdefault_finish": "Implemented",
+    "_IO_wdefault_pbackfail": "Implemented",
+    "_IO_wdefault_uflow": "Implemented",
+    "_IO_wdefault_xsgetn": "Implemented",
+    "_IO_wdefault_xsputn": "Implemented",
+    "_IO_wdo_write": "Implemented",
+    "_IO_wdoallocbuf": "Implemented",
+    "_IO_wfile_jumps": "Implemented",
+    "_IO_wfile_overflow": "Implemented",
+    "_IO_wfile_seekoff": "Implemented",
+    "_IO_wfile_sync": "Implemented",
+    "_IO_wfile_underflow": "Implemented",
+    "_IO_wfile_xsputn": "Implemented",
+    "_IO_wmarker_delta": "Implemented",
+    "_IO_wsetb": "Implemented",
     "_LIB_VERSION": "Implemented",
     "__abort_msg": "Implemented",
     "__acos_finite": "Implemented",
@@ -823,15 +2451,15 @@
     "__gammaf128_r_finite": "Implemented",
     "__gammaf_r_finite": "Implemented",
     "__gammal_r_finite": "Implemented",
-    "__gconv": "GlibcCallThrough",
-    "__gconv_close": "GlibcCallThrough",
-    "__gconv_create_spec": "GlibcCallThrough",
-    "__gconv_destroy_spec": "GlibcCallThrough",
-    "__gconv_get_alias_db": "GlibcCallThrough",
-    "__gconv_get_cache": "GlibcCallThrough",
-    "__gconv_get_modules_db": "GlibcCallThrough",
-    "__gconv_open": "GlibcCallThrough",
-    "__gconv_transliterate": "GlibcCallThrough",
+    "__gconv": "Implemented",
+    "__gconv_close": "Implemented",
+    "__gconv_create_spec": "Implemented",
+    "__gconv_destroy_spec": "Implemented",
+    "__gconv_get_alias_db": "Implemented",
+    "__gconv_get_cache": "Implemented",
+    "__gconv_get_modules_db": "Implemented",
+    "__gconv_open": "Implemented",
+    "__gconv_transliterate": "Implemented",
     "__getauxval": "Implemented",
     "__getcwd_chk": "Implemented",
     "__getdelim": "Implemented",
@@ -1380,7 +3008,7 @@
     "__ynf128_finite": "Implemented",
     "__ynf_finite": "Implemented",
     "__ynl_finite": "Implemented",
-    "_authenticate": "GlibcCallThrough",
+    "_authenticate": "Implemented",
     "_dl_find_object": "Implemented",
     "_dl_mcount_wrapper": "Implemented",
     "_dl_mcount_wrapper_check": "Implemented",
@@ -1574,9 +3202,9 @@
     "authdes_create": "Implemented",
     "authdes_getucred": "Implemented",
     "authdes_pk_create": "Implemented",
-    "authnone_create": "GlibcCallThrough",
-    "authunix_create": "GlibcCallThrough",
-    "authunix_create_default": "GlibcCallThrough",
+    "authnone_create": "Implemented",
+    "authunix_create": "Implemented",
+    "authunix_create_default": "Implemented",
     "backtrace": "Implemented",
     "backtrace_symbols": "Implemented",
     "backtrace_symbols_fd": "Implemented",
@@ -1622,7 +3250,7 @@
     "cacosl": "Implemented",
     "call_once": "Implemented",
     "calloc": "Implemented",
-    "callrpc": "GlibcCallThrough",
+    "callrpc": "Implemented",
     "canonicalize": "Implemented",
     "canonicalize_file_name": "Implemented",
     "canonicalizef": "Implemented",
@@ -1747,18 +3375,18 @@
     "clearerr": "Implemented",
     "clearerr_unlocked": "Implemented",
     "clnt_broadcast": "Implemented",
-    "clnt_create": "GlibcCallThrough",
+    "clnt_create": "Implemented",
     "clnt_pcreateerror": "Implemented",
     "clnt_perrno": "Implemented",
-    "clnt_perror": "GlibcCallThrough",
+    "clnt_perror": "Implemented",
     "clnt_spcreateerror": "Implemented",
     "clnt_sperrno": "Implemented",
-    "clnt_sperror": "GlibcCallThrough",
-    "clntraw_create": "GlibcCallThrough",
-    "clnttcp_create": "GlibcCallThrough",
-    "clntudp_bufcreate": "GlibcCallThrough",
-    "clntudp_create": "GlibcCallThrough",
-    "clntunix_create": "GlibcCallThrough",
+    "clnt_sperror": "Implemented",
+    "clntraw_create": "Implemented",
+    "clnttcp_create": "Implemented",
+    "clntudp_bufcreate": "Implemented",
+    "clntudp_create": "Implemented",
+    "clntunix_create": "Implemented",
     "clock": "RawSyscall",
     "clock_adjtime": "RawSyscall",
     "clock_getcpuclockid": "Implemented",
@@ -1933,14 +3561,14 @@
     "div": "Implemented",
     "dl_iterate_phdr": "Implemented",
     "dladdr": "Implemented",
-    "dladdr1": "GlibcCallThrough",
-    "dlclose": "GlibcCallThrough",
+    "dladdr1": "Implemented",
+    "dlclose": "Implemented",
     "dlerror": "Implemented",
-    "dlinfo": "GlibcCallThrough",
-    "dlmopen": "GlibcCallThrough",
-    "dlopen": "GlibcCallThrough",
-    "dlsym": "GlibcCallThrough",
-    "dlvsym": "GlibcCallThrough",
+    "dlinfo": "Implemented",
+    "dlmopen": "Implemented",
+    "dlopen": "Implemented",
+    "dlsym": "Implemented",
+    "dlvsym": "Implemented",
     "dmull": "Implemented",
     "dn_comp": "Implemented",
     "dn_expand": "Implemented",
@@ -2694,9 +4322,9 @@
     "iconv_close": "Implemented",
     "iconv_open": "Implemented",
     "if_freenameindex": "Implemented",
-    "if_indextoname": "RawSyscall",
+    "if_indextoname": "Implemented",
     "if_nameindex": "Implemented",
-    "if_nametoindex": "RawSyscall",
+    "if_nametoindex": "Implemented",
     "ilogb": "Implemented",
     "ilogbf": "Implemented",
     "ilogbf128": "Implemented",
@@ -3567,7 +5195,7 @@
     "register_printf_modifier": "Implemented",
     "register_printf_specifier": "Implemented",
     "register_printf_type": "Implemented",
-    "registerrpc": "GlibcCallThrough",
+    "registerrpc": "Implemented",
     "remainder": "Implemented",
     "remainderf": "Implemented",
     "remainderf128": "Implemented",
@@ -4073,34 +5701,34 @@
     "strxfrm": "Implemented",
     "strxfrm_l": "Implemented",
     "stty": "Implemented",
-    "svc_exit": "GlibcCallThrough",
+    "svc_exit": "Implemented",
     "svc_fdset": "Implemented",
-    "svc_getreq": "GlibcCallThrough",
-    "svc_getreq_common": "GlibcCallThrough",
-    "svc_getreq_poll": "GlibcCallThrough",
-    "svc_getreqset": "GlibcCallThrough",
+    "svc_getreq": "Implemented",
+    "svc_getreq_common": "Implemented",
+    "svc_getreq_poll": "Implemented",
+    "svc_getreqset": "Implemented",
     "svc_max_pollfd": "Implemented",
     "svc_pollfd": "Implemented",
-    "svc_register": "GlibcCallThrough",
-    "svc_run": "GlibcCallThrough",
-    "svc_sendreply": "GlibcCallThrough",
-    "svc_unregister": "GlibcCallThrough",
+    "svc_register": "Implemented",
+    "svc_run": "Implemented",
+    "svc_sendreply": "Implemented",
+    "svc_unregister": "Implemented",
     "svcauthdes_stats": "Implemented",
-    "svcerr_auth": "GlibcCallThrough",
-    "svcerr_decode": "GlibcCallThrough",
-    "svcerr_noproc": "GlibcCallThrough",
-    "svcerr_noprog": "GlibcCallThrough",
-    "svcerr_progvers": "GlibcCallThrough",
-    "svcerr_systemerr": "GlibcCallThrough",
-    "svcerr_weakauth": "GlibcCallThrough",
-    "svcfd_create": "GlibcCallThrough",
-    "svcraw_create": "GlibcCallThrough",
-    "svctcp_create": "GlibcCallThrough",
-    "svcudp_bufcreate": "GlibcCallThrough",
-    "svcudp_create": "GlibcCallThrough",
-    "svcudp_enablecache": "GlibcCallThrough",
-    "svcunix_create": "GlibcCallThrough",
-    "svcunixfd_create": "GlibcCallThrough",
+    "svcerr_auth": "Implemented",
+    "svcerr_decode": "Implemented",
+    "svcerr_noproc": "Implemented",
+    "svcerr_noprog": "Implemented",
+    "svcerr_progvers": "Implemented",
+    "svcerr_systemerr": "Implemented",
+    "svcerr_weakauth": "Implemented",
+    "svcfd_create": "Implemented",
+    "svcraw_create": "Implemented",
+    "svctcp_create": "Implemented",
+    "svcudp_bufcreate": "Implemented",
+    "svcudp_create": "Implemented",
+    "svcudp_enablecache": "Implemented",
+    "svcunix_create": "Implemented",
+    "svcunixfd_create": "Implemented",
     "swab": "Implemented",
     "swapcontext": "Implemented",
     "swapoff": "RawSyscall",
@@ -4517,7 +6145,49 @@
   },
   "reclassified_symbols": [
     {
-      "symbol": "_IO_adjust_column",
+      "symbol": "_IO_default_doallocate",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_default_finish",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_doallocbuf",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_file_attach",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4533,7 +6203,7 @@
       ]
     },
     {
-      "symbol": "_IO_adjust_wcolumn",
+      "symbol": "_IO_file_doallocate",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4549,7 +6219,7 @@
       ]
     },
     {
-      "symbol": "_IO_default_pbackfail",
+      "symbol": "_IO_file_finish",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4565,7 +6235,7 @@
       ]
     },
     {
-      "symbol": "_IO_default_uflow",
+      "symbol": "_IO_file_fopen",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4581,7 +6251,21 @@
       ]
     },
     {
-      "symbol": "_IO_default_xsgetn",
+      "symbol": "_IO_file_init",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_file_jumps",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4597,7 +6281,7 @@
       ]
     },
     {
-      "symbol": "_IO_default_xsputn",
+      "symbol": "_IO_file_open",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4613,7 +6297,49 @@
       ]
     },
     {
-      "symbol": "_IO_do_write",
+      "symbol": "_IO_free_backup_area",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_free_wbackup_area",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_init",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_init_marker",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4629,7 +6355,7 @@
       ]
     },
     {
-      "symbol": "_IO_flush_all_linebuffered",
+      "symbol": "_IO_init_wmarker",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4645,7 +6371,35 @@
       ]
     },
     {
-      "symbol": "_IO_getline",
+      "symbol": "_IO_iter_begin",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 2,
+      "hardened_fixture_count": 2,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_iter_end",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_iter_file",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4661,7 +6415,7 @@
       ]
     },
     {
-      "symbol": "_IO_getline_info",
+      "symbol": "_IO_iter_next",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4677,7 +6431,7 @@
       ]
     },
     {
-      "symbol": "_IO_gets",
+      "symbol": "_IO_least_wmarker",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4693,7 +6447,21 @@
       ]
     },
     {
-      "symbol": "_IO_popen",
+      "symbol": "_IO_link_in",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_list_all",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4709,7 +6477,77 @@
       ]
     },
     {
-      "symbol": "_IO_proc_close",
+      "symbol": "_IO_list_lock",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_list_resetlock",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_list_unlock",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_marker_delta",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_marker_difference",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_proc_open",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4725,7 +6563,7 @@
       ]
     },
     {
-      "symbol": "_IO_sputbackc",
+      "symbol": "_IO_remove_marker",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4741,7 +6579,21 @@
       ]
     },
     {
-      "symbol": "_IO_switch_to_get_mode",
+      "symbol": "_IO_seekmark",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_seekwmark",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -4757,7 +6609,1415 @@
       ]
     },
     {
-      "symbol": "_IO_vfscanf",
+      "symbol": "_IO_setb",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_sputbackwc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_str_init_readonly",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_str_init_static",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_str_overflow",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_str_pbackfail",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_str_seekoff",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_str_underflow",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_sungetc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_sungetwc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_switch_to_main_wget_area",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_switch_to_wbackup_area",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_switch_to_wget_mode",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_un_link",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_unsave_markers",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_unsave_wmarkers",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdefault_doallocate",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdefault_finish",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdefault_pbackfail",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdefault_uflow",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdefault_xsgetn",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdefault_xsputn",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdo_write",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wdoallocbuf",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wfile_jumps",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wfile_overflow",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wfile_seekoff",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wfile_sync",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wfile_underflow",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wfile_xsputn",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wmarker_delta",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_IO_wsetb",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_close",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_create_spec",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_destroy_spec",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_get_alias_db",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_get_cache",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_get_modules_db",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_open",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "__gconv_transliterate",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "_authenticate",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "authnone_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "authunix_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "authunix_create_default",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "callrpc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clnt_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clnt_perror",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clnt_sperror",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clntraw_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clnttcp_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clntudp_bufcreate",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clntudp_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "clntunix_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dladdr1",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dlclose",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 1,
+      "hardened_fixture_count": 1,
+      "strict_conformance": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "errors": 1,
+        "pass_rate_percent": 0.0
+      },
+      "hardened_conformance": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "errors": 1,
+        "pass_rate_percent": 0.0
+      },
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dlinfo",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 2,
+      "hardened_fixture_count": 1,
+      "strict_conformance": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "errors": 1,
+        "pass_rate_percent": 0.0
+      },
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dlmopen",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dlopen",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 3,
+      "hardened_fixture_count": 2,
+      "strict_conformance": {
+        "total": 3,
+        "passed": 0,
+        "failed": 0,
+        "errors": 3,
+        "pass_rate_percent": 0.0
+      },
+      "hardened_conformance": {
+        "total": 2,
+        "passed": 0,
+        "failed": 0,
+        "errors": 2,
+        "pass_rate_percent": 0.0
+      },
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dlsym",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 3,
+      "hardened_fixture_count": 1,
+      "strict_conformance": {
+        "total": 3,
+        "passed": 0,
+        "failed": 0,
+        "errors": 3,
+        "pass_rate_percent": 0.0
+      },
+      "hardened_conformance": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "errors": 1,
+        "pass_rate_percent": 0.0
+      },
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "dlvsym",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "if_indextoname",
+      "previous_status": "RawSyscall",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "if_nametoindex",
+      "previous_status": "RawSyscall",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "registerrpc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_exit",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_getreq",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_getreq_common",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_getreq_poll",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_getreqset",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_register",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_run",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_sendreply",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svc_unregister",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_auth",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_decode",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_noproc",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_noprog",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_progvers",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_systemerr",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcerr_weakauth",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcfd_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcraw_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svctcp_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcudp_bufcreate",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcudp_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcudp_enablecache",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcunix_create",
+      "previous_status": "GlibcCallThrough",
+      "current_status": "Implemented",
+      "strict_fixture_count": 0,
+      "hardened_fixture_count": 0,
+      "strict_conformance": null,
+      "hardened_conformance": null,
+      "conformance_evidence_passed": false,
+      "missing_evidence": [
+        "missing_strict_fixture",
+        "missing_hardened_fixture",
+        "strict_conformance_not_passing",
+        "hardened_conformance_not_passing"
+      ]
+    },
+    {
+      "symbol": "svcunixfd_create",
       "previous_status": "GlibcCallThrough",
       "current_status": "Implemented",
       "strict_fixture_count": 0,
@@ -5267,15 +8527,6 @@
       "valid": true,
       "findings": [
         "function body not found (may use alternate pattern)"
-      ]
-    },
-    {
-      "symbol": "perror",
-      "status": "Implemented",
-      "module": "stdio_abi",
-      "valid": false,
-      "findings": [
-        "Implemented but calls libc::{strerror_r}"
       ]
     },
     {
@@ -6099,7 +9350,7 @@
     },
     {
       "symbol": "_IO_file_jumps",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi",
       "valid": true,
       "findings": [
@@ -6108,7 +9359,7 @@
     },
     {
       "symbol": "_IO_list_all",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi",
       "valid": true,
       "findings": [
@@ -6117,7 +9368,7 @@
     },
     {
       "symbol": "_IO_wfile_jumps",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "io_internal_abi",
       "valid": true,
       "findings": [
@@ -6405,7 +9656,7 @@
     },
     {
       "symbol": "_authenticate",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6549,7 +9800,7 @@
     },
     {
       "symbol": "authnone_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6558,7 +9809,7 @@
     },
     {
       "symbol": "authunix_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6567,7 +9818,7 @@
     },
     {
       "symbol": "authunix_create_default",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6576,7 +9827,7 @@
     },
     {
       "symbol": "callrpc",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6585,7 +9836,7 @@
     },
     {
       "symbol": "clnt_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6594,7 +9845,7 @@
     },
     {
       "symbol": "clnt_perror",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6603,7 +9854,7 @@
     },
     {
       "symbol": "clnt_sperror",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6612,7 +9863,7 @@
     },
     {
       "symbol": "clntraw_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6621,7 +9872,7 @@
     },
     {
       "symbol": "clnttcp_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6630,7 +9881,7 @@
     },
     {
       "symbol": "clntudp_bufcreate",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6639,7 +9890,7 @@
     },
     {
       "symbol": "clntudp_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6648,7 +9899,7 @@
     },
     {
       "symbol": "clntunix_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6658,15 +9909,6 @@
     {
       "symbol": "daylight",
       "status": "Implemented",
-      "module": "glibc_internal_abi",
-      "valid": true,
-      "findings": [
-        "function body not found (may use alternate pattern)"
-      ]
-    },
-    {
-      "symbol": "dlvsym",
-      "status": "GlibcCallThrough",
       "module": "glibc_internal_abi",
       "valid": true,
       "findings": [
@@ -6855,7 +10097,7 @@
     },
     {
       "symbol": "registerrpc",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6873,7 +10115,7 @@
     },
     {
       "symbol": "svc_exit",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6882,7 +10124,7 @@
     },
     {
       "symbol": "svc_getreq",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6891,7 +10133,7 @@
     },
     {
       "symbol": "svc_getreq_common",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6900,7 +10142,7 @@
     },
     {
       "symbol": "svc_getreq_poll",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6909,7 +10151,7 @@
     },
     {
       "symbol": "svc_getreqset",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6918,7 +10160,7 @@
     },
     {
       "symbol": "svc_register",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6927,7 +10169,7 @@
     },
     {
       "symbol": "svc_run",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6936,7 +10178,7 @@
     },
     {
       "symbol": "svc_sendreply",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6945,7 +10187,7 @@
     },
     {
       "symbol": "svc_unregister",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6954,7 +10196,7 @@
     },
     {
       "symbol": "svcerr_auth",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6963,7 +10205,7 @@
     },
     {
       "symbol": "svcerr_decode",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6972,7 +10214,7 @@
     },
     {
       "symbol": "svcerr_noproc",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6981,7 +10223,7 @@
     },
     {
       "symbol": "svcerr_noprog",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6990,7 +10232,7 @@
     },
     {
       "symbol": "svcerr_progvers",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -6999,7 +10241,7 @@
     },
     {
       "symbol": "svcerr_systemerr",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7008,7 +10250,7 @@
     },
     {
       "symbol": "svcerr_weakauth",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7017,7 +10259,7 @@
     },
     {
       "symbol": "svcfd_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7026,7 +10268,7 @@
     },
     {
       "symbol": "svcraw_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7035,7 +10277,7 @@
     },
     {
       "symbol": "svctcp_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7044,7 +10286,7 @@
     },
     {
       "symbol": "svcudp_bufcreate",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7053,7 +10295,7 @@
     },
     {
       "symbol": "svcudp_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7062,7 +10304,7 @@
     },
     {
       "symbol": "svcudp_enablecache",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7071,7 +10313,7 @@
     },
     {
       "symbol": "svcunix_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -7080,7 +10322,7 @@
     },
     {
       "symbol": "svcunixfd_create",
-      "status": "GlibcCallThrough",
+      "status": "Implemented",
       "module": "rpc_abi",
       "valid": true,
       "findings": [
@@ -9949,16 +13191,11 @@
     "__assert_fail",
     "__assert_perror_fail",
     "__cxa_at_quick_exit",
-    "_IO_adjust_column",
-    "_IO_adjust_wcolumn",
-    "_IO_default_doallocate",
-    "_IO_default_finish",
     "_IO_default_pbackfail",
     "_IO_default_uflow",
     "_IO_default_xsgetn",
     "_IO_default_xsputn",
     "_IO_do_write",
-    "_IO_doallocbuf",
     "_IO_fclose",
     "_IO_fdopen",
     "_IO_fflush",
@@ -9971,7 +13208,6 @@
     "_IO_file_doallocate",
     "_IO_file_finish",
     "_IO_file_fopen",
-    "_IO_file_init",
     "_IO_file_jumps",
     "_IO_file_open",
     "_IO_file_overflow",
@@ -9990,8 +13226,6 @@
     "_IO_fprintf",
     "_IO_fputs",
     "_IO_fread",
-    "_IO_free_backup_area",
-    "_IO_free_wbackup_area",
     "_IO_fsetpos",
     "_IO_fsetpos64",
     "_IO_ftell",
@@ -9999,27 +13233,17 @@
     "_IO_getline",
     "_IO_getline_info",
     "_IO_gets",
-    "_IO_init",
     "_IO_init_marker",
     "_IO_init_wmarker",
-    "_IO_iter_begin",
-    "_IO_iter_end",
     "_IO_iter_file",
     "_IO_iter_next",
     "_IO_least_wmarker",
-    "_IO_link_in",
     "_IO_list_all",
-    "_IO_list_lock",
-    "_IO_list_resetlock",
-    "_IO_list_unlock",
-    "_IO_marker_delta",
-    "_IO_marker_difference",
     "_IO_popen",
     "_IO_printf",
     "_IO_proc_close",
     "_IO_proc_open",
     "_IO_remove_marker",
-    "_IO_seekmark",
     "_IO_seekwmark",
     "_IO_setb",
     "_IO_setbuffer",
@@ -10030,27 +13254,19 @@
     "_IO_sscanf",
     "_IO_str_init_readonly",
     "_IO_str_init_static",
-    "_IO_str_overflow",
     "_IO_str_pbackfail",
     "_IO_str_seekoff",
-    "_IO_str_underflow",
-    "_IO_sungetc",
-    "_IO_sungetwc",
     "_IO_switch_to_get_mode",
     "_IO_switch_to_main_wget_area",
     "_IO_switch_to_wbackup_area",
-    "_IO_switch_to_wget_mode",
-    "_IO_un_link",
     "_IO_ungetc",
     "_IO_unsave_markers",
     "_IO_unsave_wmarkers",
     "_IO_vfprintf",
     "_IO_vfscanf",
     "_IO_vsprintf",
-    "_IO_wdefault_doallocate",
     "_IO_wdefault_finish",
     "_IO_wdefault_pbackfail",
-    "_IO_wdefault_uflow",
     "_IO_wdefault_xsgetn",
     "_IO_wdefault_xsputn",
     "_IO_wdo_write",
@@ -10058,7 +13274,6 @@
     "_IO_wfile_jumps",
     "_IO_wfile_overflow",
     "_IO_wfile_seekoff",
-    "_IO_wfile_sync",
     "_IO_wfile_underflow",
     "_IO_wfile_xsputn",
     "_IO_wmarker_delta",

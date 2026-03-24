@@ -1,4 +1,5 @@
 #![feature(c_variadic)]
+#![allow(unused_features)]
 // All extern "C" ABI exports accept raw pointers from C callers; the membrane
 // validates at runtime, so per-function safety docs would be redundant boilerplate.
 #![allow(clippy::missing_safety_doc)]

@@ -240,7 +240,7 @@ pub unsafe extern "C" fn pthread_rwlockattr_setkind_np(attr: *mut c_void, kind: 
 pub unsafe extern "C" fn pthread_setschedprio(thread: c_ulong, prio: c_int) -> c_int {
     let mut param: libc::sched_param = unsafe { std::mem::zeroed() };
     param.sched_priority = prio;
-    unsafe { libc::pthread_setschedparam(thread, libc::SCHED_OTHER, &param) }
+    unsafe { crate::unistd_abi::pthread_setschedparam(thread, libc::SCHED_OTHER, &param) }
 }
 
 // ==========================================================================

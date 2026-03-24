@@ -4,158 +4,90 @@
     {
       "expected_vs_actual": {
         "actual": {
+          "sum_counts_equals_total": false,
+          "support_count_sum": 0,
+          "support_total_exported": 3980,
+          "symbols_count_equals_total": true
+        },
+        "expected": {
+          "sum_counts_equals_total": true,
+          "symbols_count_equals_total": true
+        }
+      },
+      "gap_id": "gap-machine-support-classification-complete",
+      "kind": "machine_delta_drift",
+      "message": "support_matrix classification completeness",
+      "owner_bead": "bd-w2c3.1.2",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "support_matrix.json",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "DONE"
+        },
+        "expected": {
+          "status": "IN_PROGRESS"
+        }
+      },
+      "gap_id": "gap-macro-fp-macro-targets-3a739065b069",
+      "kind": "machine_delta_drift",
+      "message": "derived from support_matrix classification coverage",
+      "owner_bead": "bd-w2c3.1.2",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "gap-macro-fp-macro-targets-fa7a23e18f01",
+      "kind": "machine_delta_drift",
+      "message": "derived from reality_report callthrough/stub counts",
+      "owner_bead": "bd-w2c3.1.2",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
           "reality_counts": {
-            "glibc_call_through": 30,
-            "implemented": 137,
-            "raw_syscall": 83,
+            "glibc_call_through": 0,
+            "implemented": 3576,
+            "raw_syscall": 404,
             "stub": 0
           },
-          "reality_total": 250
+          "reality_total": 3980
         },
         "expected": {
           "support_counts": {
-            "glibc_call_through": 35,
-            "implemented": 132,
-            "raw_syscall": 83,
+            "glibc_call_through": 0,
+            "implemented": 0,
+            "raw_syscall": 0,
             "stub": 0
           },
-          "support_total": 250
+          "support_total": 3980
         }
       },
       "gap_id": "gap-machine-support-vs-reality",
       "kind": "stale_count_drift",
       "message": "support_matrix and reality_report should agree",
       "owner_bead": "bd-w2c3.10.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
+      "owner_status": "open",
+      "ownership_ok": true,
       "source_file": "support_matrix.json",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-025864627e97",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-1e330b896784",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-556631616b22",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-7b75050a0f03",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-b1983d62901c",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-b1b8d5acbeff",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-macro-targets-fa7a23e18f01",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.1",
-      "owner_status": "closed",
-      "ownership_ok": false,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "fail"
+      "status": "tracked"
     },
     {
       "expected_vs_actual": {
@@ -257,6 +189,24 @@
         }
       },
       "gap_id": "fp-gap-summary-17c934647652",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.10",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-gap-summary-17d24896af61",
       "kind": "status_drift",
       "message": "feature parity unresolved drift",
       "owner_bead": "bd-w2c3.10",
@@ -437,24 +387,6 @@
         }
       },
       "gap_id": "fp-gap-summary-70370851cacb",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.10",
-      "owner_status": "open",
-      "ownership_ok": true,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "tracked"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-gap-summary-750f708084bd",
       "kind": "status_drift",
       "message": "feature parity unresolved drift",
       "owner_bead": "bd-w2c3.10",
@@ -818,6 +750,132 @@
       "kind": "status_drift",
       "message": "feature parity unresolved drift",
       "owner_bead": "bd-w2c3.10",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-025864627e97",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-1e330b896784",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-556631616b22",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-7b75050a0f03",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-b1983d62901c",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-b1b8d5acbeff",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
+      "owner_status": "open",
+      "ownership_ok": true,
+      "source_file": "FEATURE_PARITY.md",
+      "status": "tracked"
+    },
+    {
+      "expected_vs_actual": {
+        "actual": {
+          "status": "IN_PROGRESS"
+        },
+        "expected": {
+          "status": "DONE"
+        }
+      },
+      "gap_id": "fp-macro-targets-fa7a23e18f01",
+      "kind": "status_drift",
+      "message": "feature parity unresolved drift",
+      "owner_bead": "bd-w2c3.1",
       "owner_status": "open",
       "ownership_ok": true,
       "source_file": "FEATURE_PARITY.md",
@@ -1528,7 +1586,7 @@
     {
       "expected_vs_actual": {
         "actual": {
-          "status": "PLANNED"
+          "status": "IN_PROGRESS"
         },
         "expected": {
           "status": "DONE"
@@ -1992,63 +2050,9 @@
       "ownership_ok": true,
       "source_file": "FEATURE_PARITY.md",
       "status": "tracked"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-runtime-math-69775144f57d",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.5",
-      "owner_status": "open",
-      "ownership_ok": true,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "tracked"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-runtime-math-8ff0b9637eb6",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.5",
-      "owner_status": "open",
-      "ownership_ok": true,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "tracked"
-    },
-    {
-      "expected_vs_actual": {
-        "actual": {
-          "status": "IN_PROGRESS"
-        },
-        "expected": {
-          "status": "DONE"
-        }
-      },
-      "gap_id": "fp-runtime-math-a94b6554ba63",
-      "kind": "status_drift",
-      "message": "feature parity unresolved drift",
-      "owner_bead": "bd-w2c3.5",
-      "owner_status": "open",
-      "ownership_ok": true,
-      "source_file": "FEATURE_PARITY.md",
-      "status": "tracked"
     }
   ],
-  "generated_at": "2026-02-13T18:07:59Z",
+  "generated_at": "2026-02-18T04:49:26Z",
   "schema_version": "v1",
   "sources": {
     "env_docs_code_mismatch_report": "/data/projects/frankenlibc/tests/conformance/env_docs_code_mismatch_report.v1.json",
@@ -2057,11 +2061,12 @@
   },
   "summary": {
     "diagnostic_count": 113,
-    "fail_count": 8,
+    "fail_count": 0,
     "kind_counts": {
+      "machine_delta_drift": 3,
       "stale_count_drift": 1,
-      "status_drift": 112
+      "status_drift": 109
     },
-    "tracked_count": 105
+    "tracked_count": 113
   }
 }

@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn test_malloc_basic() {
         let mut state = MallocState::new();
-        let ptr = state.malloc(100, |s| test_alloc(s)).unwrap();
+        let ptr = state.malloc(100, test_alloc).unwrap();
         assert_ne!(ptr, 0);
         assert_eq!(state.active_count(), 1);
         assert_eq!(state.total_allocated(), 100);
@@ -441,7 +441,7 @@ mod tests {
     fn test_free_basic() {
         let mut state = MallocState::new();
         let size = 64;
-        let ptr = state.malloc(size, |s| test_alloc(s)).unwrap();
+        let ptr = state.malloc(size, test_alloc).unwrap();
         state.free(ptr, size, |p| test_free(p, 64));
         assert_eq!(state.active_count(), 0);
         assert_eq!(state.total_allocated(), 0);
@@ -455,7 +455,7 @@ mod tests {
         // Allocate and free several blocks
         let mut ptrs = Vec::new();
         for _ in 0..5 {
-            ptrs.push(state.malloc(size, |s| test_alloc(s)).unwrap());
+            ptrs.push(state.malloc(size, test_alloc).unwrap());
         }
         for &ptr in &ptrs {
             state.free(ptr, size, |p| test_free(p, 32));

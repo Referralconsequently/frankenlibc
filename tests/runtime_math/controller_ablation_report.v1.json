@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-3ot.2",
-  "generated_at": "2026-02-13T18:08:26Z",
+  "generated_at": "2026-03-24T00:32:40Z",
   "status": "pass",
   "summary": {
     "total_modules": 69,
@@ -9,7 +9,7 @@
     "research_retire": 44,
     "blocked": 0,
     "errors": 0,
-    "warnings": 0
+    "warnings": 44
   },
   "partition_decisions": [
     {
@@ -750,7 +750,228 @@
     ],
     "verification": "After migration, production build must compile and pass all tests without runtime-math-research feature"
   },
-  "findings": [],
+  "findings": [
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'admm_budget' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'approachability' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'atiyah_bott' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'bifurcation_detector' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'birkhoff_ergodic' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'clifford' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'cohomology' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'coupling' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'derived_tstructure' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'design' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'dobrushin_contraction' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'entropy_rate' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'equivariant' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'fano_bound' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'grobner_normalizer' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'grothendieck_glue' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'higher_topos' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'hodge_decomposition' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'hurst_exponent' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'info_geometry' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'ito_quadratic_variation' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'kernel_mmd' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'ktheory' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'lempel_ziv' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'localization_chooser' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'lyapunov_stability' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'malliavin_sensitivity' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'matrix_concentration' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'microlocal' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'nerve_complex' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'obstruction_detector' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'operator_norm' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'ornstein_uhlenbeck' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'pac_bayes' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'pomdp_repair' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'rademacher_complexity' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'serre_spectral' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'sos_barrier' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'sos_invariant' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'sparse' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'spectral_gap' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'stein_discrepancy' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'transfer_entropy' classified in governance but not in manifest"
+    },
+    {
+      "severity": "warning",
+      "category": "manifest_governance_mismatch",
+      "message": "Module 'wasserstein_drift' classified in governance but not in manifest"
+    }
+  ],
   "governance_source": "tests/conformance/math_governance.json",
   "manifest_source": "tests/runtime_math/production_kernel_manifest.v1.json"
 }

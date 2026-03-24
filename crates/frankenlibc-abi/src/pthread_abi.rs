@@ -4987,13 +4987,29 @@ pub unsafe extern "C" fn __frankenlibc_host_pthread_probe(kind: c_int) -> usize 
         4 => unsafe { resolve_host_symbol_nocache(b"pthread_self\0") as usize },
         5 => unsafe { resolve_host_symbol_via_libc_handle(b"pthread_self\0") as usize },
         6 => resolve_loaded_libc_symbol_direct("pthread_self").unwrap_or(0),
-        7 => unsafe { host_pthread_create_fn().map(|func| func as usize).unwrap_or(0) },
+        7 => unsafe {
+            host_pthread_create_fn()
+                .map(|func| func as usize)
+                .unwrap_or(0)
+        },
         8 => resolve_loaded_libc_symbol_direct("pthread_detach").unwrap_or(0),
-        9 => unsafe { host_pthread_detach_fn().map(|func| func as usize).unwrap_or(0) },
+        9 => unsafe {
+            host_pthread_detach_fn()
+                .map(|func| func as usize)
+                .unwrap_or(0)
+        },
         10 => resolve_loaded_libc_symbol_direct("pthread_join").unwrap_or(0),
-        11 => unsafe { host_pthread_join_fn().map(|func| func as usize).unwrap_or(0) },
+        11 => unsafe {
+            host_pthread_join_fn()
+                .map(|func| func as usize)
+                .unwrap_or(0)
+        },
         12 => resolve_loaded_libc_symbol_direct("pthread_equal").unwrap_or(0),
-        13 => unsafe { host_pthread_equal_fn().map(|func| func as usize).unwrap_or(0) },
+        13 => unsafe {
+            host_pthread_equal_fn()
+                .map(|func| func as usize)
+                .unwrap_or(0)
+        },
         _ => 0,
     }
 }

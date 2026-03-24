@@ -346,6 +346,7 @@ fn call_through_census_matches_reality() {
 #[test]
 fn replacement_profile_has_both_modes() {
     let profile = load_profile();
+    let fixtures = load_fixture_pack();
     let profiles = profile["profiles"].as_object().unwrap();
 
     assert!(
@@ -396,10 +397,15 @@ fn replacement_profile_has_both_modes() {
         .iter()
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect();
-    let expected_families = HashSet::from(["stdio_abi".to_string(), "dlfcn_abi".to_string()]);
+    let expected_families: HashSet<String> = fixtures["summary"]["covered_callthrough_modules"]
+        .as_array()
+        .expect("fixture summary covered_callthrough_modules must be an array")
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
     assert_eq!(
         family_set, expected_families,
-        "callthrough_families.modules must track current stdio/dlfcn callthrough families"
+        "callthrough_families.modules must match replacement fixture family coverage"
     );
 
     let fixture_pack = profile["zero_unapproved_fixture_pack"]["path"]
@@ -445,11 +451,6 @@ fn raw_syscalls_are_not_flagged() {
 fn callthrough_families_match_support_matrix() {
     let profile = load_profile();
     let root = workspace_root();
-    let support_path = root.join("support_matrix.json");
-    let support: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&support_path).expect("support_matrix.json should exist"),
-    )
-    .expect("support_matrix.json should parse");
 
     let declared_modules: HashSet<String> = profile["callthrough_families"]["modules"]
         .as_array()
@@ -458,17 +459,25 @@ fn callthrough_families_match_support_matrix() {
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect();
 
-    let matrix_modules: HashSet<String> = support["symbols"]
-        .as_array()
-        .expect("support_matrix symbols must be array")
-        .iter()
-        .filter(|row| row["status"].as_str() == Some("GlibcCallThrough"))
-        .filter_map(|row| row["module"].as_str().map(str::to_string))
+    let abi_src = root.join("crates/frankenlibc-abi/src");
+    let source_modules: HashSet<String> = std::fs::read_dir(&abi_src)
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.ends_with("_abi.rs") {
+                return None;
+            }
+            let module = fname.trim_end_matches(".rs").to_string();
+            let content = std::fs::read_to_string(entry.path()).ok()?;
+            let calls = scan_call_throughs(&content);
+            if calls.is_empty() { None } else { Some(module) }
+        })
         .collect();
 
     assert_eq!(
-        declared_modules, matrix_modules,
-        "replacement_profile.callthrough_families.modules must match GlibcCallThrough modules in support_matrix"
+        declared_modules, source_modules,
+        "replacement_profile.callthrough_families.modules must match source-scanned callthrough modules"
     );
 
     let allowlist: HashSet<String> = profile["interpose_allowlist"]["modules"]

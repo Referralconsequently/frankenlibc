@@ -82,7 +82,7 @@ impl SetjmpSemanticsContract {
             errors.push(format!("bead must be bd-2xp3, got {}", self.bead));
         }
 
-        let deferred = to_set(
+        let deferred = to_set_allow_empty(
             &self.symbols.phase1_deferred,
             "symbols.phase1_deferred",
             &mut errors,
@@ -92,18 +92,35 @@ impl SetjmpSemanticsContract {
             "symbols.phase2_target",
             &mut errors,
         );
+        let visible_now = to_set_allow_empty(
+            &self.symbols.support_matrix_visible_now,
+            "symbols.support_matrix_visible_now",
+            &mut errors,
+        );
 
-        for required in [
+        let required_symbols = [
             "setjmp",
             "longjmp",
             "_setjmp",
             "_longjmp",
             "sigsetjmp",
             "siglongjmp",
-        ] {
-            if !deferred.contains(required) {
-                errors.push(format!("missing required deferred symbol {required}"));
+        ];
+        for required in required_symbols {
+            if !deferred.contains(required) && !visible_now.contains(required) {
+                errors.push(format!(
+                    "required symbol {required} must appear in phase1_deferred or support_matrix_visible_now"
+                ));
             }
+        }
+        let overlap = deferred
+            .intersection(&visible_now)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !overlap.is_empty() {
+            errors.push(format!(
+                "symbols.phase1_deferred and symbols.support_matrix_visible_now overlap: {overlap:?}"
+            ));
         }
 
         let matrix_symbols = to_set(
@@ -116,13 +133,18 @@ impl SetjmpSemanticsContract {
             &mut errors,
         );
 
-        if matrix_symbols != deferred {
-            let missing = deferred
+        let expected_symbols = deferred
+            .union(&visible_now)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+
+        if matrix_symbols != expected_symbols {
+            let missing = expected_symbols
                 .difference(&matrix_symbols)
                 .cloned()
                 .collect::<Vec<_>>();
             let extra = matrix_symbols
-                .difference(&deferred)
+                .difference(&expected_symbols)
                 .cloned()
                 .collect::<Vec<_>>();
             errors.push(format!(
@@ -140,10 +162,17 @@ impl SetjmpSemanticsContract {
             if row.signal_mask_semantics.trim().is_empty() {
                 errors.push(format!("row {} signal_mask_semantics is empty", row.symbol));
             }
-            if row.support_matrix_status != "DeferredNotExported" {
+            let expected_status = if deferred.contains(&row.symbol) {
+                "DeferredNotExported"
+            } else if visible_now.contains(&row.symbol) {
+                "ImplementedShadowDebt"
+            } else {
+                ""
+            };
+            if row.support_matrix_status != expected_status {
                 errors.push(format!(
-                    "row {} support_matrix_status must be DeferredNotExported",
-                    row.symbol
+                    "row {} support_matrix_status must be {}",
+                    row.symbol, expected_status
                 ));
             }
         }
@@ -190,11 +219,11 @@ impl SetjmpSemanticsContract {
             errors.push("parity_checks.required_logs must be non-empty".to_string());
         }
 
-        if self.summary.total_symbols != deferred.len() {
+        let total_symbols = expected_symbols.len();
+        if self.summary.total_symbols != total_symbols {
             errors.push(format!(
                 "summary.total_symbols mismatch: expected {}, got {}",
-                deferred.len(),
-                self.summary.total_symbols
+                total_symbols, self.summary.total_symbols
             ));
         }
         if self.summary.deferred_symbols != deferred.len() {
@@ -273,6 +302,24 @@ fn to_set(values: &[String], field: &str, errors: &mut Vec<String>) -> BTreeSet<
     set
 }
 
+fn to_set_allow_empty(
+    values: &[String],
+    field: &str,
+    errors: &mut Vec<String>,
+) -> BTreeSet<String> {
+    let mut set = BTreeSet::new();
+    for value in values {
+        if value.trim().is_empty() {
+            errors.push(format!("{field} contains empty symbol"));
+            continue;
+        }
+        if !set.insert(value.clone()) {
+            errors.push(format!("{field} contains duplicate symbol {value}"));
+        }
+    }
+    set
+}
+
 #[cfg(test)]
 mod tests {
     use super::{SetjmpSemanticsContract, parse_contract_str};
@@ -283,17 +330,17 @@ mod tests {
   "schema_version": "v1",
   "bead": "bd-2xp3",
   "symbols": {
-    "phase1_deferred": ["setjmp","longjmp","_setjmp","_longjmp","sigsetjmp","siglongjmp"],
+    "phase1_deferred": [],
     "phase2_target": ["setjmp","longjmp","sigsetjmp","siglongjmp"],
-    "support_matrix_visible_now": []
+    "support_matrix_visible_now": ["setjmp","longjmp","_setjmp","_longjmp","sigsetjmp","siglongjmp"]
   },
   "abi_semantics_matrix": [
-    {"symbol":"setjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"DeferredNotExported"},
-    {"symbol":"longjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"DeferredNotExported"},
-    {"symbol":"_setjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"DeferredNotExported"},
-    {"symbol":"_longjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"DeferredNotExported"},
-    {"symbol":"sigsetjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"DeferredNotExported"},
-    {"symbol":"siglongjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"DeferredNotExported"}
+    {"symbol":"setjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"ImplementedShadowDebt"},
+    {"symbol":"longjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"ImplementedShadowDebt"},
+    {"symbol":"_setjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"ImplementedShadowDebt"},
+    {"symbol":"_longjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"ImplementedShadowDebt"},
+    {"symbol":"sigsetjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"ImplementedShadowDebt"},
+    {"symbol":"siglongjmp","strict_semantics":"a","hardened_semantics":"b","signal_mask_semantics":"c","support_matrix_status":"ImplementedShadowDebt"}
   ],
   "signal_mask_contract": {
     "pairing_rules": ["r1","r2","r3","r4"],
@@ -312,7 +359,7 @@ mod tests {
   },
   "summary": {
     "total_symbols": 6,
-    "deferred_symbols": 6,
+    "deferred_symbols": 0,
     "phase2_target_symbols": 4,
     "required_signal_mask_rules": 4
   }
@@ -331,23 +378,37 @@ mod tests {
             .validate_intrinsic()
             .expect("intrinsic validation should pass");
 
-        let support_symbols: BTreeSet<String> =
-            ["malloc", "free"].into_iter().map(str::to_string).collect();
+        let support_symbols: BTreeSet<String> = [
+            "malloc",
+            "free",
+            "setjmp",
+            "longjmp",
+            "_setjmp",
+            "_longjmp",
+            "sigsetjmp",
+            "siglongjmp",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
         contract
             .validate_support_alignment(&support_symbols)
-            .expect("support alignment should pass for absent deferred symbols");
+            .expect("support alignment should pass for visible phase-1 symbols");
     }
 
     #[test]
     fn duplicate_deferred_symbol_is_rejected() {
         let mut contract = parse_sample();
-        contract.symbols.phase1_deferred.push("setjmp".to_string());
+        contract
+            .symbols
+            .support_matrix_visible_now
+            .push("setjmp".to_string());
         let err = contract
             .validate_intrinsic()
             .expect_err("duplicate deferred symbol should fail validation")
             .join("\n");
         assert!(
-            err.contains("symbols.phase1_deferred contains duplicate symbol setjmp"),
+            err.contains("symbols.support_matrix_visible_now contains duplicate symbol setjmp"),
             "unexpected error output: {err}"
         );
     }
@@ -355,16 +416,16 @@ mod tests {
     #[test]
     fn support_alignment_rejects_exported_deferred_symbol() {
         let contract = parse_sample();
-        let support_symbols: BTreeSet<String> = ["malloc", "setjmp"]
+        let support_symbols: BTreeSet<String> = ["malloc", "sigsetjmp"]
             .into_iter()
             .map(str::to_string)
             .collect();
         let err = contract
             .validate_support_alignment(&support_symbols)
-            .expect_err("exported deferred symbol should fail support alignment")
+            .expect_err("missing visible symbol should fail support alignment")
             .join("\n");
         assert!(
-            err.contains("deferred symbol setjmp unexpectedly present in support matrix"),
+            err.contains("support_matrix_visible_now symbol setjmp missing from support matrix"),
             "unexpected error output: {err}"
         );
     }

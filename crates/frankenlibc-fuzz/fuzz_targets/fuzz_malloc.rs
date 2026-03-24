@@ -146,24 +146,26 @@ fuzz_target!(|input: AllocFuzzInput| {
                 let idx = (*index as usize) % live.len();
                 let ptr = live.swap_remove(idx);
                 let (result, _drained) = pipeline.arena.free(ptr);
-                match result {
-                    FreeResult::Freed | FreeResult::FreedWithCanaryCorruption => {}
-                    other => {
-                        panic!("Unexpected free result for valid ptr: {other:?}");
-                    }
-                }
+                assert!(
+                    matches!(
+                        result,
+                        FreeResult::Freed | FreeResult::FreedWithCanaryCorruption
+                    ),
+                    "Unexpected free result for valid ptr: {result:?}"
+                );
                 last_freed = Some(ptr);
             }
 
             AllocOp::FreeLast => {
                 if let Some(ptr) = live.pop() {
                     let (result, _drained) = pipeline.arena.free(ptr);
-                    match result {
-                        FreeResult::Freed | FreeResult::FreedWithCanaryCorruption => {}
-                        other => {
-                            panic!("Unexpected free result for valid ptr: {other:?}");
-                        }
-                    }
+                    assert!(
+                        matches!(
+                            result,
+                            FreeResult::Freed | FreeResult::FreedWithCanaryCorruption
+                        ),
+                        "Unexpected free result for valid ptr: {result:?}"
+                    );
                     last_freed = Some(ptr);
                 }
             }
@@ -323,12 +325,13 @@ fuzz_target!(|input: AllocFuzzInput| {
     // Clean up: free all remaining live allocations
     for ptr in &live {
         let (result, _drained) = pipeline.arena.free(*ptr);
-        match result {
-            FreeResult::Freed | FreeResult::FreedWithCanaryCorruption => {}
-            other => {
-                panic!("Unexpected free result during cleanup: {other:?}");
-            }
-        }
+        assert!(
+            matches!(
+                result,
+                FreeResult::Freed | FreeResult::FreedWithCanaryCorruption
+            ),
+            "Unexpected free result during cleanup: {result:?}"
+        );
     }
 
     for ptr in &state_live {

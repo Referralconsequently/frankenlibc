@@ -31748,19 +31748,19 @@
   ],
   "summary": {
     "total": 3980,
-    "implemented": 3570,
-    "raw_syscall": 406,
-    "glibc_call_through": 4,
+    "implemented": 3576,
+    "raw_syscall": 404,
+    "glibc_call_through": 0,
     "stub": 0
   },
-  "implemented": 3570,
-  "raw_syscall": 406,
-  "glibc_call_through": 4,
+  "implemented": 3576,
+  "raw_syscall": 404,
+  "glibc_call_through": 0,
   "stub": 0,
   "counts": {
-    "Implemented": 3399,
-    "RawSyscall": 406,
-    "GlibcCallThrough": 175,
-    "Stub": 0
+    "implemented": 3576,
+    "raw_syscall": 404,
+    "glibc_call_through": 0,
+    "stub": 0
   }
 }

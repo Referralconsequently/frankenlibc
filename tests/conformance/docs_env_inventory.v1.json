@@ -14,9 +14,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 513,
+          "line": 514,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_BENCH_PIN` | `0` | Benchmark-only CPU pinning toggle. |"
+          "snippet": "| `FRANKENLIBC_BENCH_PIN` | `0` | Benchmark-only CPU pinning control |"
         }
       ]
     },
@@ -25,9 +25,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 514,
+          "line": 515,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_CLOSURE_CONTRACT_PATH` | `tests/conformance/closure_contract.v1.json` | Release/closure contract input path override. |"
+          "snippet": "| `FRANKENLIBC_CLOSURE_CONTRACT_PATH` | `tests/conformance/closure_contract.v1.json` | Closure-contract gate input override |"
         }
       ]
     },
@@ -36,9 +36,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 515,
+          "line": 516,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_CLOSURE_LEVEL` | empty | Release target level override (`L0`/`L1`/`L2`/`L3`). |"
+          "snippet": "| `FRANKENLIBC_CLOSURE_LEVEL` | auto | Closure gate target level override (`L0`..`L3`) |"
         }
       ]
     },
@@ -47,31 +47,41 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 516,
+          "line": 517,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_CLOSURE_LOG` | `/tmp/frankenlibc_closure_contract.log.jsonl` | Closure-contract evidence log output path. |"
+          "snippet": "| `FRANKENLIBC_CLOSURE_LOG` | `/tmp/frankenlibc_closure_contract.log.jsonl` | Closure gate evidence log destination |"
         }
       ]
     },
     {
       "env_key": "FRANKENLIBC_E2E_SEED",
-      "mention_count": 1,
+      "mention_count": 2,
       "mentions": [
         {
-          "line": 517,
+          "line": 497,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_E2E_SEED` | `42` | Deterministic E2E replay seed. |"
+          "snippet": "export FRANKENLIBC_E2E_SEED=42"
+        },
+        {
+          "line": 512,
+          "path": "README.md",
+          "snippet": "| `FRANKENLIBC_E2E_SEED` | `42` | Deterministic seed for some E2E workflows |"
         }
       ]
     },
     {
       "env_key": "FRANKENLIBC_E2E_STRESS_ITERS",
-      "mention_count": 1,
+      "mention_count": 2,
       "mentions": [
         {
-          "line": 518,
+          "line": 498,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_E2E_STRESS_ITERS` | `5` | E2E stress-loop iteration count. |"
+          "snippet": "export FRANKENLIBC_E2E_STRESS_ITERS=5"
+        },
+        {
+          "line": 513,
+          "path": "README.md",
+          "snippet": "| `FRANKENLIBC_E2E_STRESS_ITERS` | `5` | Stress iteration count for E2E scripts |"
         }
       ]
     },
@@ -80,14 +90,14 @@
       "mention_count": 2,
       "mentions": [
         {
-          "line": 303,
+          "line": 496,
           "path": "README.md",
-          "snippet": "FRANKENLIBC_EXTENDED_GATES=1 scripts/ci.sh"
+          "snippet": "export FRANKENLIBC_EXTENDED_GATES=0"
         },
         {
-          "line": 512,
+          "line": 511,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_EXTENDED_GATES` | `0` | Enables extended policy/perf/snapshot CI gates in `scripts/ci.sh`. |"
+          "snippet": "| `FRANKENLIBC_EXTENDED_GATES` | `0` | Enables heavier CI / perf / snapshot gates |"
         }
       ]
     },
@@ -96,41 +106,56 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 536,
+          "line": 518,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_HOOKS_LOADED` | `0` | Gentoo shell bootstrap idempotence guard. |"
+          "snippet": "| `FRANKENLIBC_HOOKS_LOADED` | `0` | Internal Gentoo hook bootstrap guard |"
         }
       ]
     },
     {
       "env_key": "FRANKENLIBC_LIB",
-      "mention_count": 1,
+      "mention_count": 3,
       "mentions": [
         {
-          "line": 519,
+          "line": 495,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_LIB` | auto-detected | Tooling override for `libfrankenlibc_abi.so` path (CVE/gentoo runners). |"
+          "snippet": "export FRANKENLIBC_LIB=\"$PWD/target/release/libfrankenlibc_abi.so\""
+        },
+        {
+          "line": 501,
+          "path": "README.md",
+          "snippet": "LD_PRELOAD=\"$FRANKENLIBC_LIB\" /bin/echo configured"
+        },
+        {
+          "line": 510,
+          "path": "README.md",
+          "snippet": "| `FRANKENLIBC_LIB` | unset | Tooling override for the built interpose library |"
         }
       ]
     },
     {
       "env_key": "FRANKENLIBC_LOG",
-      "mention_count": 3,
+      "mention_count": 4,
       "mentions": [
         {
-          "line": 505,
+          "line": 492,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_LOG` | unset | Runtime evidence/metrics log output path. |"
+          "snippet": "export FRANKENLIBC_LOG=/tmp/franken.jsonl # optional structured runtime log"
+        },
+        {
+          "line": 509,
+          "path": "README.md",
+          "snippet": "| `FRANKENLIBC_LOG` | unset | Structured runtime log path |"
         },
         {
           "line": 520,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_LOG_FILE` | unset | Gentoo/tooling-friendly log path alias exported into `FRANKENLIBC_LOG`. |"
+          "snippet": "| `FRANKENLIBC_LOG_FILE` | unset | Tooling alias path that is exported into `FRANKENLIBC_LOG` |"
         },
         {
-          "line": 651,
+          "line": 1045,
           "path": "README.md",
-          "snippet": "Ensure the version script (`libc.map`) covers all symbols the loaded library expects. Set `FRANKENLIBC_LOG=/tmp/frankenlibc.log` to capture runtime diagnostics and inspect symbol lookup failures."
+          "snippet": "FRANKENLIBC_LOG=/tmp/franken.jsonl \\"
         }
       ]
     },
@@ -139,9 +164,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 521,
+          "line": 519,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_LOG_DIR` | `/var/log/frankenlibc/portage` | Gentoo hook log directory root. |"
+          "snippet": "| `FRANKENLIBC_LOG_DIR` | `/var/log/frankenlibc/portage` | Gentoo hook directory root for generated logs |"
         }
       ]
     },
@@ -152,16 +177,16 @@
         {
           "line": 520,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_LOG_FILE` | unset | Gentoo/tooling-friendly log path alias exported into `FRANKENLIBC_LOG`. |"
+          "snippet": "| `FRANKENLIBC_LOG_FILE` | unset | Tooling alias path that is exported into `FRANKENLIBC_LOG` |"
         }
       ]
     },
     {
       "env_key": "FRANKENLIBC_MODE",
-      "mention_count": 7,
+      "mention_count": 13,
       "mentions": [
         {
-          "line": 121,
+          "line": 342,
           "path": "AGENTS.md",
           "snippet": "- Runtime selection is process-level and immutable after init (`FRANKENLIBC_MODE=strict|hardened`)."
         },
@@ -171,29 +196,59 @@
           "snippet": "- `FRANKENLIBC_MODE=strict|hardened`"
         },
         {
-          "line": 12,
+          "line": 47,
           "path": "README.md",
-          "snippet": "FRANKENLIBC_MODE=hardened LD_PRELOAD=/usr/lib/frankenlibc/libfrankenlibc_abi.so ./my_program"
+          "snippet": "| Hardened mode exists now | `FRANKENLIBC_MODE=hardened` |"
         },
         {
-          "line": 206,
+          "line": 66,
           "path": "README.md",
-          "snippet": "FRANKENLIBC_MODE=hardened LD_PRELOAD=target/release/libfrankenlibc_abi.so ./legacy_c_server"
+          "snippet": "FRANKENLIBC_MODE=hardened \\"
         },
         {
-          "line": 315,
+          "line": 90,
           "path": "README.md",
-          "snippet": "FRANKENLIBC_MODE=hardened LD_PRELOAD=target/release/libfrankenlibc_abi.so ./my_app"
+          "snippet": "FRANKENLIBC_MODE=hardened \\"
         },
         {
-          "line": 477,
+          "line": 358,
           "path": "README.md",
-          "snippet": "FRANKENLIBC_MODE=hardened LD_PRELOAD=target/release/libfrankenlibc_abi.so ./my_app"
+          "snippet": "FRANKENLIBC_MODE=hardened \\"
         },
         {
-          "line": 504,
+          "line": 485,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_MODE` | `strict` | Selects runtime mode (`strict` or `hardened`) once per process at startup. |"
+          "snippet": "The important runtime knob is `FRANKENLIBC_MODE`. The broader environment inventory is machine-generated in `tests/conformance/runtime_env_inventory.v1.json`."
+        },
+        {
+          "line": 491,
+          "path": "README.md",
+          "snippet": "export FRANKENLIBC_MODE=hardened          # strict | hardened"
+        },
+        {
+          "line": 508,
+          "path": "README.md",
+          "snippet": "| `FRANKENLIBC_MODE` | `strict` | Process-wide immutable mode selection |"
+        },
+        {
+          "line": 973,
+          "path": "README.md",
+          "snippet": "| hardened investigation | run suspicious workloads with `FRANKENLIBC_MODE=hardened` and collect evidence |"
+        },
+        {
+          "line": 1046,
+          "path": "README.md",
+          "snippet": "FRANKENLIBC_MODE=hardened \\"
+        },
+        {
+          "line": 1557,
+          "path": "README.md",
+          "snippet": "The process-wide mode is resolved exactly once from `FRANKENLIBC_MODE`:"
+        },
+        {
+          "line": 1733,
+          "path": "README.md",
+          "snippet": "Interpose deployment uses `LD_PRELOAD=target/release/libfrankenlibc_abi.so <program>`. Hardened interpose deployment uses `FRANKENLIBC_MODE=hardened LD_PRELOAD=target/release/libfrankenlibc_abi.so <program>`."
         }
       ]
     },
@@ -202,9 +257,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 531,
+          "line": 521,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PACKAGE` | unset | Gentoo package atom context value for hook/session logs. |"
+          "snippet": "| `FRANKENLIBC_PACKAGE` | unset | Internal Gentoo package/atom context annotation |"
         }
       ]
     },
@@ -213,9 +268,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 532,
+          "line": 522,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PACKAGE_BLOCKLIST` | `sys-libs/glibc sys-apps/shadow` | Gentoo package atoms excluded from preload instrumentation. |"
+          "snippet": "| `FRANKENLIBC_PACKAGE_BLOCKLIST` | `sys-libs/glibc sys-apps/shadow` | Blocks LD_PRELOAD injection for sensitive Gentoo packages |"
         }
       ]
     },
@@ -224,9 +279,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 524,
+          "line": 523,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PERF_ALLOW_TARGET_VIOLATION` | `1` | Perf gate policy toggle for target-budget violation handling. |"
+          "snippet": "| `FRANKENLIBC_PERF_ALLOW_TARGET_VIOLATION` | `1` | Perf gate policy knob for target-budget enforcement |"
         }
       ]
     },
@@ -235,9 +290,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 525,
+          "line": 524,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PERF_ENABLE_KERNEL_SUITE` | `0` | Enables extra kernel-level perf suite branch. |"
+          "snippet": "| `FRANKENLIBC_PERF_ENABLE_KERNEL_SUITE` | `0` | Enables the additional kernel perf suite branch |"
         }
       ]
     },
@@ -246,9 +301,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 526,
+          "line": 525,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PERF_MAX_LOAD_FACTOR` | `0.85` | Host-load threshold for overloaded perf-run handling. |"
+          "snippet": "| `FRANKENLIBC_PERF_MAX_LOAD_FACTOR` | `0.85` | Host load cutoff for overloaded perf-run skipping |"
         }
       ]
     },
@@ -257,9 +312,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 527,
+          "line": 526,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PERF_MAX_REGRESSION_PCT` | `15` | Perf regression threshold percent. |"
+          "snippet": "| `FRANKENLIBC_PERF_MAX_REGRESSION_PCT` | `15` | Allowed perf regression threshold percentage |"
         }
       ]
     },
@@ -268,9 +323,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 528,
+          "line": 527,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PERF_SKIP_OVERLOADED` | `1` | Skip perf runs when host is overloaded. |"
+          "snippet": "| `FRANKENLIBC_PERF_SKIP_OVERLOADED` | `1` | Skips perf gate on overloaded hosts |"
         }
       ]
     },
@@ -279,9 +334,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 533,
+          "line": 528,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PHASE` | unset | Gentoo phase context label for logs. |"
+          "snippet": "| `FRANKENLIBC_PHASE` | unset | Internal Gentoo phase label for hook/session logs |"
         }
       ]
     },
@@ -290,9 +345,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 534,
+          "line": 529,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PHASE_ACTIVE` | unset/`0` | Gentoo hook internal active-phase guard. |"
+          "snippet": "| `FRANKENLIBC_PHASE_ACTIVE` | unset/`0` | Internal flag for balanced Gentoo hook teardown |"
         }
       ]
     },
@@ -301,9 +356,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 535,
+          "line": 530,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PHASE_ALLOWLIST` | `src_test pkg_test` | Gentoo phases allowed to activate FrankenLibC hooks. |"
+          "snippet": "| `FRANKENLIBC_PHASE_ALLOWLIST` | `src_test pkg_test` | Limits which Gentoo phases activate FrankenLibC |"
         }
       ]
     },
@@ -312,9 +367,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 529,
+          "line": 531,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PORTAGE_ENABLE` | `1` | Global Gentoo hook enable/disable switch. |"
+          "snippet": "| `FRANKENLIBC_PORTAGE_ENABLE` | `1` | Global kill-switch for Gentoo Portage hooks |"
         }
       ]
     },
@@ -323,9 +378,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 530,
+          "line": 532,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_PORTAGE_LOG` | `/tmp/frankenlibc-portage-hooks.log` | Gentoo hook decision log path. |"
+          "snippet": "| `FRANKENLIBC_PORTAGE_LOG` | `/tmp/frankenlibc-portage-hooks.log` | Gentoo hook decision log path |"
         }
       ]
     },
@@ -334,9 +389,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 522,
+          "line": 533,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_RELEASE_SIMULATE_FAIL_GATE` | empty | Injects deterministic release-gate failure for dry-run validation. |"
+          "snippet": "| `FRANKENLIBC_RELEASE_SIMULATE_FAIL_GATE` | empty | Release dry-run test knob for injecting a named failing gate |"
         }
       ]
     },
@@ -345,9 +400,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 537,
+          "line": 534,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_SKIP_STATIC` | `1` | Skip preload during static-libs builds that cannot interpose dynamically. |"
+          "snippet": "| `FRANKENLIBC_SKIP_STATIC` | `1` | Skips preload during static-libs Gentoo builds |"
         }
       ]
     },
@@ -356,9 +411,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 506,
+          "line": 535,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_STARTUP_PHASE0` | `0` | Enables experimental phase-0 startup path in `__libc_start_main`. |"
+          "snippet": "| `FRANKENLIBC_STARTUP_PHASE0` | `0` | Startup path gate for the phase-0 `__libc_start_main` flow |"
         }
       ]
     },
@@ -367,9 +422,9 @@
       "mention_count": 1,
       "mentions": [
         {
-          "line": 523,
+          "line": 536,
           "path": "README.md",
-          "snippet": "| `FRANKENLIBC_TMPDIR` | unset (`TMPDIR` then `/tmp`) | Temporary artifact root for release dry-run tooling. |"
+          "snippet": "| `FRANKENLIBC_TMPDIR` | unset | Tooling temp-root override, falling back to `TMPDIR` then `/tmp` |"
         }
       ]
     }
@@ -377,6 +432,6 @@
   "schema_version": "v1",
   "summary": {
     "total_keys": 29,
-    "total_mentions": 38
+    "total_mentions": 49
   }
 }

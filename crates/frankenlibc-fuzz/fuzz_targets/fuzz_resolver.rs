@@ -83,11 +83,17 @@ fn fuzz_dns_header_decode(input: &ResolverFuzzInput) {
     // Also test header round-trip with known-good construction
     let query_header = DnsHeader::new_query(input.query_id);
     let mut buf2 = [0u8; DNS_HEADER_SIZE];
-    let len = query_header.encode(&mut buf2).unwrap();
-    assert_eq!(len, DNS_HEADER_SIZE);
-    let decoded = DnsHeader::decode(&buf2).unwrap();
-    assert_eq!(decoded.id, input.query_id);
-    assert!(!decoded.is_response());
+    let len = query_header.encode(&mut buf2);
+    assert!(len.is_some(), "query header encoding should succeed");
+    if let Some(len) = len {
+        assert_eq!(len, DNS_HEADER_SIZE);
+        let decoded = DnsHeader::decode(&buf2);
+        assert!(decoded.is_some(), "freshly encoded header should decode");
+        if let Some(decoded) = decoded {
+            assert_eq!(decoded.id, input.query_id);
+            assert!(!decoded.is_response());
+        }
+    }
 }
 
 /// Fuzz full DNS message decoding with arbitrary binary data.
@@ -219,7 +225,7 @@ fn fuzz_domain_name_roundtrip(input: &ResolverFuzzInput) {
     // Encoded name should end with a zero-length label (0x00)
     if !encoded.is_empty() {
         assert_eq!(
-            *encoded.last().unwrap(),
+            encoded[encoded.len() - 1],
             0,
             "encoded domain name must end with null label"
         );

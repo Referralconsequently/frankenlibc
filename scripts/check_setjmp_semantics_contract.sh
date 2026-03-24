@@ -91,8 +91,8 @@ deferred_symbols = symbols.get("phase1_deferred", [])
 phase2_symbols = symbols.get("phase2_target", [])
 visible_now = symbols.get("support_matrix_visible_now", [])
 
-if not isinstance(deferred_symbols, list) or not deferred_symbols:
-    fail("symbols.phase1_deferred must be non-empty array")
+if not isinstance(deferred_symbols, list):
+    fail("symbols.phase1_deferred must be an array")
 if len(deferred_symbols) != len(set(deferred_symbols)):
     fail("symbols.phase1_deferred contains duplicates")
 if len(phase2_symbols) != len(set(phase2_symbols)):
@@ -101,9 +101,12 @@ if len(visible_now) != len(set(visible_now)):
     fail("symbols.support_matrix_visible_now contains duplicates")
 
 required_deferred = {"setjmp", "longjmp", "_setjmp", "_longjmp", "sigsetjmp", "siglongjmp"}
-missing_required = sorted(required_deferred - set(deferred_symbols))
+missing_required = sorted(required_deferred - (set(deferred_symbols) | set(visible_now)))
 if missing_required:
-    fail(f"symbols.phase1_deferred missing required symbols: {missing_required}")
+    fail(f"setjmp symbol plan missing required symbols: {missing_required}")
+overlap = sorted(set(deferred_symbols) & set(visible_now))
+if overlap:
+    fail(f"symbols.phase1_deferred and symbols.support_matrix_visible_now overlap: {overlap}")
 
 matrix_rows = artifact.get("abi_semantics_matrix", [])
 if not isinstance(matrix_rows, list) or not matrix_rows:
@@ -117,17 +120,23 @@ for row in matrix_rows:
     if not symbol:
         fail("abi_semantics_matrix row missing symbol")
     matrix_symbols.append(symbol)
-    if str(row.get("support_matrix_status", "")) != "DeferredNotExported":
-        fail(f"abi_semantics_matrix.{symbol}.support_matrix_status must be DeferredNotExported")
+    expected_status = (
+        "DeferredNotExported" if symbol in deferred_symbols else "ImplementedShadowDebt"
+    )
+    if str(row.get("support_matrix_status", "")) != expected_status:
+        fail(
+            f"abi_semantics_matrix.{symbol}.support_matrix_status must be {expected_status}"
+        )
     for key in ["strict_semantics", "hardened_semantics", "signal_mask_semantics"]:
         if not str(row.get(key, "")).strip():
             fail(f"abi_semantics_matrix.{symbol}.{key} must be non-empty")
 
 if len(matrix_symbols) != len(set(matrix_symbols)):
     fail("abi_semantics_matrix contains duplicate symbols")
-if set(matrix_symbols) != set(deferred_symbols):
-    missing = sorted(set(deferred_symbols) - set(matrix_symbols))
-    extra = sorted(set(matrix_symbols) - set(deferred_symbols))
+expected_matrix_symbols = set(deferred_symbols) | set(visible_now)
+if set(matrix_symbols) != expected_matrix_symbols:
+    missing = sorted(expected_matrix_symbols - set(matrix_symbols))
+    extra = sorted(set(matrix_symbols) - expected_matrix_symbols)
     fail(f"abi_semantics_matrix coverage mismatch missing={missing} extra={extra}")
 
 signal_contract = artifact.get("signal_mask_contract", {})
@@ -144,7 +153,7 @@ if not isinstance(notes, list) or len(notes) < 2:
     fail("support_matrix_caveats.user_visible_notes must contain >= 2 notes")
 
 summary = artifact.get("summary", {})
-if int(summary.get("total_symbols", -1)) != len(deferred_symbols):
+if int(summary.get("total_symbols", -1)) != len(expected_matrix_symbols):
     fail("summary.total_symbols mismatch")
 if int(summary.get("deferred_symbols", -1)) != len(deferred_symbols):
     fail("summary.deferred_symbols mismatch")
@@ -176,8 +185,8 @@ for symbol in ["setjmp", "longjmp"]:
         fail(f"stub_census missing {symbol}")
     if row.get("call_family") != "setjmp":
         fail(f"stub_census {symbol} must have call_family=setjmp")
-    if row.get("in_support_matrix") is not False:
-        fail(f"stub_census {symbol} must remain out of support_matrix")
+    if row.get("stub_type") != "todo!":
+        fail(f"stub_census {symbol} must remain a todo! placeholder")
 
 waivers = waiver_policy.get("waivers", [])
 for symbol in ["setjmp", "longjmp"]:
@@ -186,8 +195,8 @@ for symbol in ["setjmp", "longjmp"]:
         fail(f"waiver policy missing {symbol}")
     if row.get("owner_bead") != "bd-2ry":
         fail(f"waiver policy {symbol} owner_bead must be bd-2ry")
-    if row.get("scope") != "critical_non_exported_debt":
-        fail(f"waiver policy {symbol} scope must be critical_non_exported_debt")
+    if row.get("scope") != "exported_shadow_debt":
+        fail(f"waiver policy {symbol} scope must be exported_shadow_debt")
 
 cases = fixture.get("cases", [])
 if not isinstance(cases, list) or not cases:

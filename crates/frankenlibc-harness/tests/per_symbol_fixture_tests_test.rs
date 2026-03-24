@@ -20,6 +20,11 @@ fn load_json(path: &Path) -> serde_json::Value {
         .unwrap_or_else(|e| panic!("Invalid JSON in {}: {}", path.display(), e))
 }
 
+fn load_conformance_coverage_baseline() -> serde_json::Value {
+    let path = repo_root().join("tests/conformance/conformance_coverage_baseline.v1.json");
+    load_json(&path)
+}
+
 #[test]
 fn per_symbol_report_generates_successfully() {
     let root = repo_root();
@@ -73,12 +78,25 @@ fn per_symbol_coverage_adequate() {
     let root = repo_root();
     let report_path = root.join("tests/conformance/per_symbol_fixture_tests.v1.json");
     let data = load_json(&report_path);
+    let baseline = load_conformance_coverage_baseline();
 
     let coverage = data["summary"]["fixture_coverage_pct"].as_f64().unwrap();
+    let symbols_with_fixtures = data["summary"]["symbols_with_fixtures"].as_u64().unwrap();
+    let baseline_coverage = baseline["summary"]["coverage_pct"].as_f64().unwrap();
+    let baseline_symbols_with_fixtures = baseline["summary"]["symbols_with_fixtures"]
+        .as_u64()
+        .unwrap();
     assert!(
-        coverage >= 50.0,
-        "Fixture coverage {}% < 50% minimum",
-        coverage
+        coverage + 0.25 >= baseline_coverage,
+        "Fixture coverage {}% regressed below canonical baseline {}%",
+        coverage,
+        baseline_coverage
+    );
+    assert!(
+        symbols_with_fixtures >= baseline_symbols_with_fixtures,
+        "Fixture-linked symbol count {} regressed below canonical baseline {}",
+        symbols_with_fixtures,
+        baseline_symbols_with_fixtures
     );
 
     let total_cases = data["summary"]["total_cases"].as_u64().unwrap();

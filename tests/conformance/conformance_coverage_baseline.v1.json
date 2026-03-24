@@ -1,40 +1,65 @@
 {
   "schema_version": "v1",
   "bead": "bd-15n.3",
-  "generated_at": "2026-02-13T17:57:28Z",
+  "generated_at": "2026-03-23T23:37:35Z",
   "summary": {
-    "total_symbols": 250,
-    "symbols_with_fixtures": 161,
-    "coverage_pct": 64,
-    "total_fixture_files": 49,
-    "total_fixture_cases": 479,
-    "total_families": 40
+    "total_symbols": 3980,
+    "symbols_with_fixtures": 230,
+    "coverage_pct": 6,
+    "total_fixture_files": 51,
+    "total_fixture_cases": 558,
+    "total_families": 42
   },
   "module_coverage": {
+    "c11threads_abi": {
+      "total": 25,
+      "covered": 0,
+      "pct": 0
+    },
     "ctype_abi": {
-      "total": 11,
+      "total": 49,
       "covered": 11,
-      "pct": 100
+      "pct": 22
     },
     "dirent_abi": {
-      "total": 3,
+      "total": 14,
       "covered": 3,
-      "pct": 100
+      "pct": 21
     },
     "dlfcn_abi": {
-      "total": 4,
-      "covered": 3,
-      "pct": 75
+      "total": 7,
+      "covered": 5,
+      "pct": 71
+    },
+    "err_abi": {
+      "total": 8,
+      "covered": 0,
+      "pct": 0
     },
     "errno_abi": {
       "total": 1,
       "covered": 1,
       "pct": 100
     },
+    "fenv_abi": {
+      "total": 11,
+      "covered": 0,
+      "pct": 0
+    },
+    "fortify_abi": {
+      "total": 78,
+      "covered": 0,
+      "pct": 0
+    },
+    "glibc_internal_abi": {
+      "total": 566,
+      "covered": 1,
+      "pct": 0
+    },
     "grp_abi": {
-      "total": 7,
+      "total": 8,
       "covered": 3,
-      "pct": 43
+      "pct": 38
     },
     "iconv_abi": {
       "total": 3,
@@ -42,94 +67,129 @@
       "pct": 100
     },
     "inet_abi": {
-      "total": 7,
+      "total": 17,
       "covered": 7,
-      "pct": 100
+      "pct": 41
     },
     "io_abi": {
-      "total": 4,
+      "total": 28,
       "covered": 1,
-      "pct": 25
+      "pct": 4
+    },
+    "io_internal_abi": {
+      "total": 114,
+      "covered": 27,
+      "pct": 24
+    },
+    "isoc_abi": {
+      "total": 5,
+      "covered": 0,
+      "pct": 0
     },
     "locale_abi": {
-      "total": 2,
-      "covered": 2,
-      "pct": 100
-    },
-    "malloc_abi": {
-      "total": 7,
-      "covered": 4,
-      "pct": 57
-    },
-    "math_abi": {
-      "total": 19,
-      "covered": 19,
-      "pct": 100
-    },
-    "mmap_abi": {
-      "total": 5,
-      "covered": 4,
-      "pct": 80
-    },
-    "poll_abi": {
-      "total": 4,
-      "covered": 2,
+      "total": 16,
+      "covered": 8,
       "pct": 50
     },
-    "process_abi": {
-      "total": 6,
+    "malloc_abi": {
+      "total": 21,
+      "covered": 4,
+      "pct": 19
+    },
+    "math_abi": {
+      "total": 1265,
+      "covered": 19,
+      "pct": 2
+    },
+    "mmap_abi": {
+      "total": 10,
+      "covered": 4,
+      "pct": 40
+    },
+    "poll_abi": {
+      "total": 15,
       "covered": 2,
-      "pct": 33
+      "pct": 13
+    },
+    "process_abi": {
+      "total": 30,
+      "covered": 4,
+      "pct": 13
     },
     "pthread_abi": {
-      "total": 20,
-      "covered": 15,
-      "pct": 75
+      "total": 141,
+      "covered": 20,
+      "pct": 14
     },
     "pwd_abi": {
-      "total": 7,
+      "total": 27,
       "covered": 3,
-      "pct": 43
+      "pct": 11
     },
     "resolv_abi": {
-      "total": 4,
-      "covered": 1,
-      "pct": 25
+      "total": 11,
+      "covered": 2,
+      "pct": 18
     },
     "resource_abi": {
       "total": 2,
       "covered": 1,
       "pct": 50
     },
+    "rpc_abi": {
+      "total": 159,
+      "covered": 0,
+      "pct": 0
+    },
+    "runtime_policy": {
+      "total": 1,
+      "covered": 0,
+      "pct": 0
+    },
+    "search_abi": {
+      "total": 2,
+      "covered": 0,
+      "pct": 0
+    },
+    "setjmp_abi": {
+      "total": 7,
+      "covered": 3,
+      "pct": 43
+    },
     "signal_abi": {
+      "total": 28,
+      "covered": 3,
+      "pct": 11
+    },
+    "socket_abi": {
+      "total": 18,
+      "covered": 5,
+      "pct": 28
+    },
+    "startup_abi": {
       "total": 4,
       "covered": 3,
       "pct": 75
     },
-    "socket_abi": {
-      "total": 14,
-      "covered": 5,
-      "pct": 36
-    },
-    "startup_abi": {
-      "total": 3,
-      "covered": 3,
-      "pct": 100
+    "stdbit_abi": {
+      "total": 70,
+      "covered": 0,
+      "pct": 0
     },
     "stdio_abi": {
-      "total": 30,
-      "covered": 4,
-      "pct": 13
+      "total": 124,
+      "covered": 9,
+      "pct": 7
     },
     "stdlib_abi": {
-      "total": 11,
-      "covered": 6,
-      "pct": 55
+      "total": 141,
+      "covered": 7,
+      "pct": 5
     },
     "string_abi": {
-      "total": 17,
-      "covered": 17,
-      "pct": 100
+      "total": 140,
+      "covered": 21,
+      "pct": 15
     },
     "termios_abi": {
       "total": 10,
@@ -137,19 +197,19 @@
       "pct": 50
     },
     "time_abi": {
-      "total": 4,
+      "total": 26,
       "covered": 4,
-      "pct": 100
+      "pct": 15
     },
     "unistd_abi": {
-      "total": 27,
-      "covered": 13,
-      "pct": 48
+      "total": 631,
+      "covered": 27,
+      "pct": 4
     },
     "wchar_abi": {
-      "total": 14,
+      "total": 147,
       "covered": 14,
-      "pct": 100
+      "pct": 10
     }
   },
   "family_coverage": {
@@ -160,6 +220,14 @@
         "free",
         "malloc",
         "realloc"
+      ]
+    },
+    "backtrace": {
+      "function_count": 3,
+      "functions": [
+        "backtrace",
+        "backtrace_symbols",
+        "backtrace_symbols_fd"
       ]
     },
     "ctype": {
@@ -240,11 +308,60 @@
         "ntohs"
       ]
     },
-    "locale": {
-      "function_count": 2,
+    "io": {
+      "function_count": 28,
       "functions": [
+        "_IO_adjust_column",
+        "_IO_adjust_wcolumn",
+        "_IO_default_doallocate",
+        "_IO_default_finish",
+        "_IO_doallocbuf",
+        "_IO_file_init",
+        "_IO_free_backup_area",
+        "_IO_free_wbackup_area",
+        "_IO_init",
+        "_IO_iter_begin",
+        "_IO_iter_end",
+        "_IO_link_in",
+        "_IO_list_lock",
+        "_IO_list_resetlock",
+        "_IO_list_unlock",
+        "_IO_marker_delta",
+        "_IO_marker_difference",
+        "_IO_seekmark",
+        "_IO_str_overflow",
+        "_IO_str_underflow",
+        "_IO_sungetc",
+        "_IO_sungetwc",
+        "_IO_switch_to_wget_mode",
+        "_IO_un_link",
+        "_IO_wdefault_doallocate",
+        "_IO_wdefault_uflow",
+        "_IO_wfile_sync",
+        "dlinfo"
+      ]
+    },
+    "loader": {
+      "function_count": 5,
+      "functions": [
+        "dladdr",
+        "dlclose",
+        "dlinfo",
+        "dlopen",
+        "dlsym"
+      ]
+    },
+    "locale": {
+      "function_count": 8,
+      "functions": [
+        "duplocale",
+        "freelocale",
         "localeconv",
-        "setlocale"
+        "newlocale",
+        "nl_langinfo",
+        "nl_langinfo_l",
+        "setlocale",
+        "uselocale"
       ]
     },
     "math": {
@@ -301,6 +418,13 @@
         "select"
       ]
     },
+    "pressure": {
+      "function_count": 2,
+      "functions": [
+        "PressureSensor::observe",
+        "SystemRegime::degradation_active"
+      ]
+    },
     "process": {
       "function_count": 4,
       "functions": [
@@ -344,14 +468,24 @@
         "setpwent"
       ]
     },
+    "regex": {
+      "function_count": 4,
+      "functions": [
+        "fnmatch",
+        "glob",
+        "regcomp",
+        "regexec"
+      ]
+    },
     "resolver": {
-      "function_count": 6,
+      "function_count": 7,
       "functions": [
         "DnsHeader::new_query",
         "ResolverConfig::default",
         "ResolverConfig::parse",
         "encode_domain_name",
         "getaddrinfo",
+        "gethostbyname",
         "lookup_hosts"
       ]
     },
@@ -359,6 +493,29 @@
       "function_count": 1,
       "functions": [
         "getrlimit"
+      ]
+    },
+    "session": {
+      "function_count": 4,
+      "functions": [
+        "getlogin",
+        "getlogin_r",
+        "getsid",
+        "setsid"
+      ]
+    },
+    "setjmp": {
+      "function_count": 3,
+      "functions": [
+        "_setjmp",
+        "longjmp",
+        "setjmp"
+      ]
+    },
+    "setjmp_nested_edges": {
+      "function_count": 1,
+      "functions": [
+        "setjmp_nested_edges"
       ]
     },
     "signal": {
@@ -379,6 +536,14 @@
         "socket"
       ]
     },
+    "spawn": {
+      "function_count": 3,
+      "functions": [
+        "execve",
+        "posix_spawn",
+        "system"
+      ]
+    },
     "startup": {
       "function_count": 3,
       "functions": [
@@ -388,11 +553,16 @@
       ]
     },
     "stdio": {
-      "function_count": 4,
+      "function_count": 9,
       "functions": [
         "fclose",
+        "fflush",
         "fopen",
         "fprintf",
+        "fread",
+        "fseek",
+        "ftell",
+        "fwrite",
         "snprintf"
       ]
     },
@@ -431,6 +601,18 @@
       "function_count": 1,
       "functions": [
         "strlen"
+      ]
+    },
+    "sysv": {
+      "function_count": 7,
+      "functions": [
+        "msgget",
+        "semctl",
+        "semget",
+        "semop",
+        "shmat",
+        "shmdt",
+        "shmget"
       ]
     },
     "termios": {
@@ -515,6 +697,19 @@
         "allocator"
       ]
     },
+    "backtrace_ops": {
+      "file": "backtrace_ops.json",
+      "sha256": "674d7b701936af39c82584b4cfdfb3805a6e0d819472a2d1eef0548821bceeb0",
+      "case_count": 5,
+      "functions": [
+        "backtrace",
+        "backtrace_symbols",
+        "backtrace_symbols_fd"
+      ],
+      "families": [
+        "backtrace"
+      ]
+    },
     "ctype_ops": {
       "file": "ctype_ops.json",
       "sha256": "14f112bfa1f61dca5422cfc426119f791c0901bf6afd48c59054cfd8ec83c364",
@@ -592,8 +787,8 @@
     },
     "grp_ops": {
       "file": "grp_ops.json",
-      "sha256": "55f05ee0a50d778b704dad10a1ce20c8b5d0489b7d3f2f3d2f9087533b117258",
-      "case_count": 7,
+      "sha256": "d024da84ffd3a64831aa394f12171fdb4f80f7644bc6123c893a12588f4d7f1e",
+      "case_count": 10,
       "functions": [
         "getgrgid",
         "getgrnam",
@@ -605,8 +800,8 @@
     },
     "iconv_phase1": {
       "file": "iconv_phase1.json",
-      "sha256": "e3f0bbfb8461fe63190885caa53640ff4151710c969d482a1900de2a837d287e",
-      "case_count": 11,
+      "sha256": "be8d3d6a8a3b1a98e078d427f2cbccb8e2c524c86502522b4ba468266e2439f7",
+      "case_count": 13,
       "functions": [
         "iconv",
         "iconv_close",
@@ -633,13 +828,72 @@
         "inet"
       ]
     },
+    "io_internal_ops": {
+      "file": "io_internal_ops.json",
+      "sha256": "8a26240ddd05b84de47d2d86ca481631f23336c9618f5bb91b8eb52c3b926644",
+      "case_count": 31,
+      "functions": [
+        "_IO_adjust_column",
+        "_IO_adjust_wcolumn",
+        "_IO_default_doallocate",
+        "_IO_default_finish",
+        "_IO_doallocbuf",
+        "_IO_file_init",
+        "_IO_free_backup_area",
+        "_IO_free_wbackup_area",
+        "_IO_init",
+        "_IO_iter_begin",
+        "_IO_iter_end",
+        "_IO_link_in",
+        "_IO_list_lock",
+        "_IO_list_resetlock",
+        "_IO_list_unlock",
+        "_IO_marker_delta",
+        "_IO_marker_difference",
+        "_IO_seekmark",
+        "_IO_str_overflow",
+        "_IO_str_underflow",
+        "_IO_sungetc",
+        "_IO_sungetwc",
+        "_IO_switch_to_wget_mode",
+        "_IO_un_link",
+        "_IO_wdefault_doallocate",
+        "_IO_wdefault_uflow",
+        "_IO_wfile_sync",
+        "dlinfo"
+      ],
+      "families": [
+        "io"
+      ]
+    },
+    "loader_edges": {
+      "file": "loader_edges.json",
+      "sha256": "9edc36e71269c8d543f896d861f505e55ca7794665627c58bcfd66463253c566",
+      "case_count": 7,
+      "functions": [
+        "dladdr",
+        "dlclose",
+        "dlinfo",
+        "dlopen",
+        "dlsym"
+      ],
+      "families": [
+        "loader"
+      ]
+    },
     "locale_ops": {
       "file": "locale_ops.json",
-      "sha256": "bd50d1894efad5a824730bd60b1055e12a517478f09e9539ecb5409fa941697d",
-      "case_count": 6,
+      "sha256": "ca9f30369414f66e38d0d5dd9fad0d545797899228d41b4aff69b06b7f3d6f02",
+      "case_count": 20,
       "functions": [
+        "duplocale",
+        "freelocale",
         "localeconv",
-        "setlocale"
+        "newlocale",
+        "nl_langinfo",
+        "nl_langinfo_l",
+        "setlocale",
+        "uselocale"
       ],
       "families": [
         "locale"
@@ -724,6 +978,18 @@
         "poll"
       ]
     },
+    "pressure_sensing": {
+      "file": "pressure_sensing.json",
+      "sha256": "2682b7cc38cc7766b90365248250c991ad58dc066796d1408b8c4245a5332cff",
+      "case_count": 9,
+      "functions": [
+        "PressureSensor::observe",
+        "SystemRegime::degradation_active"
+      ],
+      "families": [
+        "pressure"
+      ]
+    },
     "process_ops": {
       "file": "process_ops.json",
       "sha256": "bc79f96c443c79982d5f6186a8033839d5893cd14b11adf1b98a97a5438de001",
@@ -740,7 +1006,7 @@
     },
     "pthread_cond": {
       "file": "pthread_cond.json",
-      "sha256": "ad53ffc024cc2dc825885ba0d77e8dae4428fdbab480e4ba977e7bc0b0adde21",
+      "sha256": "7a5ce4972e4653392b99cffde12cbbb65a80c1e0b531ac4c233c299505025a92",
       "case_count": 24,
       "functions": [
         "pthread_cond_broadcast",
@@ -801,8 +1067,8 @@
     },
     "pwd_ops": {
       "file": "pwd_ops.json",
-      "sha256": "9534d1cb7976df7ccdf135aa8631a1281e877ad3980b719065cd5ffe92d46374",
-      "case_count": 7,
+      "sha256": "85970466e3e309e11b60b045b757e166b8baee8b9986c0b7e1a9d6488f5f6194",
+      "case_count": 10,
       "functions": [
         "getpwnam",
         "getpwuid",
@@ -812,16 +1078,31 @@
         "pwd"
       ]
     },
+    "regex_glob_ops": {
+      "file": "regex_glob_ops.json",
+      "sha256": "4a2633272b190540e9e84eb5aba5dd244677bf2c806d00f3bfa64373bbb5e80b",
+      "case_count": 8,
+      "functions": [
+        "fnmatch",
+        "glob",
+        "regcomp",
+        "regexec"
+      ],
+      "families": [
+        "regex"
+      ]
+    },
     "resolver": {
       "file": "resolver.json",
-      "sha256": "2f602aa67f0ff9ac5a105db276981be1ab0b33f3ab9baa2f9d1b0a6e7f58c4fe",
-      "case_count": 16,
+      "sha256": "c8dce7e2fd8f24c451bc9642fdec080f32a2de028f63597bfdd9ff389ca77e63",
+      "case_count": 23,
       "functions": [
         "DnsHeader::new_query",
         "ResolverConfig::default",
         "ResolverConfig::parse",
         "encode_domain_name",
         "getaddrinfo",
+        "gethostbyname",
         "lookup_hosts"
       ],
       "families": [
@@ -837,6 +1118,42 @@
       ],
       "families": [
         "resource"
+      ]
+    },
+    "session_ops": {
+      "file": "session_ops.json",
+      "sha256": "9ec86c91f2efc7185a7bb806530e42964fa36f0cc3b79d87207c51d8c45c51c9",
+      "case_count": 6,
+      "functions": [
+        "getlogin",
+        "getlogin_r",
+        "getsid",
+        "setsid"
+      ],
+      "families": [
+        "session"
+      ]
+    },
+    "setjmp_nested_edges": {
+      "file": "setjmp_nested_edges.json",
+      "sha256": "27c0eeaccad717ccce8293ca35f2c6c3efe0b5d9cc7faa159fe1484e0371be8e",
+      "case_count": 1,
+      "functions": [],
+      "families": [
+        "setjmp_nested_edges"
+      ]
+    },
+    "setjmp_ops": {
+      "file": "setjmp_ops.json",
+      "sha256": "6c2a3a4e0cd8a7ac65c6d040de52ff638a6f19018a642597704398033ee70d5a",
+      "case_count": 7,
+      "functions": [
+        "_setjmp",
+        "longjmp",
+        "setjmp"
+      ],
+      "families": [
+        "setjmp"
       ]
     },
     "signal_ops": {
@@ -867,10 +1184,23 @@
         "socket"
       ]
     },
+    "spawn_exec_ops": {
+      "file": "spawn_exec_ops.json",
+      "sha256": "49b90ed9954554b61b755984e692d11a768dade059a14c3fd9a3dd95c4321603",
+      "case_count": 7,
+      "functions": [
+        "execve",
+        "posix_spawn",
+        "system"
+      ],
+      "families": [
+        "spawn"
+      ]
+    },
     "startup_ops": {
       "file": "startup_ops.json",
-      "sha256": "83a60908a531a7ea6950a0682bf888622b6abe9fca641cfbc5d7f3d9893b285c",
-      "case_count": 5,
+      "sha256": "34b8afb1bb08f6f08d2cceedfa655656cb4136afe4b2352a53cda57bfcc5b081",
+      "case_count": 16,
       "functions": [
         "__frankenlibc_startup_phase0",
         "__frankenlibc_startup_snapshot",
@@ -882,12 +1212,17 @@
     },
     "stdio_file_ops": {
       "file": "stdio_file_ops.json",
-      "sha256": "c75ce4476ea7bf7034c48379f35bb4fdb19266236100dbd99e013a9b121b4293",
-      "case_count": 8,
+      "sha256": "825a9346a23c28573821b13f7dc4bf61e8d2635349314345684a5dac1ec8872c",
+      "case_count": 15,
       "functions": [
         "fclose",
+        "fflush",
         "fopen",
         "fprintf",
+        "fread",
+        "fseek",
+        "ftell",
+        "fwrite",
         "snprintf"
       ],
       "families": [
@@ -997,6 +1332,23 @@
       ],
       "families": [
         "strlen"
+      ]
+    },
+    "sysv_ipc_ops": {
+      "file": "sysv_ipc_ops.json",
+      "sha256": "c865a7ead77ca54ea6266d31ada4e0d665f8c37df4b5f8e5379c6a9ab248a9f5",
+      "case_count": 9,
+      "functions": [
+        "msgget",
+        "semctl",
+        "semget",
+        "semop",
+        "shmat",
+        "shmdt",
+        "shmget"
+      ],
+      "families": [
+        "sysv"
       ]
     },
     "termios_ops": {

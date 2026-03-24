@@ -69,10 +69,11 @@ fn artifact_summary_counts_match_rows() {
     let symbols = artifact["symbol_census"].as_array().unwrap();
     let waves = artifact["decommission_waves"].as_array().unwrap();
     let summary = artifact["summary"].as_object().unwrap();
-
-    assert!(!modules.is_empty(), "module_census must not be empty");
-    assert!(!symbols.is_empty(), "symbol_census must not be empty");
-    assert!(!waves.is_empty(), "decommission_waves must not be empty");
+    let source = artifact["source"].as_object().unwrap();
+    let declared_callthrough = source
+        .get("derived_callthrough_symbols")
+        .and_then(|v| v.as_u64())
+        .expect("source.derived_callthrough_symbols must be present");
 
     assert_eq!(
         summary.get("module_count").and_then(|v| v.as_u64()),
@@ -108,6 +109,25 @@ fn artifact_summary_counts_match_rows() {
         Some(cold),
         "summary.coldpath_count mismatch"
     );
+
+    if declared_callthrough == 0 {
+        assert!(
+            modules.is_empty(),
+            "module_census must be empty when no callthrough symbols remain"
+        );
+        assert!(
+            symbols.is_empty(),
+            "symbol_census must be empty when no callthrough symbols remain"
+        );
+        assert!(
+            waves.is_empty(),
+            "decommission_waves must be empty when no callthrough symbols remain"
+        );
+    } else {
+        assert!(!modules.is_empty(), "module_census must not be empty");
+        assert!(!symbols.is_empty(), "symbol_census must not be empty");
+        assert!(!waves.is_empty(), "decommission_waves must not be empty");
+    }
 }
 
 #[test]

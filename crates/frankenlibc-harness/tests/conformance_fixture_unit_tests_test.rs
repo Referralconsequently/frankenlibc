@@ -86,31 +86,24 @@ fn fixture_unit_invalid_fixture_is_reported_deterministically() {
 
     let results = data["fixture_results"].as_array().unwrap();
     assert!(!results.is_empty(), "No fixture results");
-    assert_eq!(data["summary"]["invalid_fixture_files"], 1);
-    assert_eq!(data["regression_detection"]["status"], "attention_required");
-    assert_eq!(
-        data["regression_detection"]["invalid_fixture_files"][0],
-        "setjmp_nested_edges.json"
+    assert_eq!(data["summary"]["invalid_fixture_files"], 0);
+    assert_eq!(data["regression_detection"]["status"], "clean");
+    assert!(
+        data["regression_detection"]["invalid_fixture_files"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 
-    let invalid = results
+    let structured = results
         .iter()
         .find(|row| row["file"] == "setjmp_nested_edges.json")
         .expect("expected setjmp_nested_edges.json to be tracked");
-    assert!(!invalid["valid"].as_bool().unwrap());
+    assert!(structured["valid"].as_bool().unwrap());
+    assert!(structured["issues"].as_array().unwrap().is_empty());
     assert!(
-        invalid["issues"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|issue| issue == "Missing top-level field: version")
-    );
-    assert!(
-        invalid["issues"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|issue| issue == "Missing top-level field: cases")
+        structured["case_count"].as_u64().unwrap() >= 4,
+        "structured fixture should synthesize regression cases"
     );
 }
 
@@ -227,6 +220,6 @@ fn fixture_unit_log_emission_contains_required_fields() {
         .iter()
         .find(|row| row["event"] == "fixture_validation_summary")
         .expect("summary row should be present");
-    assert_eq!(summary["outcome"], "attention_required");
-    assert_eq!(summary["invalid_fixture_files"], 1);
+    assert_eq!(summary["outcome"], "clean");
+    assert_eq!(summary["invalid_fixture_files"], 0);
 }

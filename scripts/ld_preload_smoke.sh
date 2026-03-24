@@ -578,14 +578,20 @@ run_suite_for_mode() {
   local mode="$1"
   local mode_failed=0
   local fixture="${RUN_DIR}/fixture.input.txt"
+  local ls_fixture_dir="${RUN_DIR}/ls_fixture"
   cat > "${fixture}" <<'EOF'
 charlie
 alpha
 bravo
 alpha
 EOF
+  mkdir -p "${ls_fixture_dir}/nested"
+  printf 'fixture\n' > "${ls_fixture_dir}/alpha.txt"
+  printf 'second\n' > "${ls_fixture_dir}/nested/beta.txt"
+  touch -t 202603230101.01 "${ls_fixture_dir}" "${ls_fixture_dir}/alpha.txt" \
+    "${ls_fixture_dir}/nested" "${ls_fixture_dir}/nested/beta.txt"
 
-  run_case "${mode}" "coreutils_ls_tmp" /bin/ls -la /tmp || mode_failed=1
+  run_case "${mode}" "coreutils_ls_tmp" /bin/ls -la "${ls_fixture_dir}" || mode_failed=1
   run_case "${mode}" "coreutils_cat_hosts" /bin/cat /etc/hosts || mode_failed=1
   run_case "${mode}" "coreutils_echo" /bin/echo "frankenlibc_smoke" || mode_failed=1
   run_case "${mode}" "coreutils_env" /usr/bin/env || mode_failed=1

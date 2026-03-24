@@ -3,7 +3,7 @@
 ## Current Reality
 
 Source of truth for implementation parity is `tests/conformance/reality_report.v1.json` (generated `2026-02-18T04:49:26Z`).
-Reality snapshot: total_exported=3980, implemented=3457, raw_syscall=406, glibc_call_through=117, stub=0.
+Reality snapshot: total_exported=3980, implemented=3576, raw_syscall=404, glibc_call_through=0, stub=0.
 Counts below reflect that generated snapshot and will change as matrix drift fixes land.
 Regenerate deterministically with:
 
@@ -14,9 +14,9 @@ cargo run -p frankenlibc-harness --bin harness -- reality-report \
 ```
 
 Current exported ABI surface is **3980 symbols**, classified as:
-- `Implemented`: 3457
-- `RawSyscall`: 406
-- `GlibcCallThrough`: 117
+- `Implemented`: 3576
+- `RawSyscall`: 404
+- `GlibcCallThrough`: 0
 - `Stub`: 0
 
 This means the current artifact is a **hybrid interposition profile** (mixed Rust-owned behavior, raw syscalls, host-glibc delegation, and deterministic stubs), not a full replacement profile.
@@ -54,7 +54,7 @@ Legend:
 |---|---|
 | `Implemented` | `string_abi`, `wchar_abi`, `math_abi`, `stdlib_abi`, `malloc_abi`, `ctype_abi`, `inet_abi`, `errno_abi`, `resolv_abi`, `locale_abi`, `iconv_abi` |
 | `RawSyscall` | `unistd_abi`, `socket_abi`, `termios_abi`, `time_abi`, `dirent_abi`, `process_abi`, `poll_abi`, `io_abi`, `mmap_abi`, `resource_abi`, `signal_abi` |
-| `GlibcCallThrough` | `dlfcn_abi` |
+| `GlibcCallThrough` | none in current support matrix snapshot |
 | `Stub` | none (current exported surface) |
 
 ## Hard-Parts Truth Table
@@ -148,7 +148,7 @@ Current stubbed symbols (explicit deterministic contracts):
 | inet integration | runtime-math routing active for `<arpa/inet.h>` entrypoints (`htons`, `htonl`, `ntohs`, `ntohl`, `inet_pton`, `inet_ntop`, `inet_addr`) under `ApiFamily::Inet` | DONE |
 | locale integration | runtime-math routing active for `<locale.h>` entrypoints (`setlocale`, `localeconv`) under `ApiFamily::Locale` with strict/hardened locale validation + C-locale fallback repair | DONE |
 | termios integration | runtime-math routing active for `<termios.h>` entrypoints (`tcgetattr`, `tcsetattr`, `cfget*speed`, `cfset*speed`, `tcdrain`, `tcflush`, `tcflow`, `tcsendbreak`) under `ApiFamily::Termios` with strict/hardened optional_actions/queue/flow validation + repair | DONE |
-| dlfcn integration | dlfcn boundary policy: interpose allows host call-through for `dlopen`/`dlsym`/`dlclose`, hardened invalid-flags repair is `RTLD_NOW`, replacement forbids host fallback; thread-local `dlerror` state remains local | DONE |
+| dlfcn integration | dlfcn boundary policy: native phase-1 `dlopen`/`dlsym`/`dlclose`/`dlerror`, hardened invalid-flags repair is `RTLD_NOW`, replacement forbids direct host fallback | DONE |
 
 ## Reverse Core Coverage Matrix
 
@@ -301,7 +301,7 @@ Current stubbed symbols (explicit deterministic contracts):
 26. Conformal risk controller live — split conformal prediction (Vovk et al. 2005) with sliding-window calibration (256 entries), conformal p-values, EWMA coverage tracking, distribution-free finite-sample miscoverage detection (math item #27).
 27. Five new POSIX function families ported: `<unistd.h>` (27 entrypoints), `<sys/socket.h>` (14 entrypoints), `<arpa/inet.h>` (7 entrypoints), `<locale.h>` (2 entrypoints), `<termios.h>` (10 entrypoints). All routed through the RuntimeMathKernel via new ApiFamily variants (Socket=13, Locale=14, Termios=15, Inet=16). Core modules provide pure-Rust validators and constants; ABI modules wrap libc with membrane gating.
 28. Six new runtime math monitors integrated: Malliavin sensitivity, Fisher-Rao information geometry, matrix concentration (Bernstein), Čech nerve complex, Wasserstein drift, kernel MMD. Total test count: 792 (up from 608).
-29. `<dlfcn.h>` boundary locked — dlfcn boundary policy: interpose allows host call-through for `dlopen`/`dlsym`/`dlclose`, hardened invalid-flags repair is `RTLD_NOW`, replacement forbids host fallback; `dlerror` remains thread-local state.
+29. `<dlfcn.h>` boundary locked — dlfcn boundary policy: native phase-1 `dlopen`/`dlsym`/`dlclose`/`dlerror`, hardened invalid-flags repair is `RTLD_NOW`, replacement forbids direct host fallback.
 30. Stein discrepancy monitor fixed — replaced mean-score-norm KSD (broken for deterministic inputs) with KL divergence D(current||reference) between live EWMA and calibration-frozen models; all 7 tests pass.
 31. Five additional runtime math monitors verified: Stein discrepancy (KSD goodness-of-fit), POMDP repair (belief-space policy), K-theory (contract drift), SOS invariant (Lyapunov synthesis). Total test count: 792.
 32. POSIX Batch 3: stdio file ops (27 ABI entrypoints wired via stream registry), process control (6 entrypoints under `ApiFamily::Process=17`: fork, _exit, execve, execvp, waitpid, wait), virtual memory (5 entrypoints under `ApiFamily::VirtualMemory=18`: mmap, munmap, mprotect, msync, madvise), pthread sync (15 entrypoints extending `ApiFamily::Threading`: mutex init/destroy/lock/trylock/unlock, cond init/destroy/wait/signal/broadcast, rwlock init/destroy/rdlock/wrlock/unlock), I/O multiplexing (4 entrypoints under `ApiFamily::Poll=19`: poll, ppoll, select, pselect). ApiFamily::COUNT expanded from 17 to 20. Total test count: 897.

@@ -20,7 +20,7 @@
       "spec_section": "POSIX posix_spawn(3)",
       "inputs": { "path": "/nonexistent_binary", "argv": ["x"], "envp": "inherit" },
       "expected_output": "ENOENT",
-      "expected_errno": "ENOENT",
+      "expected_errno": 2,
       "mode": "strict",
       "note": "posix_spawn fails with ENOENT for nonexistent binary"
     },
@@ -40,7 +40,7 @@
       "spec_section": "POSIX execve(2)",
       "inputs": { "pathname": "/etc/passwd", "argv": ["passwd"], "envp": [] },
       "expected_output": -1,
-      "expected_errno": "EACCES",
+      "expected_errno": 13,
       "mode": "strict",
       "note": "execve fails with EACCES for non-executable file"
     },

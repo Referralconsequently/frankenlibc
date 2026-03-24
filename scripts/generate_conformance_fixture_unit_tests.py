@@ -31,7 +31,7 @@ def load_json_file(path):
         return json.load(f)
 
 
-REQUIRED_TOP_LEVEL = ["version", "family", "cases"]
+REQUIRED_TOP_LEVEL = ["family"]
 REQUIRED_CASE_FIELDS = ["name", "function", "inputs", "expected_output", "mode"]
 VALID_MODES = {"strict", "hardened", "both"}
 
@@ -68,6 +68,58 @@ def make_log_row(timestamp, run_id, fixture_file, family, symbol, outcome, artif
     }
 
 
+def synthesize_structured_cases(data):
+    family = data.get("family", "")
+    cases = []
+
+    for scenario in data.get("program_scenarios", []):
+        scenario_id = scenario.get("scenario_id", "unknown_program_scenario")
+        expected = scenario.get("expected", {})
+        for mode in ("strict", "hardened"):
+            mode_expected = expected.get(mode)
+            if not isinstance(mode_expected, dict):
+                continue
+            cases.append(
+                {
+                    "name": f"{scenario_id}_{mode}",
+                    "function": family,
+                    "inputs": {
+                        "scenario_id": scenario_id,
+                        "source": scenario.get("source"),
+                        "jump_depth": scenario.get("jump_depth"),
+                        "mask_state": scenario.get("mask_state"),
+                    },
+                    "expected_output": mode_expected,
+                    "mode": mode,
+                }
+            )
+
+    for scenario in data.get("unsupported_scenarios", []):
+        scenario_id = scenario.get("scenario_id", "unknown_unsupported_scenario")
+        for mode in scenario.get("modes", []):
+            cases.append(
+                {
+                    "name": f"{scenario_id}_{mode}",
+                    "function": family,
+                    "inputs": {
+                        "scenario_id": scenario_id,
+                        "jump_depth": scenario.get("jump_depth"),
+                        "mask_state": scenario.get("mask_state"),
+                    },
+                    "expected_output": {
+                        "expected_outcome": scenario.get("expected_outcome"),
+                        "expected_errno": scenario.get("expected_errno"),
+                        "documented_semantics": scenario.get(
+                            "documented_semantics"
+                        ),
+                    },
+                    "mode": mode,
+                }
+            )
+
+    return cases
+
+
 def validate_fixture(fixture_path):
     """Validate a fixture file thoroughly."""
     issues = []
@@ -85,7 +137,7 @@ def validate_fixture(fixture_path):
         if field not in data:
             issues.append(f"Missing top-level field: {field}")
 
-    version = data.get("version", "")
+    version = data.get("version", data.get("schema_version", ""))
     if version != "v1":
         warnings.append(f"Unexpected version: {version}")
 
@@ -93,10 +145,21 @@ def validate_fixture(fixture_path):
     if not family:
         issues.append("Empty family field")
 
-    cases = data.get("cases", [])
-    if not isinstance(cases, list):
-        issues.append("'cases' is not an array")
+    has_legacy_cases = "cases" in data
+    has_structured_cases = any(
+        key in data for key in ("program_scenarios", "unsupported_scenarios")
+    )
+    if not has_legacy_cases and not has_structured_cases:
+        issues.append("Missing top-level fixture cases or structured scenarios")
         return data, issues, warnings
+
+    if has_legacy_cases:
+        cases = data.get("cases", [])
+        if not isinstance(cases, list):
+            issues.append("'cases' is not an array")
+            return data, issues, warnings
+    else:
+        cases = synthesize_structured_cases(data)
 
     if len(cases) == 0:
         warnings.append("Empty cases array")
@@ -133,6 +196,11 @@ def validate_fixture(fixture_path):
         # Validate expected_output is present and non-null
         if "expected_output" in case and case["expected_output"] is None:
             warnings.append(f"{prefix}: expected_output is null")
+
+    if not has_legacy_cases:
+        data = dict(data)
+        data["cases"] = cases
+        data["version"] = version
 
     return data, issues, warnings
 

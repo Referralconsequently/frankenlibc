@@ -1,16 +1,16 @@
 {
   "schema_version": "v1",
   "bead": "bd-1qfc",
-  "generated_at": "2026-02-13T18:57:26Z",
+  "generated_at": "2026-03-24T00:32:56Z",
   "summary": {
     "total_suites_in_spec": 4,
     "suites_with_bench_files": 4,
     "suites_enforced_in_gate": 2,
     "suites_with_full_baselines": 2,
     "baseline_slot_fill_pct": 28.6,
-    "hotpath_symbol_coverage_pct": 62.9,
-    "total_hotpath_symbols": 70,
-    "extra_bench_files_beyond_spec": 4,
+    "hotpath_symbol_coverage_pct": 57.2,
+    "total_hotpath_symbols": 145,
+    "extra_bench_files_beyond_spec": 6,
     "total_issues": 0,
     "total_warnings": 0
   },
@@ -112,30 +112,35 @@
     "issues": []
   },
   "hotpath_symbol_coverage": {
-    "total_hotpath_symbols": 70,
-    "covered_by_bench_suite": 44,
-    "not_covered": 26,
-    "coverage_pct": 62.9,
+    "total_hotpath_symbols": 145,
+    "covered_by_bench_suite": 83,
+    "not_covered": 62,
+    "coverage_pct": 57.2,
     "uncovered_modules": [
+      "c11threads_abi",
       "ctype_abi",
       "errno_abi",
+      "resolv_abi",
+      "stdio_abi",
+      "stdlib_abi",
+      "time_abi",
       "wchar_abi"
     ],
     "uncovered_symbols_sample": [
+      "__ctype_b_loc",
+      "__ctype_tolower_loc",
+      "__ctype_toupper_loc",
       "__errno_location",
-      "isalnum",
-      "isalpha",
-      "isdigit",
-      "islower",
-      "isprint",
-      "ispunct",
-      "isspace",
-      "isupper",
-      "isxdigit"
+      "__h_errno_location",
+      "btowc",
+      "feof_unlocked",
+      "ferror_unlocked",
+      "fflush_unlocked",
+      "fgets_unlocked"
     ]
   },
   "config_consistency": {
-    "baseline_version": 3,
+    "baseline_version": 1,
     "regression_max_pct": 15,
     "strict_target_ns": 20,
     "hardened_target_ns": 200,
@@ -144,6 +149,8 @@
     "issues": []
   },
   "extra_bench_files": [
+    "alien_cs",
+    "baseline_capture",
     "condvar",
     "mutex",
     "runtime_math_kernels",

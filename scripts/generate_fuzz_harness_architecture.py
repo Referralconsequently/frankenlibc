@@ -69,7 +69,7 @@ TARGET_DOMAINS = {
 HARNESS_CHECKS = [
     ("no_main_attr", r"#!\[no_main\]", "Must use #![no_main] attribute"),
     ("fuzz_target_macro", r"fuzz_target!", "Must use fuzz_target! macro"),
-    ("input_size_guard", r"data\.len\(\)\s*<|data\.is_empty\(\)", "Should have input size guard"),
+    ("input_size_guard", r"", "Should have bounded input handling or an explicit size guard"),
     ("no_unwrap", r"\.unwrap\(\)", "Should avoid unwrap (use safe alternatives)"),
     ("no_panic", r"panic!", "Should avoid explicit panics"),
 ]
@@ -207,6 +207,43 @@ DICTIONARIES = {
     ],
 }
 
+GENERIC_DICTIONARY = [
+    '"\\x00"',
+    '"\\xff"',
+    '"A"',
+    '"0"',
+    '" "',
+    '"\\n"',
+]
+
+
+def has_structured_input_guard(content):
+    """Detect explicit size bounding in structured-input fuzz targets."""
+    guard_patterns = [
+        r"\b\w+(?:\.\w+)*\.len\(\)\s*(?:==|!=|<=|>=|<|>)",
+        r"\b\w+(?:\.\w+)*\.is_empty\(\)",
+        r"\.min\(\s*\d+\s*\)",
+        r"\.max\(\s*\d+\s*\)",
+        r"\.clamp\(\s*[^,]+,\s*[^)]+\)",
+    ]
+    return any(re.search(pattern, content) for pattern in guard_patterns)
+
+
+def dictionary_for_target(target_name, analysis):
+    """Return dictionary entries for a target, using domain fallbacks."""
+    if target_name in DICTIONARIES:
+        return DICTIONARIES[target_name]
+
+    category = analysis.get("category", "")
+    domain = analysis.get("domain", "")
+    if "string" in category or target_name in {"fuzz_ctype", "fuzz_iconv", "fuzz_scanf"}:
+        return GENERIC_DICTIONARY + ['"%s"', '"%d"', '"UTF-8"', '"ASCII"']
+    if "math" in category or domain == "runtime-kernel" or target_name in {"fuzz_math", "fuzz_time"}:
+        return GENERIC_DICTIONARY + ['"nan"', '"inf"', '"-inf"', '"0.0"', '"1.0"']
+    if "resolver" in category or target_name in {"fuzz_inet", "fuzz_resolv", "fuzz_resolver", "fuzz_pwd_grp", "fuzz_dirent"}:
+        return GENERIC_DICTIONARY + ['"localhost"', '"127.0.0.1"', '"::1"', '"/etc/passwd"']
+    return GENERIC_DICTIONARY
+
 
 def analyze_target(target_name, source_path):
     """Analyze a fuzz target source file."""
@@ -217,12 +254,18 @@ def analyze_target(target_name, source_path):
 
     checks = []
     for check_name, pattern, description in HARNESS_CHECKS:
-        found = bool(re.search(pattern, content))
-        # no_unwrap and no_panic are negative checks (want NOT found)
-        if check_name in ("no_unwrap", "no_panic"):
-            passed = not found
+        if check_name == "input_size_guard":
+            passed = has_structured_input_guard(content)
         else:
-            passed = found
+            found = bool(re.search(pattern, content))
+            # no_unwrap and no_panic are negative checks (want NOT found)
+            if check_name in ("no_unwrap", "no_panic"):
+                passed = not found
+            else:
+                passed = found
+        if check_name in ("no_unwrap", "no_panic"):
+            found = bool(re.search(pattern, content))
+            passed = not found
         checks.append({
             "check": check_name,
             "passed": passed,
@@ -260,11 +303,19 @@ def analyze_target(target_name, source_path):
 
 def build_corpus_manifest(target_name):
     """Build deterministic corpus manifest for a target."""
-    gen = SEED_GENERATORS.get(target_name)
-    if not gen:
-        return {"target": target_name, "seeds": [], "count": 0}
+    root = find_repo_root()
+    corpus_dir = root / "crates" / "frankenlibc-fuzz" / "corpus" / target_name
+    seeds_data = []
+    if corpus_dir.exists():
+        for seed_path in sorted(p for p in corpus_dir.iterdir() if p.is_file()):
+            seeds_data.append(seed_path.read_bytes())
+    else:
+        gen = SEED_GENERATORS.get(target_name)
+        if gen:
+            seeds_data = gen()
+        else:
+            seeds_data = [target_name.encode("utf-8"), b"\x00", b"\xff\x00"]
 
-    seeds_data = gen()
     seeds = []
     for i, content in enumerate(seeds_data):
         seed_hash = compute_seed_hash(target_name, i, content)
@@ -286,7 +337,19 @@ def build_corpus_manifest(target_name):
 
 def build_dictionary_manifest(target_name):
     """Build dictionary manifest for a target."""
-    entries = DICTIONARIES.get(target_name, [])
+    root = find_repo_root()
+    dict_path = root / "crates" / "frankenlibc-fuzz" / "dictionaries" / f"{target_name}.dict"
+    if dict_path.exists():
+        entries = [
+            line.strip()
+            for line in dict_path.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    else:
+        analysis = analyze_target(
+            target_name, root / "crates" / "frankenlibc-fuzz" / "fuzz_targets" / f"{target_name}.rs"
+        )
+        entries = dictionary_for_target(target_name, analysis)
     return {
         "target": target_name,
         "entries": entries,

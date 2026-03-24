@@ -661,6 +661,7 @@ pub unsafe fn join_thread(handle_ptr: *mut ThreadHandle) -> Result<usize, i32> {
 
     // Atomically claim the right to join. We need to transition from a joinable
     // state (RUNNING or FINISHED) to JOINED. CAS ensures only one joiner wins.
+    let mut already_claimed_join = false;
     loop {
         let state = handle.state.load(Ordering::Acquire);
         match state {
@@ -681,6 +682,7 @@ pub unsafe fn join_thread(handle_ptr: *mut ThreadHandle) -> Result<usize, i32> {
                     Ordering::Acquire,
                 ) {
                     Ok(_) => {
+                        already_claimed_join = true;
                         // We own the join. Proceed to wait for tid == 0 to ensure
                         // the kernel has finished the exit sequence before we
                         // reclaim the stack and handle.
@@ -721,30 +723,33 @@ pub unsafe fn join_thread(handle_ptr: *mut ThreadHandle) -> Result<usize, i32> {
         };
     }
 
-    // Thread has exited. Now CAS FINISHED → JOINED.
-    loop {
-        let state = handle.state.load(Ordering::Acquire);
-        match state {
-            THREAD_FINISHED => {
-                match handle.state.compare_exchange(
-                    THREAD_FINISHED,
-                    THREAD_JOINED,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ) {
-                    Ok(_) => break,
-                    Err(THREAD_DETACHED) => return Err(EINVAL),
-                    Err(THREAD_JOINED) => return Err(EINVAL),
-                    Err(_) => continue,
+    // If we didn't already claim the join in the finished fast path, do it now
+    // after the child has fully exited.
+    if !already_claimed_join {
+        loop {
+            let state = handle.state.load(Ordering::Acquire);
+            match state {
+                THREAD_FINISHED => {
+                    match handle.state.compare_exchange(
+                        THREAD_FINISHED,
+                        THREAD_JOINED,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    ) {
+                        Ok(_) => break,
+                        Err(THREAD_DETACHED) => return Err(EINVAL),
+                        Err(THREAD_JOINED) => return Err(EINVAL),
+                        Err(_) => continue,
+                    }
                 }
+                THREAD_RUNNING => {
+                    // Brief race: tid cleared but state not yet FINISHED.
+                    // Spin briefly.
+                    core::hint::spin_loop();
+                    continue;
+                }
+                _ => return Err(EINVAL),
             }
-            THREAD_RUNNING => {
-                // Brief race: tid cleared but state not yet FINISHED.
-                // Spin briefly.
-                core::hint::spin_loop();
-                continue;
-            }
-            _ => return Err(EINVAL),
         }
     }
 

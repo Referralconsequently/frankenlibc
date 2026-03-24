@@ -2150,7 +2150,7 @@ mod tests {
     fn bloom_false_positives_do_not_classify_foreign_as_validated() {
         let pipeline = ValidationPipeline::new();
         let mut allocated = Vec::new();
-        for i in 0..256 {
+        for _ in 0..256 {
             let ptr = pipeline.allocate(64).expect("alloc");
             allocated.push(ptr);
         }

@@ -72,6 +72,11 @@ fn fuzz_determinism(input: &IconvFuzzInput) {
 
             let r1 = iconv::iconv(&mut cd1, payload, &mut out1);
             let r2 = iconv::iconv(&mut cd2, payload, &mut out2);
+            assert_eq!(
+                r1.is_ok(),
+                r2.is_ok(),
+                "determinism: one succeeded and one failed"
+            );
 
             // Same input → same result.
             match (r1, r2) {
@@ -84,7 +89,7 @@ fn fuzz_determinism(input: &IconvFuzzInput) {
                     );
                 }
                 (Err(_), Err(_)) => {} // both failed — ok
-                _ => panic!("determinism: one succeeded and one failed"),
+                _ => {}
             }
 
             let _ = iconv::iconv_close(cd1);

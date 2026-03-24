@@ -64,8 +64,8 @@ matrix_symbol_set = set(matrix_symbols)
 module_counts = Counter(str(row.get("module")) for row in matrix_callthrough)
 
 census_rows = artifact.get("symbol_census", [])
-if not isinstance(census_rows, list) or not census_rows:
-    raise SystemExit("FAIL: symbol_census must be a non-empty array")
+if not isinstance(census_rows, list):
+    raise SystemExit("FAIL: symbol_census must be an array")
 census_symbols = [str(row.get("symbol")) for row in census_rows]
 census_symbol_set = set(census_symbols)
 if len(census_symbols) != len(census_symbol_set):
@@ -96,8 +96,8 @@ for row in census_rows:
         raise SystemExit(f"FAIL: symbol_census {symbol} priority_score must be int")
 
 module_rows = artifact.get("module_census", [])
-if not isinstance(module_rows, list) or not module_rows:
-    raise SystemExit("FAIL: module_census must be a non-empty array")
+if not isinstance(module_rows, list):
+    raise SystemExit("FAIL: module_census must be an array")
 for row in module_rows:
     module = str(row.get("module", ""))
     count = int(row.get("count", -1))
@@ -109,8 +109,8 @@ for row in module_rows:
         )
 
 waves = artifact.get("decommission_waves", [])
-if not isinstance(waves, list) or not waves:
-    raise SystemExit("FAIL: decommission_waves must be non-empty array")
+if not isinstance(waves, list):
+    raise SystemExit("FAIL: decommission_waves must be an array")
 wave_ids = [str(w.get("wave_id")) for w in waves]
 if len(wave_ids) != len(set(wave_ids)):
     raise SystemExit("FAIL: decommission_waves has duplicate wave_id values")
@@ -164,6 +164,16 @@ if int(source.get("total_exported", -1)) != int(support.get("total_exported", -2
     raise SystemExit("FAIL: source.total_exported mismatch")
 if int(source.get("derived_callthrough_symbols", -1)) != len(census_rows):
     raise SystemExit("FAIL: source.derived_callthrough_symbols mismatch")
+if int(source.get("status_summary_callthrough", -1)) != len(census_rows):
+    raise SystemExit("FAIL: source.status_summary_callthrough mismatch")
+
+if len(matrix_callthrough) == 0:
+    if module_rows:
+        raise SystemExit("FAIL: module_census must be empty when support_matrix has zero callthrough symbols")
+    if census_rows:
+        raise SystemExit("FAIL: symbol_census must be empty when support_matrix has zero callthrough symbols")
+    if waves:
+        raise SystemExit("FAIL: decommission_waves must be empty when support_matrix has zero callthrough symbols")
 
 report = {
     "schema_version": "v1",

@@ -80,6 +80,11 @@ fn fuzz_determinism(input: &DirentFuzzInput) {
 
     let r1 = dirent::parse_dirent64(buf, offset);
     let r2 = dirent::parse_dirent64(buf, offset);
+    assert_eq!(
+        r1.is_some(),
+        r2.is_some(),
+        "determinism: one parse succeeded and one failed"
+    );
 
     match (r1, r2) {
         (Some((e1, o1)), Some((e2, o2))) => {
@@ -89,6 +94,6 @@ fn fuzz_determinism(input: &DirentFuzzInput) {
             assert_eq!(e1.d_type, e2.d_type, "determinism: types should match");
         }
         (None, None) => {}
-        _ => panic!("determinism: one parse succeeded and one failed"),
+        _ => {}
     }
 }

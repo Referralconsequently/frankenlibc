@@ -266,37 +266,36 @@ import json
 import pathlib
 
 profile_path = pathlib.Path('${PROFILE_DEF}')
-support_path = pathlib.Path('${SUPPORT_MATRIX}')
 fixture_path = pathlib.Path('${FIXTURE_PACK}')
 report_path = pathlib.Path('${REPORT_PATH}')
 log_path = pathlib.Path('${LOG_PATH}')
 
 profile = json.loads(profile_path.read_text(encoding='utf-8'))
-support = json.loads(support_path.read_text(encoding='utf-8'))
 fixtures = json.loads(fixture_path.read_text(encoding='utf-8'))
 report = json.loads(report_path.read_text(encoding='utf-8'))
-
-symbols = support.get('symbols', [])
-callthrough_rows = [row for row in symbols if row.get('status') == 'GlibcCallThrough']
-support_modules = {str(row.get('module')) for row in callthrough_rows}
-support_symbol_map = {str(row.get('symbol')): row for row in callthrough_rows}
+log_rows = [
+    json.loads(line)
+    for line in log_path.read_text(encoding='utf-8').splitlines()
+    if line.strip()
+]
 
 profile_modules = set(profile.get('callthrough_families', {}).get('modules', []))
 allowlist = set(profile.get('interpose_allowlist', {}).get('modules', []))
+source_modules = set(report.get('module_counts', {}).keys())
+source_symbol_map = {}
+for row in log_rows:
+    module = str(row.get('module'))
+    symbol = str(row.get('symbol'))
+    source_symbol_map.setdefault(module, set()).add(symbol)
 
 errors = []
-if support_modules != profile_modules:
+if source_modules != profile_modules:
     errors.append(
-        f'callthrough module mismatch: support_matrix={sorted(support_modules)} profile.callthrough_families={sorted(profile_modules)}'
+        f'callthrough module mismatch: source_scan={sorted(source_modules)} profile.callthrough_families={sorted(profile_modules)}'
     )
 if not profile_modules.issubset(allowlist):
     missing = sorted(profile_modules - allowlist)
     errors.append(f'profile.callthrough_families not fully in interpose_allowlist: {missing}')
-
-source_modules = set(report.get('module_counts', {}).keys())
-if not source_modules.issubset(profile_modules):
-    extra = sorted(source_modules - profile_modules)
-    errors.append(f'source scan found callthrough modules absent from profile.callthrough_families: {extra}')
 
 fixture_rows = fixtures.get('fixtures', [])
 if fixtures.get('schema_version') != 'v1':
@@ -324,14 +323,12 @@ for row in fixture_rows:
         errors.append(f'{row_id}: replacement fixture expected_outcome must be forbidden')
     if module not in profile_modules:
         errors.append(f'{row_id}: module {module!r} not tracked in profile.callthrough_families')
-    if symbol not in support_symbol_map:
-        errors.append(f'{row_id}: symbol {symbol!r} not found as GlibcCallThrough in support_matrix')
-    else:
-        support_module = str(support_symbol_map[symbol].get('module'))
-        if support_module != str(module):
-            errors.append(
-                f'{row_id}: symbol/module mismatch (fixture {module}, support_matrix {support_module})'
-            )
+    if module not in source_modules:
+        errors.append(f'{row_id}: module {module!r} not present in replacement guard source scan')
+    elif symbol not in source_symbol_map.get(module, set()):
+        errors.append(
+            f'{row_id}: symbol {symbol!r} not found in replacement guard source scan for module {module!r}'
+        )
     module_mode_coverage.setdefault(module, set()).add(mode)
 
 for module in profile_modules:
@@ -391,7 +388,7 @@ if [[ "${family_errors}" -gt 0 ]]; then
     echo "${coverage_check}" | grep '^  '
     failures=$((failures + 1))
 else
-    echo "PASS: Callthrough family coverage and fixtures align with profile + support matrix"
+    echo "PASS: Callthrough family coverage and fixtures align with profile + source scan"
 fi
 echo ""
 

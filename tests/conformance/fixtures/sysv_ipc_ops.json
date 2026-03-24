@@ -20,7 +20,7 @@
       "spec_section": "POSIX semop(2)",
       "inputs": { "semid": "valid_semid", "sops": [{"sem_num": 0, "sem_op": -1, "sem_flg": "IPC_NOWAIT"}], "nsops": 1 },
       "expected_output": -1,
-      "expected_errno": "EAGAIN",
+      "expected_errno": 11,
       "mode": "strict",
       "note": "semop with IPC_NOWAIT on zero-valued sem returns EAGAIN"
     },

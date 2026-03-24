@@ -64,21 +64,25 @@
     }
   ],
   "current_assessment": {
-    "total_symbols": 250,
-    "strict_hotpath_count": 70,
+    "total_symbols": 3980,
+    "strict_hotpath_count": 145,
     "hardened_hotpath_count": 0,
-    "coldpath_count": 180,
+    "coldpath_count": 2038,
     "strict_hotpath_by_module": {
+      "c11threads_abi": 6,
+      "ctype_abi": 14,
       "errno_abi": 1,
-      "malloc_abi": 7,
-      "ctype_abi": 11,
-      "string_abi": 17,
+      "malloc_abi": 11,
       "pthread_abi": 20,
-      "wchar_abi": 14
+      "resolv_abi": 1,
+      "stdio_abi": 11,
+      "stdlib_abi": 6,
+      "string_abi": 52,
+      "time_abi": 1,
+      "wchar_abi": 22
     },
     "strict_hotpath_by_status": {
-      "Implemented": 50,
-      "GlibcCallThrough": 20
+      "Implemented": 145
     },
     "benchmark_coverage": {
       "internal_benches": [
@@ -109,8 +113,28 @@
   "hotpath_symbols": {
     "strict_hotpath": [
       {
+        "symbol": "__ctype_b_loc",
+        "module": "ctype_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "__ctype_tolower_loc",
+        "module": "ctype_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "__ctype_toupper_loc",
+        "module": "ctype_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "__errno_location",
         "module": "errno_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "__h_errno_location",
+        "module": "resolv_abi",
         "status": "Implemented"
       },
       {
@@ -119,8 +143,78 @@
         "status": "Implemented"
       },
       {
+        "symbol": "argz_count",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "argz_next",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "bcmp",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "bcopy",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "btowc",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "bzero",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "calloc",
         "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "cfree",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "explicit_bzero",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "feof_unlocked",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "ferror_unlocked",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "fflush_unlocked",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "fgets_unlocked",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "fputs_unlocked",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "fread_unlocked",
+        "module": "stdio_abi",
         "status": "Implemented"
       },
       {
@@ -129,23 +223,33 @@
         "status": "Implemented"
       },
       {
-        "symbol": "malloc",
-        "module": "malloc_abi",
+        "symbol": "fwrite_unlocked",
+        "module": "stdio_abi",
         "status": "Implemented"
       },
       {
-        "symbol": "memalign",
-        "module": "malloc_abi",
+        "symbol": "getc",
+        "module": "stdio_abi",
         "status": "Implemented"
       },
       {
-        "symbol": "posix_memalign",
-        "module": "malloc_abi",
+        "symbol": "getchar_unlocked",
+        "module": "stdio_abi",
         "status": "Implemented"
       },
       {
-        "symbol": "realloc",
-        "module": "malloc_abi",
+        "symbol": "hsearch",
+        "module": "stdlib_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "hsearch_r",
+        "module": "stdlib_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "index",
+        "module": "string_abi",
         "status": "Implemented"
       },
       {
@@ -194,13 +298,43 @@
         "status": "Implemented"
       },
       {
-        "symbol": "tolower",
-        "module": "ctype_abi",
+        "symbol": "lfind",
+        "module": "stdlib_abi",
         "status": "Implemented"
       },
       {
-        "symbol": "toupper",
-        "module": "ctype_abi",
+        "symbol": "lsearch",
+        "module": "stdlib_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "malloc",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "malloc_usable_size",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "mbrtowc",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "mbsrtowcs",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "memalign",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "memccpy",
+        "module": "string_abi",
         "status": "Implemented"
       },
       {
@@ -219,7 +353,17 @@
         "status": "Implemented"
       },
       {
+        "symbol": "memmem",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "memmove",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "mempcpy",
         "module": "string_abi",
         "status": "Implemented"
       },
@@ -234,6 +378,171 @@
         "status": "Implemented"
       },
       {
+        "symbol": "mtx_lock",
+        "module": "c11threads_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "mtx_trylock",
+        "module": "c11threads_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "mtx_unlock",
+        "module": "c11threads_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "posix_memalign",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_cond_broadcast",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_cond_destroy",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_cond_init",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_cond_signal",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_cond_wait",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_create",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_detach",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_equal",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_join",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_mutex_destroy",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_mutex_init",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_mutex_lock",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_mutex_trylock",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_mutex_unlock",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_rwlock_destroy",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_rwlock_init",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_rwlock_rdlock",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_rwlock_unlock",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_rwlock_wrlock",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pthread_self",
+        "module": "pthread_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "putc",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "putchar_unlocked",
+        "module": "stdio_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "pvalloc",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "realloc",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "rindex",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "stpcpy",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "stpncpy",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strcasecmp",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strcasestr",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "strcat",
         "module": "string_abi",
         "status": "Implemented"
@@ -244,7 +553,17 @@
         "status": "Implemented"
       },
       {
+        "symbol": "strchrnul",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "strcmp",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strcoll",
         "module": "string_abi",
         "status": "Implemented"
       },
@@ -254,7 +573,57 @@
         "status": "Implemented"
       },
       {
+        "symbol": "strcspn",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strdup",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strerrordesc_np",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strerrorname_np",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strfromd",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strfromf",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strfroml",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strlcat",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strlcpy",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "strlen",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strncasecmp",
         "module": "string_abi",
         "status": "Implemented"
       },
@@ -264,12 +633,42 @@
         "status": "Implemented"
       },
       {
+        "symbol": "strncmp",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "strncpy",
         "module": "string_abi",
         "status": "Implemented"
       },
       {
+        "symbol": "strndup",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strnlen",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strpbrk",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "strrchr",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strsep",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strspn",
         "module": "string_abi",
         "status": "Implemented"
       },
@@ -286,6 +685,66 @@
       {
         "symbol": "strtok_r",
         "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "strxfrm",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "swab",
+        "module": "string_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "tfind",
+        "module": "stdlib_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "thrd_current",
+        "module": "c11threads_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "thrd_equal",
+        "module": "c11threads_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "timespec_get",
+        "module": "time_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "tolower",
+        "module": "ctype_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "toupper",
+        "module": "ctype_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "tsearch",
+        "module": "stdlib_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "tss_get",
+        "module": "c11threads_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "valloc",
+        "module": "malloc_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "wcrtomb",
+        "module": "wchar_abi",
         "status": "Implemented"
       },
       {
@@ -324,12 +783,32 @@
         "status": "Implemented"
       },
       {
+        "symbol": "wcsnlen",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "wcsrchr",
         "module": "wchar_abi",
         "status": "Implemented"
       },
       {
+        "symbol": "wcsrtombs",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
         "symbol": "wcsstr",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "wcswidth",
+        "module": "wchar_abi",
+        "status": "Implemented"
+      },
+      {
+        "symbol": "wctob",
         "module": "wchar_abi",
         "status": "Implemented"
       },
@@ -357,106 +836,6 @@
         "symbol": "wmemset",
         "module": "wchar_abi",
         "status": "Implemented"
-      },
-      {
-        "symbol": "pthread_cond_broadcast",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_cond_destroy",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_cond_init",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_cond_signal",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_cond_wait",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_create",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_detach",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_equal",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_join",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_mutex_destroy",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_mutex_init",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_mutex_lock",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_mutex_trylock",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_mutex_unlock",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_rwlock_destroy",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_rwlock_init",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_rwlock_rdlock",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_rwlock_unlock",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_rwlock_wrlock",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
-      },
-      {
-        "symbol": "pthread_self",
-        "module": "pthread_abi",
-        "status": "GlibcCallThrough"
       }
     ]
   }

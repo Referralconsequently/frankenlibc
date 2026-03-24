@@ -1149,6 +1149,14 @@ pub unsafe extern "C" fn xdr_string(
     }
 
     let result = unsafe { xdr_opaque(xdrs, *sp, size) };
+    if result == XDR_TRUE && op == XDR_DECODE {
+        let p = unsafe { *sp };
+        if !p.is_null() {
+            unsafe {
+                *p.add(size as usize) = 0;
+            }
+        }
+    }
     if op == XDR_FREE {
         let p = unsafe { *sp };
         if !p.is_null() {

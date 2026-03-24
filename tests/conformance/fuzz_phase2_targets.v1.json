@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-1oz.7",
-  "generated_at": "2026-03-18T22:57:28Z",
+  "generated_at": "2026-03-24T00:32:46Z",
   "summary": {
     "phase": 2,
     "total_targets": 4,
@@ -26,8 +26,8 @@
       ],
       "source_analysis": {
         "source_exists": true,
-        "total_lines": 247,
-        "logic_lines": 163,
+        "total_lines": 253,
+        "logic_lines": 169,
         "todo_count": 0,
         "todos": [],
         "uses_frankenlibc_crates": true,
@@ -220,8 +220,8 @@
       ],
       "source_analysis": {
         "source_exists": true,
-        "total_lines": 116,
-        "logic_lines": 86,
+        "total_lines": 121,
+        "logic_lines": 91,
         "todo_count": 0,
         "todos": [],
         "uses_frankenlibc_crates": true,
@@ -415,5 +415,5 @@
       "runtime-math"
     ]
   },
-  "validation_hash": "70a602ce7d42783e"
+  "validation_hash": "7a8e360c387a2ef8"
 }

@@ -2,10 +2,12 @@
 //!
 //! Resolves symbols in the host glibc by parsing the in-memory ELF image
 //! using only raw syscalls and pointer math. Zero libc calls, zero recursion.
+#![allow(dead_code)]
 
-use std::ffi::c_void;
 use std::ffi::CStr;
+use std::ffi::{c_char, c_int, c_void};
 use std::mem::MaybeUninit;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static HOST_PTHREAD_CREATE: AtomicUsize = AtomicUsize::new(0);
@@ -17,7 +19,18 @@ static HOST_MALLOC: AtomicUsize = AtomicUsize::new(0);
 static HOST_CALLOC: AtomicUsize = AtomicUsize::new(0);
 static HOST_REALLOC: AtomicUsize = AtomicUsize::new(0);
 static HOST_FREE: AtomicUsize = AtomicUsize::new(0);
+static HOST_ERRNO_LOCATION: AtomicUsize = AtomicUsize::new(0);
 static RESOLVED: AtomicUsize = AtomicUsize::new(0);
+static HOST_IMAGE: OnceLock<LoadedGlibcImage> = OnceLock::new();
+
+#[inline]
+pub(crate) unsafe fn host_dlvsym_next_raw(
+    symbol: *const c_char,
+    version: *const c_char,
+) -> *mut c_void {
+    // SAFETY: callers provide symbol/version pointers for host-side symbol lookup.
+    unsafe { libc::dlvsym(libc::RTLD_NEXT, symbol, version) }
+}
 
 unsafe fn raw_read(fd: i32, buf: *mut u8, count: usize) -> isize {
     unsafe { libc::syscall(libc::SYS_read, fd, buf, count) as isize }
@@ -25,7 +38,9 @@ unsafe fn raw_read(fd: i32, buf: *mut u8, count: usize) -> isize {
 unsafe fn raw_open(path: *const u8) -> i32 {
     unsafe { libc::syscall(libc::SYS_openat, libc::AT_FDCWD, path, libc::O_RDONLY, 0) as i32 }
 }
-unsafe fn raw_close(fd: i32) { unsafe { libc::syscall(libc::SYS_close, fd) }; }
+unsafe fn raw_close(fd: i32) {
+    unsafe { libc::syscall(libc::SYS_close, fd) };
+}
 unsafe fn raw_fstat(fd: i32, stat: *mut libc::stat) -> i32 {
     unsafe { libc::syscall(libc::SYS_fstat, fd, stat) as i32 }
 }
@@ -85,15 +100,21 @@ fn find_glibc_image_via_phdr() -> Option<(usize, [u8; 512])> {
 }
 
 fn find_glibc_image_via_maps() -> Option<(usize, [u8; 512])> {
-    let fd = unsafe { raw_open(b"/proc/self/maps\0".as_ptr()) };
-    if fd < 0 { return None; }
+    let fd = unsafe { raw_open(c"/proc/self/maps".as_ptr().cast()) };
+    if fd < 0 {
+        return None;
+    }
     let mut buf = [0u8; 262144];
     let mut total = 0usize;
     loop {
         let n = unsafe { raw_read(fd, buf.as_mut_ptr().add(total), buf.len() - total) };
-        if n <= 0 { break; }
+        if n <= 0 {
+            break;
+        }
         total += n as usize;
-        if total >= buf.len() { break; }
+        if total >= buf.len() {
+            break;
+        }
     }
     unsafe { raw_close(fd) };
     let text = core::str::from_utf8(&buf[..total]).ok()?;
@@ -102,7 +123,9 @@ fn find_glibc_image_via_maps() -> Option<(usize, [u8; 512])> {
             continue;
         }
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 6 { continue; }
+        if parts.len() < 6 {
+            continue;
+        }
         if parts[1].starts_with("r--p") && parts[2] == "00000000" {
             let dash = parts[0].find('-')?;
             let base = usize::from_str_radix(&parts[0][..dash], 16).ok()?;
@@ -119,6 +142,12 @@ fn find_glibc_image_via_maps() -> Option<(usize, [u8; 512])> {
 
 fn loaded_glibc_image() -> Option<(usize, [u8; 512])> {
     find_glibc_image_via_phdr().or_else(find_glibc_image_via_maps)
+}
+
+struct LoadedGlibcImage {
+    base: usize,
+    mapped: usize,
+    len: usize,
 }
 
 const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
@@ -178,7 +207,75 @@ fn symbol_name_matches(strtab: &[u8], name_offset: u32, symbol: &[u8]) -> bool {
     &rest[..end] == symbol
 }
 
-fn resolve_loaded_glibc_symbol(base: usize, path: &[u8; 512], symbol: &str) -> Option<usize> {
+fn resolve_symbol_from_data(base: usize, data: &[u8], symbol: &str) -> Option<usize> {
+    let ehdr = data.get(..std::mem::size_of::<Elf64Ehdr>())?;
+    // SAFETY: slice length checked above and ELF header is plain-old-data.
+    let ehdr = unsafe { &*(ehdr.as_ptr().cast::<Elf64Ehdr>()) };
+    if ehdr.e_ident[..4] != ELF_MAGIC {
+        return None;
+    }
+    let shoff = ehdr.e_shoff as usize;
+    let shentsize = ehdr.e_shentsize as usize;
+    let shnum = ehdr.e_shnum as usize;
+    if shentsize < std::mem::size_of::<Elf64Shdr>() || shnum == 0 {
+        return None;
+    }
+
+    let mut dynsym: Option<&Elf64Shdr> = None;
+    let mut dynstr: Option<&Elf64Shdr> = None;
+    for idx in 0..shnum {
+        let off = shoff.checked_add(idx.checked_mul(shentsize)?)?;
+        let end = off.checked_add(std::mem::size_of::<Elf64Shdr>())?;
+        let shdr_bytes = data.get(off..end)?;
+        // SAFETY: bounded by the mmap slice and section headers are POD.
+        let shdr = unsafe { &*(shdr_bytes.as_ptr().cast::<Elf64Shdr>()) };
+        if shdr.sh_type == SHT_DYNSYM {
+            dynsym = Some(shdr);
+            let linked = shdr.sh_link as usize;
+            if linked >= shnum {
+                return None;
+            }
+            let linked_off = shoff.checked_add(linked.checked_mul(shentsize)?)?;
+            let linked_end = linked_off.checked_add(std::mem::size_of::<Elf64Shdr>())?;
+            let linked_bytes = data.get(linked_off..linked_end)?;
+            // SAFETY: bounded by the mmap slice and section headers are POD.
+            dynstr = Some(unsafe { &*(linked_bytes.as_ptr().cast::<Elf64Shdr>()) });
+            break;
+        }
+    }
+
+    let dynsym = dynsym?;
+    let dynstr = dynstr?;
+    let str_start = dynstr.sh_offset as usize;
+    let str_end = str_start.checked_add(dynstr.sh_size as usize)?;
+    let strtab = data.get(str_start..str_end)?;
+    let sym_start = dynsym.sh_offset as usize;
+    let sym_size = dynsym.sh_size as usize;
+    let sym_entsize = (dynsym.sh_entsize as usize).max(std::mem::size_of::<Elf64Sym>());
+    let sym_end = sym_start.checked_add(sym_size)?;
+    let sym_bytes = data.get(sym_start..sym_end)?;
+    let wanted = symbol.as_bytes();
+    let mut offset = 0usize;
+    while offset.checked_add(std::mem::size_of::<Elf64Sym>())? <= sym_bytes.len() {
+        let entry = &sym_bytes[offset..offset + std::mem::size_of::<Elf64Sym>()];
+        // SAFETY: bounded by the mmap slice and symbol entries are POD.
+        let sym = unsafe { &*(entry.as_ptr().cast::<Elf64Sym>()) };
+        if sym.st_shndx != 0
+            && sym.st_value != 0
+            && symbol_name_matches(strtab, sym.st_name, wanted)
+        {
+            return Some(base.saturating_add(sym.st_value as usize));
+        }
+        offset = offset.checked_add(sym_entsize)?;
+    }
+    None
+}
+
+fn load_glibc_image() -> Option<&'static LoadedGlibcImage> {
+    if let Some(image) = HOST_IMAGE.get() {
+        return Some(image);
+    }
+    let (base, path) = loaded_glibc_image()?;
     let fd = unsafe { raw_open(path.as_ptr()) };
     if fd < 0 {
         return None;
@@ -211,79 +308,19 @@ fn resolve_loaded_glibc_symbol(base: usize, path: &[u8; 512], symbol: &str) -> O
     if mapped == libc::MAP_FAILED {
         return None;
     }
-    // SAFETY: successful mmap returns a readable memory range of `len` bytes.
-    let data = unsafe { core::slice::from_raw_parts(mapped.cast::<u8>(), len) };
-    let result = (|| {
-        let ehdr = data.get(..std::mem::size_of::<Elf64Ehdr>())?;
-        // SAFETY: slice length checked above and ELF header is plain-old-data.
-        let ehdr = unsafe { &*(ehdr.as_ptr().cast::<Elf64Ehdr>()) };
-        if ehdr.e_ident[..4] != ELF_MAGIC {
-            return None;
-        }
-        let shoff = ehdr.e_shoff as usize;
-        let shentsize = ehdr.e_shentsize as usize;
-        let shnum = ehdr.e_shnum as usize;
-        if shentsize < std::mem::size_of::<Elf64Shdr>() || shnum == 0 {
-            return None;
-        }
-
-        let mut dynsym: Option<&Elf64Shdr> = None;
-        let mut dynstr: Option<&Elf64Shdr> = None;
-        for idx in 0..shnum {
-            let off = shoff.checked_add(idx.checked_mul(shentsize)?)?;
-            let end = off.checked_add(std::mem::size_of::<Elf64Shdr>())?;
-            let shdr_bytes = data.get(off..end)?;
-            // SAFETY: bounded by the mmap slice and section headers are POD.
-            let shdr = unsafe { &*(shdr_bytes.as_ptr().cast::<Elf64Shdr>()) };
-            if shdr.sh_type == SHT_DYNSYM {
-                dynsym = Some(shdr);
-                let linked = shdr.sh_link as usize;
-                if linked >= shnum {
-                    return None;
-                }
-                let linked_off = shoff.checked_add(linked.checked_mul(shentsize)?)?;
-                let linked_end = linked_off.checked_add(std::mem::size_of::<Elf64Shdr>())?;
-                let linked_bytes = data.get(linked_off..linked_end)?;
-                // SAFETY: bounded by the mmap slice and section headers are POD.
-                dynstr = Some(unsafe { &*(linked_bytes.as_ptr().cast::<Elf64Shdr>()) });
-                break;
-            }
-        }
-
-        let dynsym = dynsym?;
-        let dynstr = dynstr?;
-        let str_start = dynstr.sh_offset as usize;
-        let str_end = str_start.checked_add(dynstr.sh_size as usize)?;
-        let strtab = data.get(str_start..str_end)?;
-        let sym_start = dynsym.sh_offset as usize;
-        let sym_size = dynsym.sh_size as usize;
-        let sym_entsize = (dynsym.sh_entsize as usize).max(std::mem::size_of::<Elf64Sym>());
-        let sym_end = sym_start.checked_add(sym_size)?;
-        let sym_bytes = data.get(sym_start..sym_end)?;
-        let wanted = symbol.as_bytes();
-        let mut offset = 0usize;
-        while offset.checked_add(std::mem::size_of::<Elf64Sym>())? <= sym_bytes.len() {
-            let entry = &sym_bytes[offset..offset + std::mem::size_of::<Elf64Sym>()];
-            // SAFETY: bounded by the mmap slice and symbol entries are POD.
-            let sym = unsafe { &*(entry.as_ptr().cast::<Elf64Sym>()) };
-            if sym.st_shndx != 0
-                && sym.st_value != 0
-                && symbol_name_matches(strtab, sym.st_name, wanted)
-            {
-                return Some(base.saturating_add(sym.st_value as usize));
-            }
-            offset = offset.checked_add(sym_entsize)?;
-        }
-        None
-    })();
-    // SAFETY: unmapping the exact mapping returned by mmap above.
-    unsafe { libc::munmap(mapped, len) };
-    result
+    let image = LoadedGlibcImage {
+        base,
+        mapped: mapped as usize,
+        len,
+    };
+    let _ = HOST_IMAGE.set(image);
+    HOST_IMAGE.get()
 }
 
 pub(crate) fn bootstrap_host_symbols() {
-    if RESOLVED.load(Ordering::Relaxed) != 0 { return; }
-    let Some((base, path)) = loaded_glibc_image() else { return; };
+    if RESOLVED.load(Ordering::Relaxed) != 0 {
+        return;
+    }
     for (symbol, cache) in [
         ("pthread_create", &HOST_PTHREAD_CREATE),
         ("pthread_join", &HOST_PTHREAD_JOIN),
@@ -294,16 +331,21 @@ pub(crate) fn bootstrap_host_symbols() {
         ("calloc", &HOST_CALLOC),
         ("realloc", &HOST_REALLOC),
         ("free", &HOST_FREE),
+        ("__errno_location", &HOST_ERRNO_LOCATION),
     ] {
-        let a = resolve_loaded_glibc_symbol(base, &path, symbol).unwrap_or(0);
-        if a != 0 { cache.store(a, Ordering::Release); }
+        let a = resolve_host_symbol_raw(symbol).unwrap_or(0);
+        if a != 0 {
+            cache.store(a, Ordering::Release);
+        }
     }
     RESOLVED.store(1, Ordering::Release);
 }
 
 pub(crate) fn resolve_host_symbol_raw(symbol: &str) -> Option<usize> {
-    let (base, path) = loaded_glibc_image()?;
-    resolve_loaded_glibc_symbol(base, &path, symbol)
+    let image = load_glibc_image()?;
+    // SAFETY: cached mapping is process-lifetime read-only storage for libc ELF bytes.
+    let data = unsafe { core::slice::from_raw_parts(image.mapped as *const u8, image.len) };
+    resolve_symbol_from_data(image.base, data, symbol)
 }
 
 #[inline]
@@ -314,15 +356,18 @@ fn load_host_symbol(cache: &AtomicUsize) -> Option<usize> {
 }
 
 pub(crate) fn host_pthread_create_raw() -> Option<
-    unsafe extern "C" fn(*mut libc::pthread_t, *const libc::pthread_attr_t,
-        Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>, *mut c_void) -> i32>
-{
+    unsafe extern "C" fn(
+        *mut libc::pthread_t,
+        *const libc::pthread_attr_t,
+        Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
+        *mut c_void,
+    ) -> i32,
+> {
     load_host_symbol(&HOST_PTHREAD_CREATE).map(|addr| unsafe { core::mem::transmute(addr) })
 }
 
 pub(crate) fn host_pthread_join_raw()
-    -> Option<unsafe extern "C" fn(libc::pthread_t, *mut *mut c_void) -> i32>
-{
+-> Option<unsafe extern "C" fn(libc::pthread_t, *mut *mut c_void) -> i32> {
     load_host_symbol(&HOST_PTHREAD_JOIN).map(|addr| unsafe { core::mem::transmute(addr) })
 }
 
@@ -335,8 +380,7 @@ pub(crate) fn host_pthread_self_raw() -> Option<unsafe extern "C" fn() -> libc::
 }
 
 pub(crate) fn host_pthread_equal_raw()
-    -> Option<unsafe extern "C" fn(libc::pthread_t, libc::pthread_t) -> i32>
-{
+-> Option<unsafe extern "C" fn(libc::pthread_t, libc::pthread_t) -> i32> {
     load_host_symbol(&HOST_PTHREAD_EQUAL).map(|addr| unsafe { core::mem::transmute(addr) })
 }
 
@@ -348,12 +392,30 @@ pub(crate) fn host_calloc_raw() -> Option<unsafe extern "C" fn(usize, usize) -> 
     load_host_symbol(&HOST_CALLOC).map(|addr| unsafe { core::mem::transmute(addr) })
 }
 
-pub(crate) fn host_realloc_raw()
-    -> Option<unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void>
+pub(crate) fn host_realloc_raw() -> Option<unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void>
 {
     load_host_symbol(&HOST_REALLOC).map(|addr| unsafe { core::mem::transmute(addr) })
 }
 
 pub(crate) fn host_free_raw() -> Option<unsafe extern "C" fn(*mut c_void)> {
     load_host_symbol(&HOST_FREE).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+pub(crate) fn host_errno_location_raw() -> Option<unsafe extern "C" fn() -> *mut c_int> {
+    load_host_symbol(&HOST_ERRNO_LOCATION).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+#[inline]
+pub(crate) fn host_errno(default_errno: c_int) -> c_int {
+    let Some(host_errno_location) = host_errno_location_raw() else {
+        return default_errno;
+    };
+    // SAFETY: host `__errno_location` returns a valid thread-local errno pointer.
+    let ptr = unsafe { host_errno_location() };
+    if ptr.is_null() {
+        default_errno
+    } else {
+        // SAFETY: non-null pointer returned by host `__errno_location` is readable.
+        unsafe { *ptr }
+    }
 }

@@ -13,13 +13,11 @@ use crate::runtime_policy;
 
 /// Static C-locale name string.
 static C_LOCALE_NAME: &[u8] = b"C\0";
-/// Character encoding string.
+/// Character encoding string for the POSIX C locale.
 ///
-/// Modern Linux systems default to UTF-8. The POSIX C locale would use
-/// ANSI_X3.4-1968 (ASCII), but programs overwhelmingly expect UTF-8 for
-/// correct string handling. Return UTF-8 unless the environment explicitly
-/// requests a non-UTF-8 locale.
-static C_LOCALE_CODESET: &[u8] = b"UTF-8\0";
+/// glibc reports `ANSI_X3.4-1968` for the `C`/`POSIX` locale, and this crate
+/// only implements that locale family here.
+static C_LOCALE_CODESET: &[u8] = b"ANSI_X3.4-1968\0";
 /// POSIX C-locale radix character.
 static C_LOCALE_RADIX: &[u8] = b".\0";
 /// POSIX C-locale thousands separator (empty string).
@@ -463,12 +461,12 @@ mod tests {
     }
 
     #[test]
-    fn nl_langinfo_codeset_returns_utf8() {
+    fn nl_langinfo_codeset_returns_c_locale_ascii() {
         // SAFETY: CODESET is a valid item.
         let result = unsafe { nl_langinfo(libc::CODESET) };
         assert!(!result.is_null());
         let val = unsafe { CStr::from_ptr(result) };
-        assert_eq!(val.to_bytes(), b"UTF-8");
+        assert_eq!(val.to_bytes(), b"ANSI_X3.4-1968");
     }
 
     #[test]

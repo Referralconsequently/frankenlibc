@@ -13,7 +13,7 @@
 
 </div>
 
-**A clean-room Rust libc project that interposes on glibc today, applies a Transparent Safety Membrane at the ABI boundary, and incrementally replaces unsafe libc behavior with native Rust implementations and raw-syscall paths.**
+**A clean-room Rust libc project that can interpose on glibc today for a meaningful but still incomplete workload set, applies a Transparent Safety Membrane at the ABI boundary, and incrementally replaces unsafe libc behavior with native Rust implementations and raw-syscall paths.**
 
 There is no curl installer or package-manager release yet. The current fast path is:
 
@@ -41,9 +41,9 @@ Current source of truth: `tests/conformance/support_matrix_maintenance_report.v1
 | Why it matters | Current state |
 |---|---|
 | Large classified ABI surface | `3980` exported symbols classified |
-| Native ownership is already broad | `3457 Implemented` + `406 RawSyscall` = `97.1%` native coverage |
+| Native ownership is already broad | `3576 Implemented` + `404 RawSyscall` = `100.0%` native coverage |
 | No exported stubs right now | `0 Stub` |
-| Interposition works today | `target/release/libfrankenlibc_abi.so` via `LD_PRELOAD` |
+| Interposition is already usable on many workloads | `target/release/libfrankenlibc_abi.so` via `LD_PRELOAD`, with broader smoke and hardened-mode stability still in progress |
 | Hardened mode exists now | `FRANKENLIBC_MODE=hardened` |
 | Verification is first-class | harness CLI, conformance fixtures, maintenance gates, smoke scripts, perf scripts |
 | Runtime math is live code | `frankenlibc-membrane/src/runtime_math/` contains active control kernels, not just design docs |
@@ -164,7 +164,7 @@ These invariants are meant to hold as the codebase grows:
 | Memory-safe implementation goal | No | No | No | Yes for native paths |
 | Runtime repair mode | No | No | No | Yes, `hardened` |
 | Per-symbol implementation census | No | No | No | Yes, `support_matrix.json` |
-| Host-glibc dependency today | N/A | No | Yes | Yes for remaining `GlibcCallThrough` paths |
+| Host-glibc dependency today | N/A | No | Yes | Yes for the current interpose deployment model |
 | Raw syscall fallback paths | Internal | Internal | No | Explicit taxonomy |
 | Auditable structured verification artifacts | Limited | Limited | Limited | Core workflow |
 
@@ -172,25 +172,29 @@ These invariants are meant to hold as the codebase grows:
 
 Current source of truth: `tests/conformance/support_matrix_maintenance_report.v1.json`.
 
+Declared replacement level claim: **L0 — Interpose**.
+
 | Status | Count | % | Meaning |
 |---|---:|---:|---|
-| `Implemented` | 3457 | 87% | Native ABI-backed Rust-owned behavior |
-| `RawSyscall` | 406 | 10% | ABI path delegates directly to Linux syscalls |
-| `GlibcCallThrough` | 117 | 3% | Still depends on host glibc for that symbol |
+| `Implemented` | 3576 | 90% | Native ABI-backed Rust-owned behavior |
+| `RawSyscall` | 404 | 10% | ABI path delegates directly to Linux syscalls |
+| `GlibcCallThrough` | 0 | 0% | No direct host-glibc symbol call-through remains in the current classified surface |
 | `Stub` | 0 | 0% | No exported stubs in the current classified surface |
 
 Total currently classified exports: **3980**.
-Current native coverage (`Implemented + RawSyscall`): **97.1%**.
+Current native coverage (`Implemented + RawSyscall`): **100.0%**.
 
 Source of truth: `tests/conformance/reality_report.v1.json` (generated `2026-02-18T04:49:26Z`).
 
-Reality snapshot: total_exported=3980, implemented=3457, raw_syscall=406, glibc_call_through=117, stub=0.
+Reality snapshot: total_exported=3980, implemented=3576, raw_syscall=404, glibc_call_through=0, stub=0.
 
 In practice:
 
 - The current shipping artifact is the **interpose** shared library: `target/release/libfrankenlibc_abi.so`.
 - The future **replace** artifact (`libfrankenlibc_replace.so`) is still planned, not done.
-- Host glibc is still required today because `GlibcCallThrough` symbols remain.
+- The classified symbol surface no longer reports direct `GlibcCallThrough` symbols, but the current shipping artifact is still an interpose-first preload library rather than a full standalone libc replacement.
+- The latest broad preload smoke run is not fully green yet. As of **March 23, 2026**, the checked smoke artifact recorded `23 passes / 35 fails / 6 skips`, and hardened mode remained unstable on that broader workload set.
+- Small strict-mode repros such as `echo`, `env`, `ls`, `sort`, `git --version`, and `du -s` have been brought up successfully, but that does **not** yet mean the interpose artifact is broadly production-ready.
 
 ## Threat Model
 
@@ -244,7 +248,7 @@ The project is no longer just an architecture sketch. Today’s repo contains:
 
 It is useful to think of FrankenLibC as three things at once:
 
-1. A libc interposition artifact you can run today.
+1. A libc interposition artifact you can run today on many workloads, with broader stabilization still underway.
 2. A memory-safety and repair substrate at the libc ABI edge.
 3. A verification-heavy engineering program for turning more of glibc into native Rust without hiding the unfinished parts.
 
@@ -452,6 +456,12 @@ This repo is a workspace with a library artifact plus a verification harness. Th
 | Membrane verification | `cargo run -p frankenlibc-harness --bin harness -- verify-membrane --mode both --output /tmp/healing.json` | Runs strict/hardened healing oracle |
 | Benchmarking | `cargo bench -p frankenlibc-bench` | Benchmarks library hot paths |
 
+Interpretation note:
+
+- Passing fixture, oracle, or CVE-pattern scripts is evidence about the membrane and targeted scenarios.
+- That is not automatically end-to-end proof that FrankenLibC would have prevented the corresponding exploit in an arbitrary upstream program build.
+- `LD_PRELOAD`-based deployment claims do not apply to setuid/setgid binaries because the loader ignores `LD_PRELOAD` there.
+
 ## Performance Model
 
 Performance matters because libc is on the hot path of almost every process. The project therefore tries to stage work so cheap, high-signal checks happen first and expensive reasoning is reserved for cases that deserve it.
@@ -491,7 +501,7 @@ export FRANKENLIBC_E2E_STRESS_ITERS=5
 LD_PRELOAD="$FRANKENLIBC_LIB" /bin/echo configured
 ```
 
-High-signal variables:
+Environment inventory:
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -501,6 +511,29 @@ High-signal variables:
 | `FRANKENLIBC_EXTENDED_GATES` | `0` | Enables heavier CI / perf / snapshot gates |
 | `FRANKENLIBC_E2E_SEED` | `42` | Deterministic seed for some E2E workflows |
 | `FRANKENLIBC_E2E_STRESS_ITERS` | `5` | Stress iteration count for E2E scripts |
+| `FRANKENLIBC_BENCH_PIN` | `0` | Benchmark-only CPU pinning control |
+| `FRANKENLIBC_CLOSURE_CONTRACT_PATH` | `tests/conformance/closure_contract.v1.json` | Closure-contract gate input override |
+| `FRANKENLIBC_CLOSURE_LEVEL` | auto | Closure gate target level override (`L0`..`L3`) |
+| `FRANKENLIBC_CLOSURE_LOG` | `/tmp/frankenlibc_closure_contract.log.jsonl` | Closure gate evidence log destination |
+| `FRANKENLIBC_HOOKS_LOADED` | `0` | Internal Gentoo hook bootstrap guard |
+| `FRANKENLIBC_LOG_DIR` | `/var/log/frankenlibc/portage` | Gentoo hook directory root for generated logs |
+| `FRANKENLIBC_LOG_FILE` | unset | Tooling alias path that is exported into `FRANKENLIBC_LOG` |
+| `FRANKENLIBC_PACKAGE` | unset | Internal Gentoo package/atom context annotation |
+| `FRANKENLIBC_PACKAGE_BLOCKLIST` | `sys-libs/glibc sys-apps/shadow` | Blocks LD_PRELOAD injection for sensitive Gentoo packages |
+| `FRANKENLIBC_PERF_ALLOW_TARGET_VIOLATION` | `1` | Perf gate policy knob for target-budget enforcement |
+| `FRANKENLIBC_PERF_ENABLE_KERNEL_SUITE` | `0` | Enables the additional kernel perf suite branch |
+| `FRANKENLIBC_PERF_MAX_LOAD_FACTOR` | `0.85` | Host load cutoff for overloaded perf-run skipping |
+| `FRANKENLIBC_PERF_MAX_REGRESSION_PCT` | `15` | Allowed perf regression threshold percentage |
+| `FRANKENLIBC_PERF_SKIP_OVERLOADED` | `1` | Skips perf gate on overloaded hosts |
+| `FRANKENLIBC_PHASE` | unset | Internal Gentoo phase label for hook/session logs |
+| `FRANKENLIBC_PHASE_ACTIVE` | unset/`0` | Internal flag for balanced Gentoo hook teardown |
+| `FRANKENLIBC_PHASE_ALLOWLIST` | `src_test pkg_test` | Limits which Gentoo phases activate FrankenLibC |
+| `FRANKENLIBC_PORTAGE_ENABLE` | `1` | Global kill-switch for Gentoo Portage hooks |
+| `FRANKENLIBC_PORTAGE_LOG` | `/tmp/frankenlibc-portage-hooks.log` | Gentoo hook decision log path |
+| `FRANKENLIBC_RELEASE_SIMULATE_FAIL_GATE` | empty | Release dry-run test knob for injecting a named failing gate |
+| `FRANKENLIBC_SKIP_STATIC` | `1` | Skips preload during static-libs Gentoo builds |
+| `FRANKENLIBC_STARTUP_PHASE0` | `0` | Startup path gate for the phase-0 `__libc_start_main` flow |
+| `FRANKENLIBC_TMPDIR` | unset | Tooling temp-root override, falling back to `TMPDIR` then `/tmp` |
 
 ## Architecture
 
@@ -729,6 +762,15 @@ This table is intentionally qualitative. Exact numeric truth still belongs in th
 | `startup` | partial / staged | startup work is recognized and tracked | full bootstrap and secure-mode closure |
 | `runtime_math` | extensive code presence | live controller and evidence machinery exists | continued integration discipline and proof-quality closure |
 
+### Hard-Parts Truth Table
+
+- `startup`: `IMPLEMENTED_PARTIAL` — implemented scope: phase-0 startup fixture path (`__libc_start_main`, `__frankenlibc_startup_phase0`, snapshot invariants). Deferred scope: full `csu`/TLS init-order hardening and secure-mode closure campaign.
+- `threading`: `IN_PROGRESS` — implemented scope: runtime-math threading routing and selected pthread semantics are live, including lifecycle and rwlock native routing. Deferred scope: close lifecycle/TLS stress beads.
+- `resolver`: `IMPLEMENTED_PARTIAL` — implemented scope: bootstrap numeric resolver ABI (`getaddrinfo`, `freeaddrinfo`, `getnameinfo`, `gai_strerror`). Deferred scope: full retry/cache/poisoning hardening campaign.
+- `nss`: `IMPLEMENTED_PARTIAL` — implemented scope: passwd/group APIs are exported as `Implemented` via `pwd_abi`/`grp_abi`. Deferred scope: hosts/backend breadth plus NSS concurrency/cache-coherence closure.
+- `locale`: `IMPLEMENTED_PARTIAL` — implemented scope: bootstrap `setlocale`/`localeconv` C/POSIX path. Deferred scope: catalog, collation, and transliteration parity expansion.
+- `iconv`: `IMPLEMENTED_PARTIAL` — implemented scope: phase-1 `iconv_open`/`iconv`/`iconv_close` conversions for UTF-8/ISO-8859-1/UTF-16LE/UTF-32 with deterministic strict+hardened fixtures; codec scope/exclusions are locked in `tests/conformance/iconv_codec_scope_ledger.v1.json`. Deferred scope: full `iconvdata` breadth and deterministic table-generation closure.
+
 ### Runtime modes
 
 | Mode | Purpose | Behavior |
@@ -888,8 +930,8 @@ These two ideas should not be conflated.
 
 | Artifact | What it means |
 |---|---|
-| interpose artifact | `libfrankenlibc_abi.so`, loaded with `LD_PRELOAD`, may still rely on explicit host-glibc call-throughs |
-| replace artifact | future standalone libc artifact with no remaining host-glibc call-through requirement |
+| interpose artifact | `libfrankenlibc_abi.so`, loaded with `LD_PRELOAD`, and still dependent on host glibc as the deployment environment |
+| replace artifact | future standalone libc artifact with no host-glibc deployment dependency |
 
 The interpose artifact is valuable now because it enables:
 
@@ -903,13 +945,13 @@ The replace artifact matters later because it raises the bar from “interpose s
 ### Today
 
 - interpose shared library exists
-- host glibc still required for the remaining `GlibcCallThrough` surface
+- host glibc is still part of the deployment story because the shipping artifact is interpose-first, even though the current symbol matrix no longer reports `GlibcCallThrough` rows
 - support taxonomy is machine-checked
 - hardened mode and verification flows are already live
 
 ### Next
 
-- reduce remaining `GlibcCallThrough` symbols family by family
+- keep the matrix-clean classification honest while closing the broader preload, hardened-mode, and artifact-packaging gaps
 - keep maintenance artifacts synchronized as each promotion lands
 - tighten replacement gates so "replace-ready" is mechanically enforced, not socially assumed
 
@@ -1016,7 +1058,10 @@ bash scripts/check_support_matrix_maintenance.sh
 ## Limitations
 
 - The current production artifact is the **interpose** shared library, not a full standalone libc replacement.
-- Host glibc is still required for the remaining `GlibcCallThrough` symbols.
+- Host glibc is still part of the deployment story because the shipping artifact is still `LD_PRELOAD` interposition, not a standalone libc drop-in.
+- Broad preload smoke is still unstable; the latest checked March 23, 2026 run was not green.
+- Hardened mode exists and has targeted validation/oracle coverage, but it is not yet broadly stable across the smoke workload set.
+- Performance is not yet a settled success story; strict-mode perf regressions still show up in smoke/perf gates and must be measured rather than assumed away.
 - The README can summarize current reality, but the canonical truth still lives in generated reports and gates.
 - Linux is the real target. Multi-architecture and full replacement stories are still active work.
 - Many verification scripts exist because this is an active research-heavy codebase, not a polished end-user product.
@@ -1040,11 +1085,15 @@ bash scripts/check_support_matrix_maintenance.sh
 
 ### Is FrankenLibC a drop-in replacement for glibc today?
 
-Not fully. The practical artifact today is `libfrankenlibc_abi.so` used via `LD_PRELOAD`. Full standalone replacement remains planned.
+No. The practical artifact today is `libfrankenlibc_abi.so` used via `LD_PRELOAD`, and even that broad interpose story is still being stabilized. Full standalone replacement remains planned.
 
 ### Does it already implement a lot of symbols natively?
 
-Yes. The current classified surface is 3980 symbols, with 3457 `Implemented` and 406 `RawSyscall`.
+Yes. The current classified surface is 3980 symbols, with 3576 `Implemented` and 404 `RawSyscall`.
+
+### Do the CVE validation scripts prove FrankenLibC would have prevented famous exploits in real projects?
+
+No. They provide targeted evidence for specific bug patterns and synthetic scenarios, which is useful, but weaker than an end-to-end proof against a real vulnerable upstream build. In particular, `LD_PRELOAD` claims do not apply to setuid/setgid binaries, so those cases need a different deployment story.
 
 ### What does hardened mode actually do?
 
@@ -1677,6 +1726,15 @@ errno is per-thread state that C programs expect to survive across function call
 
 The smoke test (`scripts/ld_preload_smoke.sh`) verifies that real programs work under interposition. It runs actual binaries and compares their behavior against a baseline.
 
+## Packaging Contracts
+
+The release interpose artifact is built with `cargo build -p frankenlibc-abi --release` and emitted at `target/release/libfrankenlibc_abi.so`. The planned standalone replacement artifact is named `libfrankenlibc_replace.so`.
+
+Interpose deployment uses `LD_PRELOAD=target/release/libfrankenlibc_abi.so <program>`. Hardened interpose deployment uses `FRANKENLIBC_MODE=hardened LD_PRELOAD=target/release/libfrankenlibc_abi.so <program>`.
+
+`Implemented` + `RawSyscall` symbols apply to both artifacts.
+`GlibcCallThrough` + `Stub` symbols apply to `Interpose` only.
+
 ### Programs Tested
 
 | Category | Examples |
@@ -1737,9 +1795,9 @@ Every exported symbol has a classification, an owning ABI module, a performance 
 
 ## How LD_PRELOAD Interposition Works
 
-For readers unfamiliar with the mechanism: `LD_PRELOAD` tells the Linux dynamic linker to load a shared library before any others. When a program calls `malloc`, `strlen`, or any libc function, the linker resolves the symbol to FrankenLibC's implementation first. The original glibc symbols are still available via `dlsym(RTLD_NEXT, ...)` for call-through paths.
+For readers unfamiliar with the mechanism: `LD_PRELOAD` tells the Linux dynamic linker to load a shared library before any others. When a program calls `malloc`, `strlen`, or any libc function, the linker resolves the symbol to FrankenLibC's implementation first. For symbols that FrankenLibC does not own yet, the project may still delegate to host glibc through constrained host-resolution and call-through paths.
 
-FrankenLibC is usable today without relinking anything: same binary, same kernel, same file system, different libc implementation behind the ABI boundary.
+FrankenLibC is already usable for many experiments without relinking anything: same binary, same kernel, same file system, different libc implementation behind the ABI boundary. That should not be confused with a claim that the full broad smoke matrix is already stable.
 
 Limitations of interposition:
 
@@ -1749,6 +1807,14 @@ Limitations of interposition:
 - The interpose library must export symbols with the correct version tags to match what binaries expect
 
 The version script (`crates/frankenlibc-abi/version_scripts/libc.map`) handles the last point by exporting symbols under the `GLIBC_2.2.5` version tag, which is what most dynamically linked Linux binaries expect.
+
+### dlfcn Boundary Policy
+
+Interpose (`L0/L1`): `dlopen`, `dlsym`, `dlclose`, and `dlerror` stay inside FrankenLibC's native phase-1 loader boundary for supported handles and exported symbols.
+
+Hardened invalid `dlopen` flags heal to `RTLD_NOW` before local phase-1 resolution.
+
+Replacement (`L2/L3`) forbids direct host `dlopen`/`dlsym`/`dlclose` fallback paths; any residual call-through is a release-blocking gate failure.
 
 ## About Contributions
 

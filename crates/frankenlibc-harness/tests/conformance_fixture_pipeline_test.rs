@@ -59,6 +59,7 @@ fn pipeline_report_schema_complete() {
         "implemented_symbols",
         "symbols_with_fixtures",
         "coverage_pct",
+        "min_coverage_pct",
     ] {
         assert!(!summary[field].is_null(), "Missing summary field: {field}");
     }
@@ -93,9 +94,10 @@ fn pipeline_sufficient_coverage() {
     let data = load_json(&report_path);
 
     let coverage = data["summary"]["coverage_pct"].as_f64().unwrap();
+    let min_coverage = data["summary"]["min_coverage_pct"].as_f64().unwrap();
     assert!(
-        coverage >= 50.0,
-        "Symbol coverage {coverage}% is below 50% minimum"
+        coverage >= min_coverage,
+        "Symbol coverage {coverage}% is below {min_coverage}% minimum"
     );
 }
 

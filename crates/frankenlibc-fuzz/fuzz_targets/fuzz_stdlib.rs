@@ -32,6 +32,15 @@ struct StdlibFuzzInput {
     values: Vec<i32>,
 }
 
+fn read_i32_ne(chunk: &[u8]) -> Option<i32> {
+    if chunk.len() != std::mem::size_of::<i32>() {
+        return None;
+    }
+    let mut buf = [0u8; std::mem::size_of::<i32>()];
+    buf.copy_from_slice(chunk);
+    Some(i32::from_ne_bytes(buf))
+}
+
 /// Ensure NUL termination.
 fn with_nul(v: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(v.len().min(MAX_INPUT) + 1);
@@ -183,8 +192,14 @@ fn fuzz_qsort(input: &StdlibFuzzInput) {
 
     // Verify sorted order
     for i in 1..input.values.len() {
-        let prev = i32::from_ne_bytes(buf[(i - 1) * width..i * width].try_into().unwrap());
-        let curr = i32::from_ne_bytes(buf[i * width..(i + 1) * width].try_into().unwrap());
+        let prev_range = &buf[(i - 1) * width..i * width];
+        let curr_range = &buf[i * width..(i + 1) * width];
+        let prev = read_i32_ne(prev_range);
+        let curr = read_i32_ne(curr_range);
+        assert!(prev.is_some(), "qsort produced truncated element at {}", i - 1);
+        assert!(curr.is_some(), "qsort produced truncated element at {}", i);
+        let prev = prev.unwrap_or_default();
+        let curr = curr.unwrap_or_default();
         assert!(prev <= curr, "qsort output not sorted: {} > {}", prev, curr);
     }
 }

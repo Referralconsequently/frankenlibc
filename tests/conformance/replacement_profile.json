@@ -91,19 +91,25 @@
   "interpose_allowlist": {
     "description": "Modules permitted to call through to host glibc in interpose (LD_PRELOAD) mode. These modules have not yet been fully reimplemented.",
     "modules": [
-      "stdio_abi",
+      "c11threads_abi",
+      "fortify_abi",
+      "glibc_internal_abi",
+      "io_internal_abi",
+      "malloc_abi",
+      "process_abi",
       "pthread_abi",
+      "rpc_abi",
+      "signal_abi",
+      "stdio_abi",
+      "stdlib_abi",
+      "unistd_abi",
       "socket_abi",
       "dlfcn_abi",
-      "signal_abi",
       "io_abi",
-      "stdlib_abi",
       "time_abi",
       "termios_abi",
       "resource_abi",
       "dirent_abi",
-      "unistd_abi",
-      "process_abi",
       "startup_abi",
       "inet_abi",
       "locale_abi",
@@ -111,30 +117,36 @@
       "wchar_abi",
       "None"
     ],
-    "rationale": "These modules delegate to host glibc for operations not yet reimplemented as RawSyscall or Implemented. They are safe in interpose mode because the host glibc is still loaded."
+    "rationale": "These modules currently contain direct host libc or host pthread escape hatches detected by the replacement guard source scan. Interpose mode permits them; replacement mode forbids them."
   },
   "callthrough_families": {
-    "source": "support_matrix.json",
+    "source": "replacement_guard_source_scan",
     "modules": [
-      "None",
-      "dlfcn_abi",
-      "inet_abi",
-      "locale_abi",
+      "c11threads_abi",
+      "fortify_abi",
+      "glibc_internal_abi",
+      "io_internal_abi",
+      "malloc_abi",
       "process_abi",
       "pthread_abi",
+      "rpc_abi",
+      "signal_abi",
       "stdio_abi",
-      "string_abi",
-      "time_abi",
-      "unistd_abi",
-      "wchar_abi"
+      "stdlib_abi",
+      "unistd_abi"
     ],
     "require_fixture_coverage": true
   },
   "dlfcn_boundary_policy": {
     "description": "dlfcn-specific boundary contract between interpose and replacement profiles.",
     "interpose": {
-      "host_callthrough_symbols": ["dlopen", "dlsym", "dlclose"],
-      "local_symbol": ["dlerror"],
+      "host_callthrough_symbols": [],
+      "local_symbol": [
+        "dlopen",
+        "dlsym",
+        "dlclose",
+        "dlerror"
+      ],
       "hardened_invalid_flags_repair": "RTLD_NOW"
     },
     "replacement": {
@@ -159,12 +171,221 @@
     "required": true
   },
   "call_through_census": {
-    "description": "Current census of host glibc function calls by module. Updated by CI gate.",
+    "description": "Current census of direct host libc/host pthread escape hatches by ABI module, as scanned by scripts/check_replacement_guard.sh.",
     "modules": {
-      "dlfcn_abi": {"count": 4, "functions": ["dlopen", "dlsym", "dlclose"]},
-      "stdio_abi": {"count": 0, "functions": []}
+      "c11threads_abi": {
+        "count": 1,
+        "functions": [
+          "__errno_location"
+        ]
+      },
+      "fortify_abi": {
+        "count": 14,
+        "functions": [
+          "pread",
+          "pread64",
+          "recv",
+          "recvfrom",
+          "realpath",
+          "getdomainname",
+          "ttyname_r",
+          "confstr",
+          "getgroups",
+          "ptsname_r",
+          "open",
+          "openat"
+        ]
+      },
+      "glibc_internal_abi": {
+        "count": 154,
+        "functions": [
+          "sched_get_priority_max",
+          "sched_get_priority_min",
+          "__errno_location",
+          "getpgid",
+          "endmntent",
+          "fork",
+          "getauxval",
+          "sbrk",
+          "sigaction",
+          "sigsuspend",
+          "sigprocmask",
+          "sigdelset",
+          "mq_open",
+          "fflush",
+          "adjtime",
+          "cfgetispeed",
+          "cfgetospeed",
+          "cfsetispeed",
+          "cfsetospeed",
+          "futimes",
+          "getsockopt",
+          "getpwuid",
+          "getgroups",
+          "fstat",
+          "lutimes",
+          "mkostemp",
+          "mkostemps",
+          "mkstemp",
+          "mkstemps",
+          "posix_spawn",
+          "posix_spawnp",
+          "fwrite",
+          "socket",
+          "bind",
+          "openat",
+          "fdopendir",
+          "readdir",
+          "closedir",
+          "sethostid",
+          "setsockopt",
+          "settimeofday",
+          "sysctl",
+          "getrlimit",
+          "setrlimit",
+          "utime",
+          "utimes",
+          "malloc",
+          "fileno"
+        ]
+      },
+      "io_internal_abi": {
+        "count": 2,
+        "functions": [
+          "dlsym",
+          "open"
+        ]
+      },
+      "malloc_abi": {
+        "count": 3,
+        "functions": [
+          "malloc",
+          "free",
+          "dlsym"
+        ]
+      },
+      "process_abi": {
+        "count": 8,
+        "functions": [
+          "sigemptyset",
+          "sigaddset",
+          "sigismember"
+        ]
+      },
+      "pthread_abi": {
+        "count": 64,
+        "functions": [
+          "dlsym",
+          "dlopen",
+          "pthread_self_fn",
+          "pthread_equal_fn",
+          "pthread_create_fn",
+          "pthread_join_fn",
+          "pthread_detach_fn",
+          "pthread_key_create_fn",
+          "pthread_key_delete_fn",
+          "pthread_getspecific_fn",
+          "pthread_setspecific_fn",
+          "pthread_mutex_init_fn",
+          "pthread_mutex_destroy_fn",
+          "pthread_mutex_lock_fn",
+          "pthread_mutex_trylock_fn",
+          "pthread_mutex_unlock_fn",
+          "pthread_cond_init_fn",
+          "pthread_cond_destroy_fn",
+          "pthread_cond_wait_fn",
+          "pthread_cond_signal_fn",
+          "pthread_cond_broadcast_fn",
+          "pthread_cond_timedwait_fn",
+          "pthread_self_raw",
+          "pthread_equal_raw",
+          "pthread_create_raw",
+          "pthread_attr_getstacksize",
+          "pthread_join_raw",
+          "pthread_detach_raw",
+          "pthread_condattr_getclock",
+          "__errno_location",
+          "pthread_probe",
+          "pthread_symbols"
+        ]
+      },
+      "rpc_abi": {
+        "count": 11,
+        "functions": [
+          "fread",
+          "fwrite",
+          "ftell",
+          "fseek",
+          "fflush",
+          "getrlimit",
+          "bind",
+          "__errno_location"
+        ]
+      },
+      "signal_abi": {
+        "count": 5,
+        "functions": [
+          "sigemptyset",
+          "sigaddset"
+        ]
+      },
+      "stdio_abi": {
+        "count": 1,
+        "functions": [
+          "mkstemp"
+        ]
+      },
+      "stdlib_abi": {
+        "count": 8,
+        "functions": [
+          "fflush",
+          "cfmakeraw",
+          "cfsetispeed",
+          "cfsetospeed",
+          "strtoll",
+          "strtoull",
+          "setitimer"
+        ]
+      },
+      "unistd_abi": {
+        "count": 66,
+        "functions": [
+          "socket",
+          "connect",
+          "send",
+          "fcntl",
+          "ioctl",
+          "mkdir",
+          "opendir",
+          "readdir",
+          "closedir",
+          "lstat",
+          "__errno_location",
+          "realpath",
+          "readdir64_r",
+          "backtrace",
+          "backtrace_symbols",
+          "backtrace_symbols_fd",
+          "getaddrinfo",
+          "freeaddrinfo",
+          "fwrite",
+          "dlsym",
+          "fgets",
+          "sigprocmask",
+          "mknodat",
+          "utimensat",
+          "sigsuspend",
+          "sigaction",
+          "sched_setparam",
+          "sched_rr_get_interval"
+        ]
+      },
+      "dlfcn_abi": {
+        "count": 0,
+        "functions": []
+      }
     },
-    "total_call_throughs": 4,
+    "total_call_throughs": 337,
     "note": "Census tracks direct host call-through scan patterns used by scripts/check_replacement_guard.sh."
   }
 }

@@ -1,6 +1,6 @@
 {
   "matrix_version": 1,
-  "generated_utc": "2026-02-25T20:27:00Z",
+  "generated_utc": "2026-03-23T23:30:32Z",
   "description": "Verification obligations matrix for all open/in_progress critique beads. Maps each bead to required evidence types with current coverage status. Blocks bead closure when evidence is missing.",
   "schema": {
     "coverage_statuses": {
@@ -232,8 +232,8 @@
     "total_entries": 118,
     "by_coverage_status": {
       "complete": 40,
-      "partial": 1,
-      "missing": 77
+      "partial": 2,
+      "missing": 76
     },
     "by_priority": {
       "P0": {
@@ -251,16 +251,16 @@
       "P2": {
         "total": 41,
         "complete": 3,
-        "partial": 0,
-        "missing": 38
+        "partial": 1,
+        "missing": 37
       }
     },
     "by_obligation_type": {
       "unit_tests": {
         "required": 118,
-        "complete": 41,
+        "complete": 42,
         "partial": 0,
-        "missing": 77
+        "missing": 76
       },
       "e2e_scripts": {
         "required": 58,
@@ -271,8 +271,8 @@
       "structured_logs": {
         "required": 115,
         "complete": 38,
-        "partial": 0,
-        "missing": 77
+        "partial": 1,
+        "missing": 76
       },
       "perf_evidence": {
         "required": 25,
@@ -289,8 +289,8 @@
       "golden_artifacts": {
         "required": 115,
         "complete": 37,
-        "partial": 0,
-        "missing": 78
+        "partial": 1,
+        "missing": 77
       }
     },
     "by_stream": {
@@ -327,8 +327,8 @@
       "syscall": {
         "total": 24,
         "complete": 4,
-        "partial": 0,
-        "missing": 20
+        "partial": 1,
+        "missing": 19
       }
     }
   },
@@ -3245,8 +3245,8 @@
       "bead_id": "bd-1x3",
       "title": "EPIC: Stub Extermination (ranked by real call traces)",
       "priority": 1,
-      "status": "open",
-      "assignee": null,
+      "status": "in_progress",
+      "assignee": "BrightBrook",
       "labels": [
         "critique",
         "stubs"
@@ -10172,8 +10172,8 @@
       "bead_id": "bd-by8c",
       "title": "bd-3bg subtask: Runtime iconv dispatch integration with explicit fallback/error policy",
       "priority": 2,
-      "status": "open",
-      "assignee": null,
+      "status": "in_progress",
+      "assignee": "ScarletBasin",
       "labels": [
         "critique",
         "iconv",
@@ -10753,7 +10753,7 @@
       "title": "EPIC: Remove glibc callthrough (raw syscalls + pthread primitives)",
       "priority": 1,
       "status": "in_progress",
-      "assignee": null,
+      "assignee": "SnowyRabbit",
       "labels": [
         "critique",
         "pthread",

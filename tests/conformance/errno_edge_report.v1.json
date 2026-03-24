@@ -4,15 +4,295 @@
   "generated_at_utc": "2026-02-18T04:49:26Z",
   "summary": {
     "tracked_symbols": 3980,
-    "total_edge_cases": 620,
-    "errno_cases": 76,
+    "total_edge_cases": 708,
+    "errno_cases": 81,
     "covered_edge_cases": 421,
-    "failing_edge_cases": 199,
+    "failing_edge_cases": 287,
     "execution_error_cases": 199,
-    "missing_execution_cases": 0,
-    "symbols_with_failures": 82
+    "missing_execution_cases": 88,
+    "symbols_with_failures": 120
   },
   "rows": [
+    {
+      "priority_score": 1060,
+      "trace_id": "missing::setjmp_nested_edges::hardened::corrupted_jump_buffer_restore",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "hardened",
+      "case_id": "corrupted_jump_buffer_restore [hardened]",
+      "spec_section": "unsupported_deferred",
+      "edge_class": "error_condition",
+      "expected_output": "EFAULT",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::corrupted_jump_buffer_restore [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'corrupted_jump_buffer_restore' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::corrupted_jump_buffer_restore [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1060,
+      "trace_id": "missing::setjmp_nested_edges::strict::corrupted_jump_buffer_restore",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "strict",
+      "case_id": "corrupted_jump_buffer_restore [strict]",
+      "spec_section": "unsupported_deferred",
+      "edge_class": "error_condition",
+      "expected_output": "EFAULT",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::corrupted_jump_buffer_restore [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'corrupted_jump_buffer_restore' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::corrupted_jump_buffer_restore [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1060,
+      "trace_id": "missing::setjmp_nested_edges::hardened::siglongjmp_without_sigsetjmp",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "hardened",
+      "case_id": "siglongjmp_without_sigsetjmp [hardened]",
+      "spec_section": "unsupported_deferred",
+      "edge_class": "error_condition",
+      "expected_output": "EINVAL",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::siglongjmp_without_sigsetjmp [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'siglongjmp_without_sigsetjmp' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::siglongjmp_without_sigsetjmp [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1060,
+      "trace_id": "missing::setjmp_nested_edges::strict::siglongjmp_without_sigsetjmp",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "strict",
+      "case_id": "siglongjmp_without_sigsetjmp [strict]",
+      "spec_section": "unsupported_deferred",
+      "edge_class": "error_condition",
+      "expected_output": "EINVAL",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::siglongjmp_without_sigsetjmp [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'siglongjmp_without_sigsetjmp' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::siglongjmp_without_sigsetjmp [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1055,
+      "trace_id": "missing::setjmp_nested_edges::hardened::edge_zero_value_and_sigmask_roundtrip",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "hardened",
+      "case_id": "edge_zero_value_and_sigmask_roundtrip [hardened]",
+      "spec_section": "tests/integration/fixture_setjmp_edges.c",
+      "edge_class": "boundary",
+      "expected_output": "structured_program_scenario",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::edge_zero_value_and_sigmask_roundtrip [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'edge_zero_value_and_sigmask_roundtrip' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::edge_zero_value_and_sigmask_roundtrip [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1055,
+      "trace_id": "missing::setjmp_nested_edges::strict::edge_zero_value_and_sigmask_roundtrip",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "strict",
+      "case_id": "edge_zero_value_and_sigmask_roundtrip [strict]",
+      "spec_section": "tests/integration/fixture_setjmp_edges.c",
+      "edge_class": "boundary",
+      "expected_output": "structured_program_scenario",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::edge_zero_value_and_sigmask_roundtrip [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'edge_zero_value_and_sigmask_roundtrip' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::edge_zero_value_and_sigmask_roundtrip [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1050,
+      "trace_id": "missing::setjmp_nested_edges::hardened::cross_thread_longjmp",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "hardened",
+      "case_id": "cross_thread_longjmp [hardened]",
+      "spec_section": "unsupported_deferred",
+      "edge_class": "other_edge",
+      "expected_output": "ENOSYS",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::cross_thread_longjmp [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'cross_thread_longjmp' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::cross_thread_longjmp [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1050,
+      "trace_id": "missing::setjmp_nested_edges::strict::cross_thread_longjmp",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "strict",
+      "case_id": "cross_thread_longjmp [strict]",
+      "spec_section": "unsupported_deferred",
+      "edge_class": "other_edge",
+      "expected_output": "ENOSYS",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::cross_thread_longjmp [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'cross_thread_longjmp' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::cross_thread_longjmp [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1050,
+      "trace_id": "missing::setjmp_nested_edges::hardened::nested_two_level_longjmp",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "hardened",
+      "case_id": "nested_two_level_longjmp [hardened]",
+      "spec_section": "tests/integration/fixture_setjmp_nested.c",
+      "edge_class": "other_edge",
+      "expected_output": "structured_program_scenario",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::nested_two_level_longjmp [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'nested_two_level_longjmp' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::nested_two_level_longjmp [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 1050,
+      "trace_id": "missing::setjmp_nested_edges::strict::nested_two_level_longjmp",
+      "symbol": "setjmp_nested_edges",
+      "symbol_family": "setjmp_nested_edges",
+      "owner": "unknown",
+      "support_status": "Untracked",
+      "runtime_mode": "strict",
+      "case_id": "nested_two_level_longjmp [strict]",
+      "spec_section": "tests/integration/fixture_setjmp_nested.c",
+      "edge_class": "other_edge",
+      "expected_output": "structured_program_scenario",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::setjmp_nested_edges::nested_two_level_longjmp [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/setjmp_nested_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'nested_two_level_longjmp' for 'setjmp_nested_edges' and compare it against conformance_matrix::missing::setjmp_nested_edges::nested_two_level_longjmp [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'setjmp_nested_edges' runs for this scenario."
+      ]
+    },
     {
       "priority_score": 910,
       "trace_id": "franken_shadow::startup_ops::__frankenlibc_startup_phase0::hardened::startup_phase0_rejects_unterminated_argv_hardened",
@@ -478,6 +758,174 @@
       ]
     },
     {
+      "priority_score": 655,
+      "trace_id": "missing::_IO_adjust_column::hardened::IO_adjust_column_null_line_returns_col",
+      "symbol": "_IO_adjust_column",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_adjust_column_null_line_returns_col [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "42",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_null_line_returns_col [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_column_null_line_returns_col' for '_IO_adjust_column' and compare it against conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_null_line_returns_col [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_column' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 655,
+      "trace_id": "missing::_IO_adjust_column::strict::IO_adjust_column_null_line_returns_col",
+      "symbol": "_IO_adjust_column",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_adjust_column_null_line_returns_col [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "42",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_null_line_returns_col [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_column_null_line_returns_col' for '_IO_adjust_column' and compare it against conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_null_line_returns_col [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_column' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 650,
+      "trace_id": "missing::_IO_adjust_column::hardened::IO_adjust_column_newline_resets",
+      "symbol": "_IO_adjust_column",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_adjust_column_newline_resets [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "3",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_newline_resets [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_column_newline_resets' for '_IO_adjust_column' and compare it against conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_newline_resets [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_column' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 650,
+      "trace_id": "missing::_IO_adjust_column::strict::IO_adjust_column_newline_resets",
+      "symbol": "_IO_adjust_column",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_adjust_column_newline_resets [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "3",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_newline_resets [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_column_newline_resets' for '_IO_adjust_column' and compare it against conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_newline_resets [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_column' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 650,
+      "trace_id": "missing::_IO_adjust_column::hardened::IO_adjust_column_tab_aligns",
+      "symbol": "_IO_adjust_column",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_adjust_column_tab_aligns [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "8",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_tab_aligns [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_column_tab_aligns' for '_IO_adjust_column' and compare it against conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_tab_aligns [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_column' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 650,
+      "trace_id": "missing::_IO_adjust_column::strict::IO_adjust_column_tab_aligns",
+      "symbol": "_IO_adjust_column",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_adjust_column_tab_aligns [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "8",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_tab_aligns [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_column_tab_aligns' for '_IO_adjust_column' and compare it against conformance_matrix::missing::_IO_adjust_column::IO_adjust_column_tab_aligns [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_column' runs for this scenario."
+      ]
+    },
+    {
       "priority_score": 620,
       "trace_id": "franken_shadow::resource_ops::getrlimit::hardened::getrlimit_invalid_hardened",
       "symbol": "getrlimit",
@@ -914,151 +1362,6 @@
     },
     {
       "priority_score": 590,
-      "trace_id": "franken_shadow::loader_edges::dlopen::hardened::dlopen_nonexistent_hardened",
-      "symbol": "dlopen",
-      "symbol_family": "loader_edges",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "hardened",
-      "case_id": "dlopen_nonexistent_hardened",
-      "spec_section": "POSIX dlopen(3)",
-      "edge_class": "boundary",
-      "expected_output": "NULL",
-      "actual_output": "unsupported:unsupported function: dlopen",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::hardened::dlopen_nonexistent_hardened",
-      "artifact_refs": [
-        "tests/conformance/fixtures/loader_edges.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlopen_nonexistent_hardened' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::hardened::dlopen_nonexistent_hardened.",
-        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlopen"
-      ]
-    },
-    {
-      "priority_score": 590,
-      "trace_id": "franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
-      "symbol": "dlopen",
-      "symbol_family": "dlfcn_ops",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlopen_nonexistent_strict",
-      "spec_section": "POSIX dlopen",
-      "edge_class": "boundary",
-      "expected_output": "NULL",
-      "actual_output": "unsupported:unsupported function: dlopen",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
-      "artifact_refs": [
-        "tests/conformance/fixtures/dlfcn_ops.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlopen_nonexistent_strict' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict.",
-        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlopen"
-      ]
-    },
-    {
-      "priority_score": 590,
-      "trace_id": "franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
-      "symbol": "dlopen",
-      "symbol_family": "loader_edges",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlopen_nonexistent_strict",
-      "spec_section": "POSIX dlopen(3)",
-      "edge_class": "boundary",
-      "expected_output": "NULL",
-      "actual_output": "unsupported:unsupported function: dlopen",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
-      "artifact_refs": [
-        "tests/conformance/fixtures/loader_edges.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlopen_nonexistent_strict' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict.",
-        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlopen"
-      ]
-    },
-    {
-      "priority_score": 590,
-      "trace_id": "franken_shadow::dlfcn_ops::dlopen::hardened::dlopen_self_hardened",
-      "symbol": "dlopen",
-      "symbol_family": "dlfcn_ops",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "hardened",
-      "case_id": "dlopen_self_hardened",
-      "spec_section": "POSIX dlopen",
-      "edge_class": "boundary",
-      "expected_output": "HANDLE_PTR",
-      "actual_output": "unsupported:unsupported function: dlopen",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::hardened::dlopen_self_hardened",
-      "artifact_refs": [
-        "tests/conformance/fixtures/dlfcn_ops.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlopen_self_hardened' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::hardened::dlopen_self_hardened.",
-        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlopen"
-      ]
-    },
-    {
-      "priority_score": 590,
-      "trace_id": "franken_shadow::dlfcn_ops::dlopen::strict::dlopen_self_strict",
-      "symbol": "dlopen",
-      "symbol_family": "dlfcn_ops",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlopen_self_strict",
-      "spec_section": "POSIX dlopen",
-      "edge_class": "boundary",
-      "expected_output": "HANDLE_PTR",
-      "actual_output": "unsupported:unsupported function: dlopen",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::strict::dlopen_self_strict",
-      "artifact_refs": [
-        "tests/conformance/fixtures/dlfcn_ops.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlopen_self_strict' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::strict::dlopen_self_strict.",
-        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlopen"
-      ]
-    },
-    {
-      "priority_score": 590,
       "trace_id": "franken_shadow::virtual_memory_ops::mmap::hardened::mmap_anon_rw_hardened",
       "symbol": "mmap",
       "symbol_family": "virtual_memory_ops",
@@ -1316,6 +1619,151 @@
         "Inspect fixture 'socket_udp_strict' for 'socket' and compare it against conformance_matrix::trace_id::franken_shadow::socket_ops::socket::strict::socket_udp_strict.",
         "Add 'socket' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: socket"
+      ]
+    },
+    {
+      "priority_score": 585,
+      "trace_id": "franken_shadow::loader_edges::dlopen::hardened::dlopen_nonexistent_hardened",
+      "symbol": "dlopen",
+      "symbol_family": "loader_edges",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "dlopen_nonexistent_hardened",
+      "spec_section": "POSIX dlopen(3)",
+      "edge_class": "boundary",
+      "expected_output": "NULL",
+      "actual_output": "unsupported:unsupported function: dlopen",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::hardened::dlopen_nonexistent_hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlopen_nonexistent_hardened' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::hardened::dlopen_nonexistent_hardened.",
+        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlopen"
+      ]
+    },
+    {
+      "priority_score": 585,
+      "trace_id": "franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
+      "symbol": "dlopen",
+      "symbol_family": "dlfcn_ops",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlopen_nonexistent_strict",
+      "spec_section": "POSIX dlopen",
+      "edge_class": "boundary",
+      "expected_output": "NULL",
+      "actual_output": "unsupported:unsupported function: dlopen",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/dlfcn_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlopen_nonexistent_strict' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict.",
+        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlopen"
+      ]
+    },
+    {
+      "priority_score": 585,
+      "trace_id": "franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
+      "symbol": "dlopen",
+      "symbol_family": "loader_edges",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlopen_nonexistent_strict",
+      "spec_section": "POSIX dlopen(3)",
+      "edge_class": "boundary",
+      "expected_output": "NULL",
+      "actual_output": "unsupported:unsupported function: dlopen",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlopen_nonexistent_strict' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlopen::strict::dlopen_nonexistent_strict.",
+        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlopen"
+      ]
+    },
+    {
+      "priority_score": 585,
+      "trace_id": "franken_shadow::dlfcn_ops::dlopen::hardened::dlopen_self_hardened",
+      "symbol": "dlopen",
+      "symbol_family": "dlfcn_ops",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "dlopen_self_hardened",
+      "spec_section": "POSIX dlopen",
+      "edge_class": "boundary",
+      "expected_output": "HANDLE_PTR",
+      "actual_output": "unsupported:unsupported function: dlopen",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::hardened::dlopen_self_hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/dlfcn_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlopen_self_hardened' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::hardened::dlopen_self_hardened.",
+        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlopen"
+      ]
+    },
+    {
+      "priority_score": 585,
+      "trace_id": "franken_shadow::dlfcn_ops::dlopen::strict::dlopen_self_strict",
+      "symbol": "dlopen",
+      "symbol_family": "dlfcn_ops",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlopen_self_strict",
+      "spec_section": "POSIX dlopen",
+      "edge_class": "boundary",
+      "expected_output": "HANDLE_PTR",
+      "actual_output": "unsupported:unsupported function: dlopen",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::strict::dlopen_self_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/dlfcn_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlopen_self_strict' for 'dlopen' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlopen::strict::dlopen_self_strict.",
+        "Add 'dlopen' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlopen"
       ]
     },
     {
@@ -1812,64 +2260,6 @@
       ]
     },
     {
-      "priority_score": 495,
-      "trace_id": "franken_shadow::dlfcn_ops::dlsym::hardened::dlsym_valid_hardened",
-      "symbol": "dlsym",
-      "symbol_family": "dlfcn_ops",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "hardened",
-      "case_id": "dlsym_valid_hardened",
-      "spec_section": "POSIX dlsym",
-      "edge_class": "error_condition",
-      "expected_output": "FUNC_PTR",
-      "actual_output": "unsupported:unsupported function: dlsym",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::hardened::dlsym_valid_hardened",
-      "artifact_refs": [
-        "tests/conformance/fixtures/dlfcn_ops.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlsym_valid_hardened' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::hardened::dlsym_valid_hardened.",
-        "Add 'dlsym' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlsym"
-      ]
-    },
-    {
-      "priority_score": 495,
-      "trace_id": "franken_shadow::dlfcn_ops::dlsym::strict::dlsym_valid_strict",
-      "symbol": "dlsym",
-      "symbol_family": "dlfcn_ops",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlsym_valid_strict",
-      "spec_section": "POSIX dlsym",
-      "edge_class": "error_condition",
-      "expected_output": "FUNC_PTR",
-      "actual_output": "unsupported:unsupported function: dlsym",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_valid_strict",
-      "artifact_refs": [
-        "tests/conformance/fixtures/dlfcn_ops.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlsym_valid_strict' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_valid_strict.",
-        "Add 'dlsym' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlsym"
-      ]
-    },
-    {
       "priority_score": 490,
       "trace_id": "franken_shadow::unistd::access::hardened::access_root_exists",
       "symbol": "access",
@@ -2074,58 +2464,58 @@
     },
     {
       "priority_score": 490,
-      "trace_id": "franken_shadow::dlfcn_ops::dlsym::strict::dlsym_nonexistent_strict",
+      "trace_id": "franken_shadow::dlfcn_ops::dlsym::hardened::dlsym_valid_hardened",
       "symbol": "dlsym",
       "symbol_family": "dlfcn_ops",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlsym_nonexistent_strict",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "dlsym_valid_hardened",
       "spec_section": "POSIX dlsym",
-      "edge_class": "boundary",
-      "expected_output": "NULL",
+      "edge_class": "error_condition",
+      "expected_output": "FUNC_PTR",
       "actual_output": "unsupported:unsupported function: dlsym",
       "host_output": null,
       "expected_errno": 0,
       "actual_errno": null,
       "status": "error",
       "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_nonexistent_strict",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::hardened::dlsym_valid_hardened",
       "artifact_refs": [
         "tests/conformance/fixtures/dlfcn_ops.json",
         "tests/conformance/conformance_matrix.v1.json"
       ],
       "triage_steps": [
-        "Inspect fixture 'dlsym_nonexistent_strict' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_nonexistent_strict.",
+        "Inspect fixture 'dlsym_valid_hardened' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::hardened::dlsym_valid_hardened.",
         "Add 'dlsym' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: dlsym"
       ]
     },
     {
       "priority_score": 490,
-      "trace_id": "franken_shadow::loader_edges::dlsym::strict::dlsym_undefined_strict",
+      "trace_id": "franken_shadow::dlfcn_ops::dlsym::strict::dlsym_valid_strict",
       "symbol": "dlsym",
-      "symbol_family": "loader_edges",
+      "symbol_family": "dlfcn_ops",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "runtime_mode": "strict",
-      "case_id": "dlsym_undefined_strict",
-      "spec_section": "POSIX dlsym(3)",
-      "edge_class": "boundary",
-      "expected_output": "NULL",
+      "case_id": "dlsym_valid_strict",
+      "spec_section": "POSIX dlsym",
+      "edge_class": "error_condition",
+      "expected_output": "FUNC_PTR",
       "actual_output": "unsupported:unsupported function: dlsym",
       "host_output": null,
       "expected_errno": 0,
       "actual_errno": null,
       "status": "error",
       "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlsym::strict::dlsym_undefined_strict",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_valid_strict",
       "artifact_refs": [
-        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/fixtures/dlfcn_ops.json",
         "tests/conformance/conformance_matrix.v1.json"
       ],
       "triage_steps": [
-        "Inspect fixture 'dlsym_undefined_strict' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlsym::strict::dlsym_undefined_strict.",
+        "Inspect fixture 'dlsym_valid_strict' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_valid_strict.",
         "Add 'dlsym' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: dlsym"
       ]
@@ -2505,6 +2895,64 @@
         "Inspect fixture 'libc_start_main_phase0_unsafe_envp_fallback_host_strict' for '__libc_start_main' and compare it against conformance_matrix::trace_id::franken_shadow::startup_ops::__libc_start_main::strict::libc_start_main_phase0_unsafe_envp_fallback_host_strict.",
         "Add '__libc_start_main' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: __libc_start_main"
+      ]
+    },
+    {
+      "priority_score": 485,
+      "trace_id": "franken_shadow::dlfcn_ops::dlsym::strict::dlsym_nonexistent_strict",
+      "symbol": "dlsym",
+      "symbol_family": "dlfcn_ops",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlsym_nonexistent_strict",
+      "spec_section": "POSIX dlsym",
+      "edge_class": "boundary",
+      "expected_output": "NULL",
+      "actual_output": "unsupported:unsupported function: dlsym",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_nonexistent_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/dlfcn_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlsym_nonexistent_strict' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlsym::strict::dlsym_nonexistent_strict.",
+        "Add 'dlsym' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlsym"
+      ]
+    },
+    {
+      "priority_score": 485,
+      "trace_id": "franken_shadow::loader_edges::dlsym::strict::dlsym_undefined_strict",
+      "symbol": "dlsym",
+      "symbol_family": "loader_edges",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlsym_undefined_strict",
+      "spec_section": "POSIX dlsym(3)",
+      "edge_class": "boundary",
+      "expected_output": "NULL",
+      "actual_output": "unsupported:unsupported function: dlsym",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlsym::strict::dlsym_undefined_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlsym_undefined_strict' for 'dlsym' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlsym::strict::dlsym_undefined_strict.",
+        "Add 'dlsym' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlsym"
       ]
     },
     {
@@ -3088,6 +3536,118 @@
       ]
     },
     {
+      "priority_score": 455,
+      "trace_id": "missing::_IO_iter_begin::hardened::IO_iter_begin_equals_end_empty_list",
+      "symbol": "_IO_iter_begin",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_iter_begin_equals_end_empty_list [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "NULL_PTR",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_equals_end_empty_list [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_iter_begin_equals_end_empty_list' for '_IO_iter_begin' and compare it against conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_equals_end_empty_list [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_iter_begin' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 455,
+      "trace_id": "missing::_IO_iter_begin::strict::IO_iter_begin_equals_end_empty_list",
+      "symbol": "_IO_iter_begin",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_iter_begin_equals_end_empty_list [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "NULL_PTR",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_equals_end_empty_list [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_iter_begin_equals_end_empty_list' for '_IO_iter_begin' and compare it against conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_equals_end_empty_list [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_iter_begin' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 455,
+      "trace_id": "missing::_IO_iter_begin::hardened::IO_iter_begin_returns_null",
+      "symbol": "_IO_iter_begin",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_iter_begin_returns_null [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "NULL_PTR",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_returns_null [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_iter_begin_returns_null' for '_IO_iter_begin' and compare it against conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_returns_null [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_iter_begin' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 455,
+      "trace_id": "missing::_IO_iter_begin::strict::IO_iter_begin_returns_null",
+      "symbol": "_IO_iter_begin",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_iter_begin_returns_null [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "NULL_PTR",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_returns_null [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_iter_begin_returns_null' for '_IO_iter_begin' and compare it against conformance_matrix::missing::_IO_iter_begin::IO_iter_begin_returns_null [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_iter_begin' runs for this scenario."
+      ]
+    },
+    {
       "priority_score": 420,
       "trace_id": "franken_shadow::signal_ops::kill::hardened::kill_invalid_signal_hardened",
       "symbol": "kill",
@@ -3437,6 +3997,91 @@
     },
     {
       "priority_score": 380,
+      "trace_id": "missing::dlinfo::hardened::dlinfo_returns_enosys",
+      "symbol": "dlinfo",
+      "symbol_family": "io_internal",
+      "owner": "glibc_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "dlinfo_returns_enosys [hardened]",
+      "spec_section": "GNU extension dlinfo(3)",
+      "edge_class": "error_condition",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 38,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::dlinfo::dlinfo_returns_enosys [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlinfo_returns_enosys' for 'dlinfo' and compare it against conformance_matrix::missing::dlinfo::dlinfo_returns_enosys [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'dlinfo' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 380,
+      "trace_id": "missing::dlinfo::strict::dlinfo_returns_enosys",
+      "symbol": "dlinfo",
+      "symbol_family": "io_internal",
+      "owner": "glibc_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlinfo_returns_enosys [strict]",
+      "spec_section": "GNU extension dlinfo(3)",
+      "edge_class": "error_condition",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 38,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::dlinfo::dlinfo_returns_enosys [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlinfo_returns_enosys' for 'dlinfo' and compare it against conformance_matrix::missing::dlinfo::dlinfo_returns_enosys [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'dlinfo' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 380,
+      "trace_id": "franken_shadow::loader_edges::dlinfo::strict::dlinfo_rtld_di_linkmap_strict",
+      "symbol": "dlinfo",
+      "symbol_family": "loader_edges",
+      "owner": "glibc_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlinfo_rtld_di_linkmap_strict",
+      "spec_section": "GNU dlinfo(3)",
+      "edge_class": "other_edge",
+      "expected_output": "valid_link_map",
+      "actual_output": "unsupported:unsupported function: dlinfo",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlinfo::strict::dlinfo_rtld_di_linkmap_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlinfo_rtld_di_linkmap_strict' for 'dlinfo' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlinfo::strict::dlinfo_rtld_di_linkmap_strict.",
+        "Add 'dlinfo' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlinfo"
+      ]
+    },
+    {
+      "priority_score": 380,
       "trace_id": "franken_shadow::memory_ops::memcmp::strict::memcmp_equal_strict",
       "symbol": "memcmp",
       "symbol_family": "memory_ops",
@@ -3524,6 +4169,34 @@
     },
     {
       "priority_score": 380,
+      "trace_id": "missing::posix_spawn::strict::posix_spawn_nonexistent_strict",
+      "symbol": "posix_spawn",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "posix_spawn_nonexistent_strict",
+      "spec_section": "POSIX posix_spawn(3)",
+      "edge_class": "error_condition",
+      "expected_output": "ENOENT",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 2,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::posix_spawn::posix_spawn_nonexistent_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'posix_spawn_nonexistent_strict' for 'posix_spawn' and compare it against conformance_matrix::missing::posix_spawn::posix_spawn_nonexistent_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'posix_spawn' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 380,
       "trace_id": "franken_shadow::pthread/mutex::pthread_mutex_lock::strict::mutex_contention_two_threads",
       "symbol": "pthread_mutex_lock",
       "symbol_family": "pthread/mutex",
@@ -3607,6 +4280,62 @@
         "Inspect fixture 'mutex_lock_unlock' for 'pthread_mutex_lock' and compare it against conformance_matrix::trace_id::franken_shadow::pthread/mutex::pthread_mutex_lock::strict::mutex_lock_unlock.",
         "Add 'pthread_mutex_lock' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: pthread_mutex_lock"
+      ]
+    },
+    {
+      "priority_score": 350,
+      "trace_id": "missing::posix_spawn::hardened::posix_spawn_echo_hardened",
+      "symbol": "posix_spawn",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "posix_spawn_echo_hardened",
+      "spec_section": "POSIX posix_spawn(3)",
+      "edge_class": "other_edge",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::posix_spawn::posix_spawn_echo_hardened::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'posix_spawn_echo_hardened' for 'posix_spawn' and compare it against conformance_matrix::missing::posix_spawn::posix_spawn_echo_hardened::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'posix_spawn' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 350,
+      "trace_id": "missing::posix_spawn::strict::posix_spawn_echo_strict",
+      "symbol": "posix_spawn",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "posix_spawn_echo_strict",
+      "spec_section": "POSIX posix_spawn(3)",
+      "edge_class": "other_edge",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::posix_spawn::posix_spawn_echo_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'posix_spawn_echo_strict' for 'posix_spawn' and compare it against conformance_matrix::missing::posix_spawn::posix_spawn_echo_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'posix_spawn' runs for this scenario."
       ]
     },
     {
@@ -3947,6 +4676,34 @@
         "Inspect fixture 'time_returns_positive_strict' for 'time' and compare it against conformance_matrix::trace_id::franken_shadow::time_ops::time::strict::time_returns_positive_strict.",
         "Add 'time' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: time"
+      ]
+    },
+    {
+      "priority_score": 290,
+      "trace_id": "missing::execve::strict::execve_eacces_strict",
+      "symbol": "execve",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "execve_eacces_strict",
+      "spec_section": "POSIX execve(2)",
+      "edge_class": "error_condition",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 13,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::execve::execve_eacces_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'execve_eacces_strict' for 'execve' and compare it against conformance_matrix::missing::execve::execve_eacces_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'execve' runs for this scenario."
       ]
     },
     {
@@ -4415,64 +5172,6 @@
     },
     {
       "priority_score": 285,
-      "trace_id": "franken_shadow::loader_edges::dlclose::hardened::dlclose_double_close_hardened",
-      "symbol": "dlclose",
-      "symbol_family": "loader_edges",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "hardened",
-      "case_id": "dlclose_double_close_hardened",
-      "spec_section": "POSIX dlclose(3)",
-      "edge_class": "other_edge",
-      "expected_output": "-1",
-      "actual_output": "unsupported:unsupported function: dlclose",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::hardened::dlclose_double_close_hardened",
-      "artifact_refs": [
-        "tests/conformance/fixtures/loader_edges.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlclose_double_close_hardened' for 'dlclose' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::hardened::dlclose_double_close_hardened.",
-        "Add 'dlclose' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlclose"
-      ]
-    },
-    {
-      "priority_score": 285,
-      "trace_id": "franken_shadow::loader_edges::dlclose::strict::dlclose_double_close_strict",
-      "symbol": "dlclose",
-      "symbol_family": "loader_edges",
-      "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlclose_double_close_strict",
-      "spec_section": "POSIX dlclose(3)",
-      "edge_class": "other_edge",
-      "expected_output": "-1",
-      "actual_output": "unsupported:unsupported function: dlclose",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::strict::dlclose_double_close_strict",
-      "artifact_refs": [
-        "tests/conformance/fixtures/loader_edges.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlclose_double_close_strict' for 'dlclose' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::strict::dlclose_double_close_strict.",
-        "Add 'dlclose' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlclose"
-      ]
-    },
-    {
-      "priority_score": 285,
       "trace_id": "franken_shadow::session_ops::getlogin::hardened::getlogin_returns_user_hardened",
       "symbol": "getlogin",
       "symbol_family": "session_ops",
@@ -4614,6 +5313,64 @@
         "Inspect fixture 'setjmp_returns_zero_strict' for 'setjmp' and compare it against conformance_matrix::trace_id::franken_shadow::setjmp_ops::setjmp::strict::setjmp_returns_zero_strict.",
         "Add 'setjmp' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: setjmp"
+      ]
+    },
+    {
+      "priority_score": 280,
+      "trace_id": "franken_shadow::loader_edges::dlclose::hardened::dlclose_double_close_hardened",
+      "symbol": "dlclose",
+      "symbol_family": "loader_edges",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "dlclose_double_close_hardened",
+      "spec_section": "POSIX dlclose(3)",
+      "edge_class": "other_edge",
+      "expected_output": "-1",
+      "actual_output": "unsupported:unsupported function: dlclose",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::hardened::dlclose_double_close_hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlclose_double_close_hardened' for 'dlclose' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::hardened::dlclose_double_close_hardened.",
+        "Add 'dlclose' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlclose"
+      ]
+    },
+    {
+      "priority_score": 280,
+      "trace_id": "franken_shadow::loader_edges::dlclose::strict::dlclose_double_close_strict",
+      "symbol": "dlclose",
+      "symbol_family": "loader_edges",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "dlclose_double_close_strict",
+      "spec_section": "POSIX dlclose(3)",
+      "edge_class": "other_edge",
+      "expected_output": "-1",
+      "actual_output": "unsupported:unsupported function: dlclose",
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "error",
+      "failure_kind": "unsupported_function",
+      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::strict::dlclose_double_close_strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/loader_edges.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'dlclose_double_close_strict' for 'dlclose' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlclose::strict::dlclose_double_close_strict.",
+        "Add 'dlclose' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
+        "Recorded execution error: unsupported function: dlclose"
       ]
     },
     {
@@ -4991,6 +5748,1602 @@
         "Inspect fixture 'regexec_nomatch_strict' for 'regexec' and compare it against conformance_matrix::trace_id::franken_shadow::regex_glob_ops::regexec::strict::regexec_nomatch_strict.",
         "Add 'regexec' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: regexec"
+      ]
+    },
+    {
+      "priority_score": 260,
+      "trace_id": "missing::execve::strict::execve_replaces_process_strict",
+      "symbol": "execve",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "execve_replaces_process_strict",
+      "spec_section": "POSIX execve(2)",
+      "edge_class": "other_edge",
+      "expected_output": "NO_RETURN",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::execve::execve_replaces_process_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'execve_replaces_process_strict' for 'execve' and compare it against conformance_matrix::missing::execve::execve_replaces_process_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'execve' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 260,
+      "trace_id": "missing::semget::hardened::semget_create_hardened",
+      "symbol": "semget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "hardened",
+      "case_id": "semget_create_hardened",
+      "spec_section": "POSIX semget(2)",
+      "edge_class": "other_edge",
+      "expected_output": "valid_semid",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::semget::semget_create_hardened::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'semget_create_hardened' for 'semget' and compare it against conformance_matrix::missing::semget::semget_create_hardened::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'semget' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 260,
+      "trace_id": "missing::semget::strict::semget_create_strict",
+      "symbol": "semget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "semget_create_strict",
+      "spec_section": "POSIX semget(2)",
+      "edge_class": "other_edge",
+      "expected_output": "valid_semid",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::semget::semget_create_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'semget_create_strict' for 'semget' and compare it against conformance_matrix::missing::semget::semget_create_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'semget' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 260,
+      "trace_id": "missing::shmget::hardened::shmget_create_hardened",
+      "symbol": "shmget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "hardened",
+      "case_id": "shmget_create_hardened",
+      "spec_section": "POSIX shmget(2)",
+      "edge_class": "other_edge",
+      "expected_output": "valid_shmid",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::shmget::shmget_create_hardened::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'shmget_create_hardened' for 'shmget' and compare it against conformance_matrix::missing::shmget::shmget_create_hardened::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'shmget' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 260,
+      "trace_id": "missing::shmget::strict::shmget_create_strict",
+      "symbol": "shmget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "shmget_create_strict",
+      "spec_section": "POSIX shmget(2)",
+      "edge_class": "other_edge",
+      "expected_output": "valid_shmid",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::shmget::shmget_create_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'shmget_create_strict' for 'shmget' and compare it against conformance_matrix::missing::shmget::shmget_create_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'shmget' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_default_doallocate::hardened::IO_default_doallocate_returns_success",
+      "symbol": "_IO_default_doallocate",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_default_doallocate_returns_success [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_default_doallocate::IO_default_doallocate_returns_success [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_default_doallocate_returns_success' for '_IO_default_doallocate' and compare it against conformance_matrix::missing::_IO_default_doallocate::IO_default_doallocate_returns_success [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_default_doallocate' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_default_doallocate::strict::IO_default_doallocate_returns_success",
+      "symbol": "_IO_default_doallocate",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_default_doallocate_returns_success [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_default_doallocate::IO_default_doallocate_returns_success [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_default_doallocate_returns_success' for '_IO_default_doallocate' and compare it against conformance_matrix::missing::_IO_default_doallocate::IO_default_doallocate_returns_success [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_default_doallocate' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_default_finish::hardened::IO_default_finish_is_noop",
+      "symbol": "_IO_default_finish",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_default_finish_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_default_finish::IO_default_finish_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_default_finish_is_noop' for '_IO_default_finish' and compare it against conformance_matrix::missing::_IO_default_finish::IO_default_finish_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_default_finish' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_default_finish::strict::IO_default_finish_is_noop",
+      "symbol": "_IO_default_finish",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_default_finish_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_default_finish::IO_default_finish_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_default_finish_is_noop' for '_IO_default_finish' and compare it against conformance_matrix::missing::_IO_default_finish::IO_default_finish_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_default_finish' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_doallocbuf::hardened::IO_doallocbuf_is_noop",
+      "symbol": "_IO_doallocbuf",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_doallocbuf_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_doallocbuf::IO_doallocbuf_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_doallocbuf_is_noop' for '_IO_doallocbuf' and compare it against conformance_matrix::missing::_IO_doallocbuf::IO_doallocbuf_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_doallocbuf' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_doallocbuf::strict::IO_doallocbuf_is_noop",
+      "symbol": "_IO_doallocbuf",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_doallocbuf_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_doallocbuf::IO_doallocbuf_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_doallocbuf_is_noop' for '_IO_doallocbuf' and compare it against conformance_matrix::missing::_IO_doallocbuf::IO_doallocbuf_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_doallocbuf' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_file_init::hardened::IO_file_init_is_noop",
+      "symbol": "_IO_file_init",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_file_init_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_file_init::IO_file_init_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_file_init_is_noop' for '_IO_file_init' and compare it against conformance_matrix::missing::_IO_file_init::IO_file_init_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_file_init' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_file_init::strict::IO_file_init_is_noop",
+      "symbol": "_IO_file_init",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_file_init_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_file_init::IO_file_init_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_file_init_is_noop' for '_IO_file_init' and compare it against conformance_matrix::missing::_IO_file_init::IO_file_init_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_file_init' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_free_backup_area::hardened::IO_free_backup_area_is_noop",
+      "symbol": "_IO_free_backup_area",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_free_backup_area_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_free_backup_area::IO_free_backup_area_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_free_backup_area_is_noop' for '_IO_free_backup_area' and compare it against conformance_matrix::missing::_IO_free_backup_area::IO_free_backup_area_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_free_backup_area' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_free_backup_area::strict::IO_free_backup_area_is_noop",
+      "symbol": "_IO_free_backup_area",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_free_backup_area_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_free_backup_area::IO_free_backup_area_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_free_backup_area_is_noop' for '_IO_free_backup_area' and compare it against conformance_matrix::missing::_IO_free_backup_area::IO_free_backup_area_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_free_backup_area' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_free_wbackup_area::hardened::IO_free_wbackup_area_is_noop",
+      "symbol": "_IO_free_wbackup_area",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_free_wbackup_area_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_free_wbackup_area::IO_free_wbackup_area_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_free_wbackup_area_is_noop' for '_IO_free_wbackup_area' and compare it against conformance_matrix::missing::_IO_free_wbackup_area::IO_free_wbackup_area_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_free_wbackup_area' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_free_wbackup_area::strict::IO_free_wbackup_area_is_noop",
+      "symbol": "_IO_free_wbackup_area",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_free_wbackup_area_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_free_wbackup_area::IO_free_wbackup_area_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_free_wbackup_area_is_noop' for '_IO_free_wbackup_area' and compare it against conformance_matrix::missing::_IO_free_wbackup_area::IO_free_wbackup_area_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_free_wbackup_area' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_init::hardened::IO_init_is_noop",
+      "symbol": "_IO_init",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_init_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_init::IO_init_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_init_is_noop' for '_IO_init' and compare it against conformance_matrix::missing::_IO_init::IO_init_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_init' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_init::strict::IO_init_is_noop",
+      "symbol": "_IO_init",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_init_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_init::IO_init_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_init_is_noop' for '_IO_init' and compare it against conformance_matrix::missing::_IO_init::IO_init_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_init' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_iter_end::hardened::IO_iter_end_returns_null",
+      "symbol": "_IO_iter_end",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_iter_end_returns_null [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "NULL_PTR",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_iter_end::IO_iter_end_returns_null [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_iter_end_returns_null' for '_IO_iter_end' and compare it against conformance_matrix::missing::_IO_iter_end::IO_iter_end_returns_null [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_iter_end' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_iter_end::strict::IO_iter_end_returns_null",
+      "symbol": "_IO_iter_end",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_iter_end_returns_null [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "NULL_PTR",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_iter_end::IO_iter_end_returns_null [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_iter_end_returns_null' for '_IO_iter_end' and compare it against conformance_matrix::missing::_IO_iter_end::IO_iter_end_returns_null [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_iter_end' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_link_in::hardened::IO_link_in_is_noop",
+      "symbol": "_IO_link_in",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_link_in_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_link_in::IO_link_in_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_link_in_is_noop' for '_IO_link_in' and compare it against conformance_matrix::missing::_IO_link_in::IO_link_in_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_link_in' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_link_in::strict::IO_link_in_is_noop",
+      "symbol": "_IO_link_in",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_link_in_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_link_in::IO_link_in_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_link_in_is_noop' for '_IO_link_in' and compare it against conformance_matrix::missing::_IO_link_in::IO_link_in_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_link_in' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_marker_delta::hardened::IO_marker_delta_returns_zero",
+      "symbol": "_IO_marker_delta",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_marker_delta_returns_zero [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_marker_delta::IO_marker_delta_returns_zero [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_marker_delta_returns_zero' for '_IO_marker_delta' and compare it against conformance_matrix::missing::_IO_marker_delta::IO_marker_delta_returns_zero [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_marker_delta' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_marker_delta::strict::IO_marker_delta_returns_zero",
+      "symbol": "_IO_marker_delta",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_marker_delta_returns_zero [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_marker_delta::IO_marker_delta_returns_zero [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_marker_delta_returns_zero' for '_IO_marker_delta' and compare it against conformance_matrix::missing::_IO_marker_delta::IO_marker_delta_returns_zero [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_marker_delta' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_marker_difference::hardened::IO_marker_difference_returns_zero",
+      "symbol": "_IO_marker_difference",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_marker_difference_returns_zero [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_marker_difference::IO_marker_difference_returns_zero [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_marker_difference_returns_zero' for '_IO_marker_difference' and compare it against conformance_matrix::missing::_IO_marker_difference::IO_marker_difference_returns_zero [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_marker_difference' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_marker_difference::strict::IO_marker_difference_returns_zero",
+      "symbol": "_IO_marker_difference",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_marker_difference_returns_zero [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_marker_difference::IO_marker_difference_returns_zero [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_marker_difference_returns_zero' for '_IO_marker_difference' and compare it against conformance_matrix::missing::_IO_marker_difference::IO_marker_difference_returns_zero [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_marker_difference' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_seekmark::hardened::IO_seekmark_returns_error",
+      "symbol": "_IO_seekmark",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_seekmark_returns_error [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_seekmark::IO_seekmark_returns_error [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_seekmark_returns_error' for '_IO_seekmark' and compare it against conformance_matrix::missing::_IO_seekmark::IO_seekmark_returns_error [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_seekmark' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_seekmark::strict::IO_seekmark_returns_error",
+      "symbol": "_IO_seekmark",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_seekmark_returns_error [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_seekmark::IO_seekmark_returns_error [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_seekmark_returns_error' for '_IO_seekmark' and compare it against conformance_matrix::missing::_IO_seekmark::IO_seekmark_returns_error [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_seekmark' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_str_overflow::hardened::IO_str_overflow_returns_eof",
+      "symbol": "_IO_str_overflow",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_str_overflow_returns_eof [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_str_overflow::IO_str_overflow_returns_eof [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_str_overflow_returns_eof' for '_IO_str_overflow' and compare it against conformance_matrix::missing::_IO_str_overflow::IO_str_overflow_returns_eof [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_str_overflow' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_str_overflow::strict::IO_str_overflow_returns_eof",
+      "symbol": "_IO_str_overflow",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_str_overflow_returns_eof [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_str_overflow::IO_str_overflow_returns_eof [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_str_overflow_returns_eof' for '_IO_str_overflow' and compare it against conformance_matrix::missing::_IO_str_overflow::IO_str_overflow_returns_eof [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_str_overflow' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_str_underflow::hardened::IO_str_underflow_returns_eof",
+      "symbol": "_IO_str_underflow",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_str_underflow_returns_eof [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_str_underflow::IO_str_underflow_returns_eof [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_str_underflow_returns_eof' for '_IO_str_underflow' and compare it against conformance_matrix::missing::_IO_str_underflow::IO_str_underflow_returns_eof [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_str_underflow' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_str_underflow::strict::IO_str_underflow_returns_eof",
+      "symbol": "_IO_str_underflow",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_str_underflow_returns_eof [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_str_underflow::IO_str_underflow_returns_eof [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_str_underflow_returns_eof' for '_IO_str_underflow' and compare it against conformance_matrix::missing::_IO_str_underflow::IO_str_underflow_returns_eof [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_str_underflow' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_sungetc::hardened::IO_sungetc_returns_eof",
+      "symbol": "_IO_sungetc",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_sungetc_returns_eof [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_sungetc::IO_sungetc_returns_eof [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_sungetc_returns_eof' for '_IO_sungetc' and compare it against conformance_matrix::missing::_IO_sungetc::IO_sungetc_returns_eof [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_sungetc' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_sungetc::strict::IO_sungetc_returns_eof",
+      "symbol": "_IO_sungetc",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_sungetc_returns_eof [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_sungetc::IO_sungetc_returns_eof [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_sungetc_returns_eof' for '_IO_sungetc' and compare it against conformance_matrix::missing::_IO_sungetc::IO_sungetc_returns_eof [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_sungetc' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_sungetwc::hardened::IO_sungetwc_returns_weof",
+      "symbol": "_IO_sungetwc",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_sungetwc_returns_weof [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "4294967295",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_sungetwc::IO_sungetwc_returns_weof [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_sungetwc_returns_weof' for '_IO_sungetwc' and compare it against conformance_matrix::missing::_IO_sungetwc::IO_sungetwc_returns_weof [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_sungetwc' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_sungetwc::strict::IO_sungetwc_returns_weof",
+      "symbol": "_IO_sungetwc",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_sungetwc_returns_weof [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "4294967295",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_sungetwc::IO_sungetwc_returns_weof [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_sungetwc_returns_weof' for '_IO_sungetwc' and compare it against conformance_matrix::missing::_IO_sungetwc::IO_sungetwc_returns_weof [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_sungetwc' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_switch_to_wget_mode::hardened::IO_switch_to_wget_mode_delegates_to_fflush",
+      "symbol": "_IO_switch_to_wget_mode",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_switch_to_wget_mode_delegates_to_fflush [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_switch_to_wget_mode::IO_switch_to_wget_mode_delegates_to_fflush [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_switch_to_wget_mode_delegates_to_fflush' for '_IO_switch_to_wget_mode' and compare it against conformance_matrix::missing::_IO_switch_to_wget_mode::IO_switch_to_wget_mode_delegates_to_fflush [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_switch_to_wget_mode' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_switch_to_wget_mode::strict::IO_switch_to_wget_mode_delegates_to_fflush",
+      "symbol": "_IO_switch_to_wget_mode",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_switch_to_wget_mode_delegates_to_fflush [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_switch_to_wget_mode::IO_switch_to_wget_mode_delegates_to_fflush [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_switch_to_wget_mode_delegates_to_fflush' for '_IO_switch_to_wget_mode' and compare it against conformance_matrix::missing::_IO_switch_to_wget_mode::IO_switch_to_wget_mode_delegates_to_fflush [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_switch_to_wget_mode' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_un_link::hardened::IO_un_link_is_noop",
+      "symbol": "_IO_un_link",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_un_link_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_un_link::IO_un_link_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_un_link_is_noop' for '_IO_un_link' and compare it against conformance_matrix::missing::_IO_un_link::IO_un_link_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_un_link' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_un_link::strict::IO_un_link_is_noop",
+      "symbol": "_IO_un_link",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_un_link_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_un_link::IO_un_link_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_un_link_is_noop' for '_IO_un_link' and compare it against conformance_matrix::missing::_IO_un_link::IO_un_link_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_un_link' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_wdefault_doallocate::hardened::IO_wdefault_doallocate_returns_success",
+      "symbol": "_IO_wdefault_doallocate",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_wdefault_doallocate_returns_success [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_wdefault_doallocate::IO_wdefault_doallocate_returns_success [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_wdefault_doallocate_returns_success' for '_IO_wdefault_doallocate' and compare it against conformance_matrix::missing::_IO_wdefault_doallocate::IO_wdefault_doallocate_returns_success [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_wdefault_doallocate' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_wdefault_doallocate::strict::IO_wdefault_doallocate_returns_success",
+      "symbol": "_IO_wdefault_doallocate",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_wdefault_doallocate_returns_success [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_wdefault_doallocate::IO_wdefault_doallocate_returns_success [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_wdefault_doallocate_returns_success' for '_IO_wdefault_doallocate' and compare it against conformance_matrix::missing::_IO_wdefault_doallocate::IO_wdefault_doallocate_returns_success [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_wdefault_doallocate' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_wdefault_uflow::hardened::IO_wdefault_uflow_returns_weof",
+      "symbol": "_IO_wdefault_uflow",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_wdefault_uflow_returns_weof [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "4294967295",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_wdefault_uflow::IO_wdefault_uflow_returns_weof [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_wdefault_uflow_returns_weof' for '_IO_wdefault_uflow' and compare it against conformance_matrix::missing::_IO_wdefault_uflow::IO_wdefault_uflow_returns_weof [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_wdefault_uflow' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_wdefault_uflow::strict::IO_wdefault_uflow_returns_weof",
+      "symbol": "_IO_wdefault_uflow",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_wdefault_uflow_returns_weof [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "4294967295",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_wdefault_uflow::IO_wdefault_uflow_returns_weof [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_wdefault_uflow_returns_weof' for '_IO_wdefault_uflow' and compare it against conformance_matrix::missing::_IO_wdefault_uflow::IO_wdefault_uflow_returns_weof [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_wdefault_uflow' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_wfile_sync::hardened::IO_wfile_sync_delegates_to_fflush",
+      "symbol": "_IO_wfile_sync",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_wfile_sync_delegates_to_fflush [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_wfile_sync::IO_wfile_sync_delegates_to_fflush [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_wfile_sync_delegates_to_fflush' for '_IO_wfile_sync' and compare it against conformance_matrix::missing::_IO_wfile_sync::IO_wfile_sync_delegates_to_fflush [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_wfile_sync' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 255,
+      "trace_id": "missing::_IO_wfile_sync::strict::IO_wfile_sync_delegates_to_fflush",
+      "symbol": "_IO_wfile_sync",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_wfile_sync_delegates_to_fflush [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "boundary",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_wfile_sync::IO_wfile_sync_delegates_to_fflush [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_wfile_sync_delegates_to_fflush' for '_IO_wfile_sync' and compare it against conformance_matrix::missing::_IO_wfile_sync::IO_wfile_sync_delegates_to_fflush [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_wfile_sync' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_adjust_wcolumn::hardened::IO_adjust_wcolumn_newline_resets",
+      "symbol": "_IO_adjust_wcolumn",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_adjust_wcolumn_newline_resets [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_wcolumn::IO_adjust_wcolumn_newline_resets [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_wcolumn_newline_resets' for '_IO_adjust_wcolumn' and compare it against conformance_matrix::missing::_IO_adjust_wcolumn::IO_adjust_wcolumn_newline_resets [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_wcolumn' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_adjust_wcolumn::strict::IO_adjust_wcolumn_newline_resets",
+      "symbol": "_IO_adjust_wcolumn",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_adjust_wcolumn_newline_resets [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_adjust_wcolumn::IO_adjust_wcolumn_newline_resets [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_adjust_wcolumn_newline_resets' for '_IO_adjust_wcolumn' and compare it against conformance_matrix::missing::_IO_adjust_wcolumn::IO_adjust_wcolumn_newline_resets [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_adjust_wcolumn' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_list_lock::hardened::IO_list_lock_is_noop",
+      "symbol": "_IO_list_lock",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_list_lock_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_list_lock::IO_list_lock_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_list_lock_is_noop' for '_IO_list_lock' and compare it against conformance_matrix::missing::_IO_list_lock::IO_list_lock_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_list_lock' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_list_lock::strict::IO_list_lock_is_noop",
+      "symbol": "_IO_list_lock",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_list_lock_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_list_lock::IO_list_lock_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_list_lock_is_noop' for '_IO_list_lock' and compare it against conformance_matrix::missing::_IO_list_lock::IO_list_lock_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_list_lock' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_list_resetlock::hardened::IO_list_resetlock_is_noop",
+      "symbol": "_IO_list_resetlock",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_list_resetlock_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_list_resetlock::IO_list_resetlock_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_list_resetlock_is_noop' for '_IO_list_resetlock' and compare it against conformance_matrix::missing::_IO_list_resetlock::IO_list_resetlock_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_list_resetlock' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_list_resetlock::strict::IO_list_resetlock_is_noop",
+      "symbol": "_IO_list_resetlock",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_list_resetlock_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_list_resetlock::IO_list_resetlock_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_list_resetlock_is_noop' for '_IO_list_resetlock' and compare it against conformance_matrix::missing::_IO_list_resetlock::IO_list_resetlock_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_list_resetlock' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_list_unlock::hardened::IO_list_unlock_is_noop",
+      "symbol": "_IO_list_unlock",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "IO_list_unlock_is_noop [hardened]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_list_unlock::IO_list_unlock_is_noop [hardened]::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_list_unlock_is_noop' for '_IO_list_unlock' and compare it against conformance_matrix::missing::_IO_list_unlock::IO_list_unlock_is_noop [hardened]::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_list_unlock' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::_IO_list_unlock::strict::IO_list_unlock_is_noop",
+      "symbol": "_IO_list_unlock",
+      "symbol_family": "io_internal",
+      "owner": "io_internal_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "IO_list_unlock_is_noop [strict]",
+      "spec_section": "glibc libio internal",
+      "edge_class": "other_edge",
+      "expected_output": "void",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::_IO_list_unlock::IO_list_unlock_is_noop [strict]::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/io_internal_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'IO_list_unlock_is_noop' for '_IO_list_unlock' and compare it against conformance_matrix::missing::_IO_list_unlock::IO_list_unlock_is_noop [strict]::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so '_IO_list_unlock' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::system::hardened::system_returns_status_hardened",
+      "symbol": "system",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "stdlib_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "hardened",
+      "case_id": "system_returns_status_hardened",
+      "spec_section": "C11 7.22.4.8",
+      "edge_class": "other_edge",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::system::system_returns_status_hardened::hardened",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'system_returns_status_hardened' for 'system' and compare it against conformance_matrix::missing::system::system_returns_status_hardened::hardened.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'system' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 250,
+      "trace_id": "missing::system::strict::system_returns_status_strict",
+      "symbol": "system",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "stdlib_abi",
+      "support_status": "Implemented",
+      "runtime_mode": "strict",
+      "case_id": "system_returns_status_strict",
+      "spec_section": "C11 7.22.4.8",
+      "edge_class": "other_edge",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::system::system_returns_status_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'system_returns_status_strict' for 'system' and compare it against conformance_matrix::missing::system::system_returns_status_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'system' runs for this scenario."
       ]
     },
     {
@@ -5571,6 +7924,34 @@
     },
     {
       "priority_score": 190,
+      "trace_id": "missing::semop::strict::semop_wait_strict",
+      "symbol": "semop",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "semop_wait_strict",
+      "spec_section": "POSIX semop(2)",
+      "edge_class": "error_condition",
+      "expected_output": "-1",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 11,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::semop::semop_wait_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'semop_wait_strict' for 'semop' and compare it against conformance_matrix::missing::semop::semop_wait_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'semop' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 190,
       "trace_id": "franken_shadow::unistd::write::strict::read_write_pipe",
       "symbol": "write",
       "symbol_family": "unistd",
@@ -5683,35 +8064,6 @@
         "Inspect fixture 'dlerror_after_success_strict' for 'dlerror' and compare it against conformance_matrix::trace_id::franken_shadow::dlfcn_ops::dlerror::strict::dlerror_after_success_strict.",
         "Add 'dlerror' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: dlerror"
-      ]
-    },
-    {
-      "priority_score": 185,
-      "trace_id": "franken_shadow::loader_edges::dlinfo::strict::dlinfo_rtld_di_linkmap_strict",
-      "symbol": "dlinfo",
-      "symbol_family": "loader_edges",
-      "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
-      "runtime_mode": "strict",
-      "case_id": "dlinfo_rtld_di_linkmap_strict",
-      "spec_section": "GNU dlinfo(3)",
-      "edge_class": "other_edge",
-      "expected_output": "valid_link_map",
-      "actual_output": "unsupported:unsupported function: dlinfo",
-      "host_output": null,
-      "expected_errno": 0,
-      "actual_errno": null,
-      "status": "error",
-      "failure_kind": "unsupported_function",
-      "diff_ref": "conformance_matrix::trace_id::franken_shadow::loader_edges::dlinfo::strict::dlinfo_rtld_di_linkmap_strict",
-      "artifact_refs": [
-        "tests/conformance/fixtures/loader_edges.json",
-        "tests/conformance/conformance_matrix.v1.json"
-      ],
-      "triage_steps": [
-        "Inspect fixture 'dlinfo_rtld_di_linkmap_strict' for 'dlinfo' and compare it against conformance_matrix::trace_id::franken_shadow::loader_edges::dlinfo::strict::dlinfo_rtld_di_linkmap_strict.",
-        "Add 'dlinfo' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
-        "Recorded execution error: unsupported function: dlinfo"
       ]
     },
     {
@@ -5944,6 +8296,118 @@
         "Inspect fixture 'pthread_create_multiple_concurrent' for 'pthread_create' and compare it against conformance_matrix::trace_id::franken_shadow::pthread/thread::pthread_create::strict::pthread_create_multiple_concurrent.",
         "Add 'pthread_create' to frankenlibc_conformance::execute_fixture_case or narrow the fixture until the harness can execute it deterministically.",
         "Recorded execution error: unsupported function: pthread_create"
+      ]
+    },
+    {
+      "priority_score": 165,
+      "trace_id": "missing::shmat::strict::shmat_attach_strict",
+      "symbol": "shmat",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "shmat_attach_strict",
+      "spec_section": "POSIX shmat(2)",
+      "edge_class": "boundary",
+      "expected_output": "valid_ptr",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::shmat::shmat_attach_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'shmat_attach_strict' for 'shmat' and compare it against conformance_matrix::missing::shmat::shmat_attach_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'shmat' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 160,
+      "trace_id": "missing::msgget::strict::msgget_create_strict",
+      "symbol": "msgget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "msgget_create_strict",
+      "spec_section": "POSIX msgget(2)",
+      "edge_class": "other_edge",
+      "expected_output": "valid_msqid",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::msgget::msgget_create_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'msgget_create_strict' for 'msgget' and compare it against conformance_matrix::missing::msgget::msgget_create_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'msgget' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 160,
+      "trace_id": "missing::semctl::strict::semctl_setval_strict",
+      "symbol": "semctl",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "semctl_setval_strict",
+      "spec_section": "POSIX semctl(2)",
+      "edge_class": "other_edge",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::semctl::semctl_setval_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'semctl_setval_strict' for 'semctl' and compare it against conformance_matrix::missing::semctl::semctl_setval_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'semctl' runs for this scenario."
+      ]
+    },
+    {
+      "priority_score": 160,
+      "trace_id": "missing::shmdt::strict::shmdt_detach_strict",
+      "symbol": "shmdt",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "runtime_mode": "strict",
+      "case_id": "shmdt_detach_strict",
+      "spec_section": "POSIX shmdt(2)",
+      "edge_class": "other_edge",
+      "expected_output": "0",
+      "actual_output": null,
+      "host_output": null,
+      "expected_errno": 0,
+      "actual_errno": null,
+      "status": "missing_execution",
+      "failure_kind": "missing_execution",
+      "diff_ref": "conformance_matrix::missing::shmdt::shmdt_detach_strict::strict",
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json",
+        "tests/conformance/conformance_matrix.v1.json"
+      ],
+      "triage_steps": [
+        "Inspect fixture 'shmdt_detach_strict' for 'shmdt' and compare it against conformance_matrix::missing::shmdt::shmdt_detach_strict::strict.",
+        "Regenerate the conformance matrix or add missing execution wiring so 'shmdt' runs for this scenario."
       ]
     },
     {

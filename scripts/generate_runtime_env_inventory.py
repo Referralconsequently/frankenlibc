@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic FRANKENLIBC_* env inventory from code."""
+"""Generate deterministic inventory for documented FRANKENLIBC_* environment keys."""
 
 from __future__ import annotations
 
@@ -413,7 +413,12 @@ def build_inventory(findings: dict[str, list[dict[str, Any]]]) -> dict[str, Any]
     inventory: list[dict[str, Any]] = []
     unknown_or_ambiguous: list[dict[str, Any]] = []
 
+    # This inventory is the canonical set of documented runtime/tooling env knobs.
+    # Test-only probes and ad hoc gate-local overrides are intentionally excluded
+    # unless they are promoted into the documented semantics table.
     for key in sorted(findings):
+        if key not in SEMANTICS:
+            continue
         accesses = sorted(findings[key], key=lambda row: (row["path"], row["line"]))
         counts = {"read": 0, "write": 0, "read_write": 0, "reference": 0}
         for access in accesses:
@@ -510,6 +515,8 @@ def main() -> int:
 
     if args.stdout:
         sys.stdout.write(rendered)
+        if not args.check:
+            return 0
 
     if args.check:
         if not output_path.exists():
@@ -524,7 +531,8 @@ def main() -> int:
             )
             return 1
         print(
-            f"PASS: runtime env inventory is up-to-date ({payload['summary']['total_keys']} keys)"
+            f"PASS: runtime env inventory is up-to-date ({payload['summary']['total_keys']} keys)",
+            file=sys.stderr if args.stdout else sys.stdout,
         )
         return 0
 

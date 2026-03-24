@@ -1,14 +1,14 @@
 {
   "schema_version": "v1",
   "bead": "bd-15n.3",
-  "generated_at": "2026-03-02T19:54:55Z",
+  "generated_at": "2026-03-24T00:32:32Z",
   "summary": {
-    "total_symbols": 2764,
-    "symbols_with_fixtures": 198,
-    "coverage_pct": 7,
-    "total_fixture_files": 50,
-    "total_fixture_cases": 514,
-    "total_families": 41
+    "total_symbols": 3980,
+    "symbols_with_fixtures": 230,
+    "coverage_pct": 6,
+    "total_fixture_files": 51,
+    "total_fixture_cases": 558,
+    "total_families": 42
   },
   "module_coverage": {
     "c11threads_abi": {
@@ -17,9 +17,9 @@
       "pct": 0
     },
     "ctype_abi": {
-      "total": 37,
+      "total": 49,
       "covered": 11,
-      "pct": 30
+      "pct": 22
     },
     "dirent_abi": {
       "total": 14,
@@ -27,9 +27,9 @@
       "pct": 21
     },
     "dlfcn_abi": {
-      "total": 6,
+      "total": 7,
       "covered": 5,
-      "pct": 83
+      "pct": 71
     },
     "err_abi": {
       "total": 8,
@@ -52,7 +52,7 @@
       "pct": 0
     },
     "glibc_internal_abi": {
-      "total": 368,
+      "total": 566,
       "covered": 1,
       "pct": 0
     },
@@ -78,23 +78,28 @@
     },
     "io_internal_abi": {
       "total": 114,
+      "covered": 27,
+      "pct": 24
+    },
+    "isoc_abi": {
+      "total": 5,
       "covered": 0,
       "pct": 0
     },
     "locale_abi": {
       "total": 16,
-      "covered": 3,
-      "pct": 19
+      "covered": 8,
+      "pct": 50
     },
     "malloc_abi": {
-      "total": 17,
+      "total": 21,
       "covered": 4,
-      "pct": 24
+      "pct": 19
     },
     "math_abi": {
-      "total": 152,
+      "total": 1265,
       "covered": 19,
-      "pct": 12
+      "pct": 2
     },
     "mmap_abi": {
       "total": 10,
@@ -112,9 +117,9 @@
       "pct": 13
     },
     "pthread_abi": {
-      "total": 115,
+      "total": 141,
       "covered": 20,
-      "pct": 17
+      "pct": 14
     },
     "pwd_abi": {
       "total": 27,
@@ -132,7 +137,12 @@
       "pct": 50
     },
     "rpc_abi": {
-      "total": 152,
+      "total": 159,
+      "covered": 0,
+      "pct": 0
+    },
+    "runtime_policy": {
+      "total": 1,
       "covered": 0,
       "pct": 0
     },
@@ -142,9 +152,9 @@
       "pct": 0
     },
     "setjmp_abi": {
-      "total": 6,
+      "total": 7,
       "covered": 3,
-      "pct": 50
+      "pct": 43
     },
     "signal_abi": {
       "total": 28,
@@ -167,19 +177,19 @@
       "pct": 0
     },
     "stdio_abi": {
-      "total": 117,
+      "total": 124,
       "covered": 9,
-      "pct": 8
+      "pct": 7
     },
     "stdlib_abi": {
-      "total": 125,
+      "total": 141,
       "covered": 7,
-      "pct": 6
+      "pct": 5
     },
     "string_abi": {
-      "total": 91,
+      "total": 140,
       "covered": 21,
-      "pct": 23
+      "pct": 15
     },
     "termios_abi": {
       "total": 10,
@@ -187,24 +197,19 @@
       "pct": 50
     },
     "time_abi": {
-      "total": 24,
+      "total": 26,
       "covered": 4,
-      "pct": 17
+      "pct": 15
     },
     "unistd_abi": {
-      "total": 633,
+      "total": 631,
       "covered": 27,
       "pct": 4
     },
-    "unknown": {
-      "total": 296,
-      "covered": 0,
-      "pct": 0
-    },
     "wchar_abi": {
-      "total": 78,
+      "total": 147,
       "covered": 14,
-      "pct": 18
+      "pct": 10
     }
   },
   "family_coverage": {
@@ -303,6 +308,39 @@
         "ntohs"
       ]
     },
+    "io": {
+      "function_count": 28,
+      "functions": [
+        "_IO_adjust_column",
+        "_IO_adjust_wcolumn",
+        "_IO_default_doallocate",
+        "_IO_default_finish",
+        "_IO_doallocbuf",
+        "_IO_file_init",
+        "_IO_free_backup_area",
+        "_IO_free_wbackup_area",
+        "_IO_init",
+        "_IO_iter_begin",
+        "_IO_iter_end",
+        "_IO_link_in",
+        "_IO_list_lock",
+        "_IO_list_resetlock",
+        "_IO_list_unlock",
+        "_IO_marker_delta",
+        "_IO_marker_difference",
+        "_IO_seekmark",
+        "_IO_str_overflow",
+        "_IO_str_underflow",
+        "_IO_sungetc",
+        "_IO_sungetwc",
+        "_IO_switch_to_wget_mode",
+        "_IO_un_link",
+        "_IO_wdefault_doallocate",
+        "_IO_wdefault_uflow",
+        "_IO_wfile_sync",
+        "dlinfo"
+      ]
+    },
     "loader": {
       "function_count": 5,
       "functions": [
@@ -314,11 +352,16 @@
       ]
     },
     "locale": {
-      "function_count": 3,
+      "function_count": 8,
       "functions": [
+        "duplocale",
+        "freelocale",
         "localeconv",
+        "newlocale",
         "nl_langinfo",
-        "setlocale"
+        "nl_langinfo_l",
+        "setlocale",
+        "uselocale"
       ]
     },
     "math": {
@@ -757,8 +800,8 @@
     },
     "iconv_phase1": {
       "file": "iconv_phase1.json",
-      "sha256": "e3f0bbfb8461fe63190885caa53640ff4151710c969d482a1900de2a837d287e",
-      "case_count": 11,
+      "sha256": "be8d3d6a8a3b1a98e078d427f2cbccb8e2c524c86502522b4ba468266e2439f7",
+      "case_count": 13,
       "functions": [
         "iconv",
         "iconv_close",
@@ -785,6 +828,44 @@
         "inet"
       ]
     },
+    "io_internal_ops": {
+      "file": "io_internal_ops.json",
+      "sha256": "8a26240ddd05b84de47d2d86ca481631f23336c9618f5bb91b8eb52c3b926644",
+      "case_count": 31,
+      "functions": [
+        "_IO_adjust_column",
+        "_IO_adjust_wcolumn",
+        "_IO_default_doallocate",
+        "_IO_default_finish",
+        "_IO_doallocbuf",
+        "_IO_file_init",
+        "_IO_free_backup_area",
+        "_IO_free_wbackup_area",
+        "_IO_init",
+        "_IO_iter_begin",
+        "_IO_iter_end",
+        "_IO_link_in",
+        "_IO_list_lock",
+        "_IO_list_resetlock",
+        "_IO_list_unlock",
+        "_IO_marker_delta",
+        "_IO_marker_difference",
+        "_IO_seekmark",
+        "_IO_str_overflow",
+        "_IO_str_underflow",
+        "_IO_sungetc",
+        "_IO_sungetwc",
+        "_IO_switch_to_wget_mode",
+        "_IO_un_link",
+        "_IO_wdefault_doallocate",
+        "_IO_wdefault_uflow",
+        "_IO_wfile_sync",
+        "dlinfo"
+      ],
+      "families": [
+        "io"
+      ]
+    },
     "loader_edges": {
       "file": "loader_edges.json",
       "sha256": "9edc36e71269c8d543f896d861f505e55ca7794665627c58bcfd66463253c566",
@@ -802,12 +883,17 @@
     },
     "locale_ops": {
       "file": "locale_ops.json",
-      "sha256": "6c6079a7d2c8c9bb63abad1b11e942c507d262b0c306796cf023e9b04cb6cdcc",
-      "case_count": 9,
+      "sha256": "ca9f30369414f66e38d0d5dd9fad0d545797899228d41b4aff69b06b7f3d6f02",
+      "case_count": 20,
       "functions": [
+        "duplocale",
+        "freelocale",
         "localeconv",
+        "newlocale",
         "nl_langinfo",
-        "setlocale"
+        "nl_langinfo_l",
+        "setlocale",
+        "uselocale"
       ],
       "families": [
         "locale"
@@ -920,7 +1006,7 @@
     },
     "pthread_cond": {
       "file": "pthread_cond.json",
-      "sha256": "ad53ffc024cc2dc825885ba0d77e8dae4428fdbab480e4ba977e7bc0b0adde21",
+      "sha256": "7a5ce4972e4653392b99cffde12cbbb65a80c1e0b531ac4c233c299505025a92",
       "case_count": 24,
       "functions": [
         "pthread_cond_broadcast",
@@ -1050,7 +1136,7 @@
     },
     "setjmp_nested_edges": {
       "file": "setjmp_nested_edges.json",
-      "sha256": "f94c807549fa1a09b284a8488d34f7334b984446b884ae38db00ef1a2a61f3c2",
+      "sha256": "27c0eeaccad717ccce8293ca35f2c6c3efe0b5d9cc7faa159fe1484e0371be8e",
       "case_count": 1,
       "functions": [],
       "families": [
@@ -1100,7 +1186,7 @@
     },
     "spawn_exec_ops": {
       "file": "spawn_exec_ops.json",
-      "sha256": "8bb21d0ac9c25b3363e520dc0d9d7f183c6d1720b7d3dd6e9694b963e85b5ec3",
+      "sha256": "49b90ed9954554b61b755984e692d11a768dade059a14c3fd9a3dd95c4321603",
       "case_count": 7,
       "functions": [
         "execve",
@@ -1250,7 +1336,7 @@
     },
     "sysv_ipc_ops": {
       "file": "sysv_ipc_ops.json",
-      "sha256": "cb6e5265b34f174ca475366a249d098bffb24f9e593ae66db94c8d2f02fe23e4",
+      "sha256": "c865a7ead77ca54ea6266d31ada4e0d665f8c37df4b5f8e5379c6a9ab248a9f5",
       "case_count": 9,
       "functions": [
         "msgget",

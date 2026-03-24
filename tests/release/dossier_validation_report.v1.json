@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-5fw.3",
-  "generated_at": "2026-02-13T18:17:07Z",
+  "generated_at": "2026-03-24T00:32:57Z",
   "status": "fail",
   "verdict": "FAIL",
   "summary": {
@@ -26,8 +26,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "2324aa1931efbd4114e7b3789d7c96343f788714ac16c6db1f9b9728c45eba04",
-      "size_bytes": 94740,
+      "sha256": "ed0deb8c8200bb5937ea4c14fa84fdb3654b49d852ad94aab8372a6bcf07e372",
+      "size_bytes": 940077,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -38,8 +38,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "65773489ab4f63f6635aab70894b16a982938561276fb4f33ec1a635b821e23d",
-      "size_bytes": 198,
+      "sha256": "b6cca14228cdd0541feab9bc03bd299549cc829a10638fbf312bb444f3d0224a",
+      "size_bytes": 200,
       "status": "PRESENT",
       "schema_valid": false,
       "findings": [
@@ -55,8 +55,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "1845a98a857857fde48f90dd42fe42901816bc5393d047dad40ab975f944c2b9",
-      "size_bytes": 23144,
+      "sha256": "0fa209fc51a8e89d30cdd88e420cfed07e941f6178e3b58938f34646efbefaa0",
+      "size_bytes": 30761,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -79,8 +79,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "503cfe0bbea583fc9691aa12cd7a4b3d15ab9c6eaab2bc265fa5f61bea80aad7",
-      "size_bytes": 6806,
+      "sha256": "7b20638791971f38d39f574ae215d0d834c424598e8c2704e21aa628d68bf95b",
+      "size_bytes": 7170,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -91,8 +91,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "453329e43db3a24e7e0eec5da539047317331e9fd0d768ab99a1fed19fda9c31",
-      "size_bytes": 6344,
+      "sha256": "cf3df654ee792884d974b5fefcf2380c886cbc8c9e9c2f793384850f8b4366dc",
+      "size_bytes": 6513,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -127,8 +127,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "c00cbdf0d1cde452d023f93d40996dbd12441fa74d826f7af84a9e05859a341f",
-      "size_bytes": 27378,
+      "sha256": "01efc828d2ac28e49e42cb64479d68c8575b72ad244cf5a01821dda036eca688",
+      "size_bytes": 35306,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -139,8 +139,8 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "9f2c960eb6fbe55423b6361e8c4a5620b37a5cb1481f68f81f84718ad27cd3a6",
-      "size_bytes": 15248,
+      "sha256": "20ecc84df8e57e5f06f8b8a35fc41aa0dfca6dd69d3a452a8929a032f5dc525b",
+      "size_bytes": 23809,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -151,8 +151,8 @@
       "kind": "manifest",
       "required": true,
       "critical": true,
-      "sha256": "70a072e133e25bda2572f3660886afdcfd1893378868414211f5e48823b7518a",
-      "size_bytes": 2503,
+      "sha256": "61ce88e5be9aae5d645337c4060c10bbf2a9ad0ff735b64fe7365a7938f188cf",
+      "size_bytes": 2523,
       "status": "VALID",
       "schema_valid": true,
       "findings": []
@@ -214,18 +214,18 @@
   "integrity_index": {
     "support_matrix": {
       "path": "support_matrix.json",
-      "sha256": "2324aa1931efbd4114e7b3789d7c96343f788714ac16c6db1f9b9728c45eba04",
-      "size_bytes": 94740
+      "sha256": "ed0deb8c8200bb5937ea4c14fa84fdb3654b49d852ad94aab8372a6bcf07e372",
+      "size_bytes": 940077
     },
     "reality_report": {
       "path": "tests/conformance/reality_report.v1.json",
-      "sha256": "65773489ab4f63f6635aab70894b16a982938561276fb4f33ec1a635b821e23d",
-      "size_bytes": 198
+      "sha256": "b6cca14228cdd0541feab9bc03bd299549cc829a10638fbf312bb444f3d0224a",
+      "size_bytes": 200
     },
     "conformance_coverage": {
       "path": "tests/conformance/conformance_coverage_baseline.v1.json",
-      "sha256": "1845a98a857857fde48f90dd42fe42901816bc5393d047dad40ab975f944c2b9",
-      "size_bytes": 23144
+      "sha256": "0fa209fc51a8e89d30cdd88e420cfed07e941f6178e3b58938f34646efbefaa0",
+      "size_bytes": 30761
     },
     "claim_reconciliation": {
       "path": "tests/conformance/claim_reconciliation_report.v1.json",
@@ -234,13 +234,13 @@
     },
     "closure_sweep": {
       "path": "tests/conformance/closure_sweep_report.v1.json",
-      "sha256": "503cfe0bbea583fc9691aa12cd7a4b3d15ab9c6eaab2bc265fa5f61bea80aad7",
-      "size_bytes": 6806
+      "sha256": "7b20638791971f38d39f574ae215d0d834c424598e8c2704e21aa628d68bf95b",
+      "size_bytes": 7170
     },
     "replacement_levels": {
       "path": "tests/conformance/replacement_levels.json",
-      "sha256": "453329e43db3a24e7e0eec5da539047317331e9fd0d768ab99a1fed19fda9c31",
-      "size_bytes": 6344
+      "sha256": "cf3df654ee792884d974b5fefcf2380c886cbc8c9e9c2f793384850f8b4366dc",
+      "size_bytes": 6513
     },
     "opportunity_matrix": {
       "path": "tests/conformance/opportunity_matrix.json",
@@ -254,18 +254,18 @@
     },
     "controller_ablation": {
       "path": "tests/runtime_math/controller_ablation_report.v1.json",
-      "sha256": "c00cbdf0d1cde452d023f93d40996dbd12441fa74d826f7af84a9e05859a341f",
-      "size_bytes": 27378
+      "sha256": "01efc828d2ac28e49e42cb64479d68c8575b72ad244cf5a01821dda036eca688",
+      "size_bytes": 35306
     },
     "admission_gate": {
       "path": "tests/runtime_math/admission_gate_report.v1.json",
-      "sha256": "9f2c960eb6fbe55423b6361e8c4a5620b37a5cb1481f68f81f84718ad27cd3a6",
-      "size_bytes": 15248
+      "sha256": "20ecc84df8e57e5f06f8b8a35fc41aa0dfca6dd69d3a452a8929a032f5dc525b",
+      "size_bytes": 23809
     },
     "production_kernel_manifest": {
       "path": "tests/runtime_math/production_kernel_manifest.v1.json",
-      "sha256": "70a072e133e25bda2572f3660886afdcfd1893378868414211f5e48823b7518a",
-      "size_bytes": 2503
+      "sha256": "61ce88e5be9aae5d645337c4060c10bbf2a9ad0ff735b64fe7365a7938f188cf",
+      "size_bytes": 2523
     },
     "release_gate_dag": {
       "path": "tests/conformance/release_gate_dag.v1.json",

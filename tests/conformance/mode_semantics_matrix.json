@@ -29,7 +29,7 @@
       "family": "Allocator",
       "api_family_enum": "Allocator",
       "module": "malloc_abi",
-      "heals_call_sites": 3,
+      "heals_call_sites": 4,
       "symbols": [
         "malloc",
         "free",
@@ -61,7 +61,7 @@
       "family": "StringMemory",
       "api_family_enum": "StringMemory",
       "module": "string_abi",
-      "heals_call_sites": 17,
+      "heals_call_sites": 38,
       "symbols": [
         "memcpy",
         "memmove",
@@ -100,7 +100,7 @@
       "family": "WideChar",
       "api_family_enum": "StringMemory",
       "module": "wchar_abi",
-      "heals_call_sites": 14,
+      "heals_call_sites": 25,
       "symbols": [
         "wcslen",
         "wcscpy",
@@ -135,7 +135,7 @@
       "family": "Stdio",
       "api_family_enum": "Stdio",
       "module": "stdio_abi",
-      "heals_call_sites": 2,
+      "heals_call_sites": 5,
       "symbols": [
         "fopen",
         "fclose",
@@ -194,7 +194,7 @@
       "family": "MathFenv",
       "api_family_enum": "MathFenv",
       "module": "math_abi",
-      "heals_call_sites": 3,
+      "heals_call_sites": 10,
       "symbols": [
         "sin",
         "cos",
@@ -260,7 +260,7 @@
       "family": "Socket",
       "api_family_enum": "Socket",
       "module": "socket_abi",
-      "heals_call_sites": 3,
+      "heals_call_sites": 5,
       "symbols": [
         "socket",
         "bind",
@@ -360,7 +360,7 @@
       "family": "Time",
       "api_family_enum": "Time",
       "module": "time_abi",
-      "heals_call_sites": 3,
+      "heals_call_sites": 0,
       "symbols": [
         "time",
         "gettimeofday",
@@ -500,7 +500,7 @@
       "family": "Locale",
       "api_family_enum": "Locale",
       "module": "locale_abi",
-      "heals_call_sites": 1,
+      "heals_call_sites": 2,
       "symbols": [
         "setlocale",
         "localeconv"
@@ -516,7 +516,7 @@
       "family": "Resolver",
       "api_family_enum": "Resolver",
       "module": "resolv_abi",
-      "heals_call_sites": 2,
+      "heals_call_sites": 4,
       "symbols": [
         "getaddrinfo",
         "freeaddrinfo",
@@ -536,7 +536,7 @@
       "family": "Unistd",
       "api_family_enum": "IoFd",
       "module": "unistd_abi",
-      "heals_call_sites": 4,
+      "heals_call_sites": 12,
       "symbols": [
         "access",
         "getcwd",
@@ -572,8 +572,8 @@
   ],
   "summary": {
     "total_families": 20,
-    "families_with_healing": 19,
-    "total_heals_call_sites": 81,
+    "families_with_healing": 18,
+    "total_heals_call_sites": 134,
     "healing_actions": [
       "ClampSize",
       "TruncateWithNull",

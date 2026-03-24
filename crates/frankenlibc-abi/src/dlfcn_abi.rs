@@ -45,7 +45,7 @@ fn clear_dlerror() {
 #[inline]
 pub(crate) unsafe fn dlvsym_next(symbol: *const c_char, version: *const c_char) -> *mut c_void {
     // SAFETY: callers provide symbol/version pointers for host-side symbol lookup.
-    unsafe { libc::dlvsym(libc::RTLD_NEXT, symbol, version) }
+    unsafe { crate::host_resolve::host_dlvsym_next_raw(symbol, version) }
 }
 
 #[inline]
@@ -150,17 +150,21 @@ fn close_main_program_handle() -> c_int {
 pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void {
     if runtime_policy::bootstrap_passthrough_active() {
         if filename.is_null() {
+            clear_dlerror();
             return open_main_program_handle();
         }
         if !dlfcn_core::valid_flags(flags) {
+            set_dlerror(dlfcn_core::ERR_INVALID_FLAGS);
             return std::ptr::null_mut();
         }
         let name = unsafe { CStr::from_ptr(filename) }.to_bytes();
         return if name.is_empty()
             || ((flags & dlfcn_core::RTLD_NOLOAD) != 0 && library_alias_matches(name))
         {
+            clear_dlerror();
             open_main_program_handle()
         } else {
+            set_dlerror(dlfcn_core::ERR_NOT_FOUND);
             std::ptr::null_mut()
         };
     }
@@ -231,10 +235,17 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
 pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
     if runtime_policy::bootstrap_passthrough_active() {
         if symbol.is_null() || !is_native_handle(handle) {
+            set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
             return std::ptr::null_mut();
         }
         let symbol_name = unsafe { CStr::from_ptr(symbol) }.to_bytes();
-        return resolve_exported_symbol(symbol_name);
+        let sym = resolve_exported_symbol(symbol_name);
+        if sym.is_null() {
+            set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+        } else {
+            clear_dlerror();
+        }
+        return sym;
     }
 
     let (_, decision) =
@@ -261,28 +272,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     let symbol_name = unsafe { CStr::from_ptr(symbol) }.to_bytes();
     clear_dlerror();
 
-    let handle_val = handle as usize;
-    let sym = if handle_val != dlfcn_core::RTLD_DEFAULT
-        && handle_val != dlfcn_core::RTLD_NEXT
-        && !is_main_program_handle(handle)
-    {
-        // Real library handle — delegate to host via dlvsym_next-style lookup
-        // since we can't call host dlsym directly (it's us).
-        // Try versioned resolution first, then fall back to our table.
-        let mut found = std::ptr::null_mut();
-        for ver in [c"GLIBC_2.34", c"GLIBC_2.2.5", c"GLIBC_2.17"] {
-            found = unsafe { dlvsym_next(symbol, ver.as_ptr()) };
-            if !found.is_null() { break; }
-        }
-        if found.is_null() {
-            // Fall back to our internal table
-            resolve_exported_symbol(symbol_name)
-        } else {
-            found
-        }
-    } else {
-        resolve_exported_symbol(symbol_name)
-    };
+    let sym = resolve_exported_symbol(symbol_name);
 
     let adverse = sym.is_null();
     if adverse {
@@ -301,13 +291,21 @@ pub unsafe extern "C" fn dlvsym(
 ) -> *mut c_void {
     if runtime_policy::bootstrap_passthrough_active() {
         if symbol.is_null() || version.is_null() || !is_native_handle(handle) {
+            set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
             return std::ptr::null_mut();
         }
         let symbol_name = unsafe { CStr::from_ptr(symbol) }.to_bytes();
         let version_name = unsafe { CStr::from_ptr(version) }.to_bytes();
         return if version_supported(version_name) {
-            resolve_exported_symbol(symbol_name)
+            let sym = resolve_exported_symbol(symbol_name);
+            if sym.is_null() {
+                set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
+            } else {
+                clear_dlerror();
+            }
+            sym
         } else {
+            set_dlerror(dlfcn_core::ERR_SYMBOL_NOT_FOUND);
             std::ptr::null_mut()
         };
     }
@@ -361,9 +359,16 @@ pub unsafe extern "C" fn dlvsym(
 pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> c_int {
     if runtime_policy::bootstrap_passthrough_active() {
         if handle.is_null() || !is_main_program_handle(handle) {
+            set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
             return -1;
         }
-        return close_main_program_handle();
+        let rc = close_main_program_handle();
+        if rc == 0 {
+            clear_dlerror();
+        } else {
+            set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
+        }
+        return rc;
     }
 
     let (_, decision) =

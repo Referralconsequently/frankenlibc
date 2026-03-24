@@ -1021,6 +1021,11 @@ pub(crate) fn signal_runtime_ready() {
     RUNTIME_READY.store(1, AtomicOrdering::Release);
 }
 
+#[inline]
+fn strict_runtime_kernel_fast_path(mode: SafetyLevel) -> bool {
+    cfg!(not(test)) && matches!(mode, SafetyLevel::Strict)
+}
+
 pub(crate) fn decide(
     family: ApiFamily,
     addr_hint: usize,
@@ -1037,6 +1042,19 @@ pub(crate) fn decide(
     }
 
     let mode = mode();
+    if strict_runtime_kernel_fast_path(mode) {
+        let decision = passthrough_decision();
+        let ctx = RuntimeContext {
+            family,
+            addr_hint,
+            requested_bytes,
+            is_write,
+            contention_hint,
+            bloom_negative,
+        };
+        record_last_explainability(mode, ctx, decision);
+        return (mode, decision);
+    }
     MODE_LOG_READY.store(1, AtomicOrdering::Relaxed);
     let ctx = RuntimeContext {
         family,
@@ -1079,6 +1097,10 @@ pub(crate) fn observe(
     adverse: bool,
 ) {
     let mode = mode();
+    if strict_runtime_kernel_fast_path(mode) {
+        let _ = (family, profile, estimated_cost_ns, adverse);
+        return;
+    }
     let Some(_reentry_guard) = enter_policy_reentry_guard() else {
         return;
     };
@@ -1099,6 +1121,10 @@ pub(crate) fn check_ordering(
     aligned: bool,
     recent_page: bool,
 ) -> [CheckStage; 7] {
+    if strict_runtime_kernel_fast_path(mode()) {
+        let _ = (family, aligned, recent_page);
+        return PASSTHROUGH_ORDERING;
+    }
     let Some(_reentry_guard) = enter_policy_reentry_guard() else {
         return PASSTHROUGH_ORDERING;
     };
@@ -1125,6 +1151,10 @@ pub(crate) fn note_check_order_outcome(
     exit_stage: Option<usize>,
 ) {
     let mode = mode();
+    if strict_runtime_kernel_fast_path(mode) {
+        let _ = (family, aligned, recent_page, ordering_used, exit_stage);
+        return;
+    }
     let Some(_reentry_guard) = enter_policy_reentry_guard() else {
         return;
     };

@@ -3,25 +3,21 @@
   "bead": "bd-2hh.5",
   "generated_at": "2026-03-19T17:47:00Z",
   "summary": {
-    "total_fixture_files": 50,
-    "valid_fixture_files": 49,
-    "invalid_fixture_files": 1,
-    "total_cases": 526,
-    "total_issues": 2,
-    "total_warnings": 2,
-    "unique_families": 49,
-    "unique_symbols": 218,
+    "total_fixture_files": 51,
+    "valid_fixture_files": 51,
+    "invalid_fixture_files": 0,
+    "total_cases": 567,
+    "total_issues": 0,
+    "total_warnings": 0,
+    "unique_families": 50,
+    "unique_symbols": 246,
     "determinism_verified": true
   },
   "regression_detection": {
-    "status": "attention_required",
-    "invalid_fixture_files": [
-      "setjmp_nested_edges.json"
-    ],
-    "invalid_fixture_issue_counts": {
-      "setjmp_nested_edges.json": 2
-    },
-    "baseline_fixture_digest": "4b5b46ae9a862a8988aeba6de08cffd18b2da05c10b9e8cc356238e88e45d4bc"
+    "status": "clean",
+    "invalid_fixture_files": [],
+    "invalid_fixture_issue_counts": {},
+    "baseline_fixture_digest": "9f433758be2f0fdf8b67c8dfcd6f275df2331ebd15e91c74f3f964ae5bff416f"
   },
   "fixture_results": [
     {
@@ -120,6 +116,16 @@
       "family": "inet",
       "case_count": 15,
       "fixture_hash": "62799ba849186b2f",
+      "valid": true,
+      "issues": [],
+      "warnings": []
+    },
+    {
+      "file": "io_internal_ops.json",
+      "version": "v1",
+      "family": "io_internal",
+      "case_count": 31,
+      "fixture_hash": "1ab6804b3bb0942e",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -306,19 +312,13 @@
     },
     {
       "file": "setjmp_nested_edges.json",
-      "version": "",
+      "version": "v1",
       "family": "setjmp_nested_edges",
-      "case_count": 0,
-      "fixture_hash": "1567f09b74762383",
-      "valid": false,
-      "issues": [
-        "Missing top-level field: version",
-        "Missing top-level field: cases"
-      ],
-      "warnings": [
-        "Unexpected version: ",
-        "Empty cases array"
-      ]
+      "case_count": 10,
+      "fixture_hash": "d4f724d9db09826b",
+      "valid": true,
+      "issues": [],
+      "warnings": []
     },
     {
       "file": "setjmp_ops.json",
@@ -355,7 +355,7 @@
       "version": "v1",
       "family": "spawn_exec_ops",
       "case_count": 7,
-      "fixture_hash": "01c7e1a2984e37e9",
+      "fixture_hash": "9f1653399ce4ec14",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -455,7 +455,7 @@
       "version": "v1",
       "family": "sysv_ipc_ops",
       "case_count": 9,
-      "fixture_hash": "ce94800f46362daf",
+      "fixture_hash": "73fcb6006a564a29",
       "valid": true,
       "issues": [],
       "warnings": []
@@ -532,8 +532,8 @@
     }
   ],
   "regression_baseline": {
-    "symbol_count": 218,
-    "total_cases": 526,
+    "symbol_count": 246,
+    "total_cases": 567,
     "symbols": {
       "DnsHeader::new_query": {
         "count": 1,
@@ -587,6 +587,168 @@
         "count": 1,
         "fixtures": [
           "pressure_sensing.json"
+        ]
+      },
+      "_IO_adjust_column": {
+        "count": 3,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_adjust_wcolumn": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_default_doallocate": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_default_finish": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_doallocbuf": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_file_init": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_free_backup_area": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_free_wbackup_area": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_init": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_iter_begin": {
+        "count": 2,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_iter_end": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_link_in": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_list_lock": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_list_resetlock": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_list_unlock": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_marker_delta": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_marker_difference": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_seekmark": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_str_overflow": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_str_underflow": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_sungetc": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_sungetwc": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_switch_to_wget_mode": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_un_link": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_wdefault_doallocate": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_wdefault_uflow": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
+        ]
+      },
+      "_IO_wfile_sync": {
+        "count": 1,
+        "fixtures": [
+          "io_internal_ops.json"
         ]
       },
       "__errno_location": {
@@ -783,8 +945,9 @@
         ]
       },
       "dlinfo": {
-        "count": 1,
+        "count": 2,
         "fixtures": [
+          "io_internal_ops.json",
           "loader_edges.json"
         ]
       },
@@ -1564,6 +1727,12 @@
           "setjmp_ops.json"
         ]
       },
+      "setjmp_nested_edges": {
+        "count": 10,
+        "fixtures": [
+          "setjmp_nested_edges.json"
+        ]
+      },
       "setlocale": {
         "count": 5,
         "fixtures": [
@@ -1883,6 +2052,7 @@
     "grp_ops.json": "279b68d06ddfc898",
     "iconv_phase1.json": "87fdd9ddf249b35b",
     "inet_ops.json": "62799ba849186b2f",
+    "io_internal_ops.json": "1ab6804b3bb0942e",
     "loader_edges.json": "94470b86850542ab",
     "locale_ops.json": "2a70ac8fcef590d5",
     "math_ops.json": "d8fa7f90d4c4e242",
@@ -1901,11 +2071,11 @@
     "resolver.json": "2faf293979e764f5",
     "resource_ops.json": "3b779fa2599094c9",
     "session_ops.json": "5af770c141efd100",
-    "setjmp_nested_edges.json": "1567f09b74762383",
+    "setjmp_nested_edges.json": "d4f724d9db09826b",
     "setjmp_ops.json": "5f4c3e9a87d89872",
     "signal_ops.json": "51213c6ed30f1f86",
     "socket_ops.json": "a7aff9da3b994a10",
-    "spawn_exec_ops.json": "01c7e1a2984e37e9",
+    "spawn_exec_ops.json": "9f1653399ce4ec14",
     "startup_ops.json": "c9eda25f37ddc3a8",
     "stdio_file_ops.json": "e5e91fc456042f51",
     "stdlib_conversion.json": "17f389b5edfb0577",
@@ -1915,7 +2085,7 @@
     "string_ops.json": "757adc1d5e1210ee",
     "string_strtok.json": "1583e3ee178be3c6",
     "strlen_strict.json": "c6f04f65a2d41763",
-    "sysv_ipc_ops.json": "ce94800f46362daf",
+    "sysv_ipc_ops.json": "73fcb6006a564a29",
     "termios_ops.json": "9e1582831d56273a",
     "time_ops.json": "05f2c95398f01680",
     "unistd_ops.json": "34a343368a287270",

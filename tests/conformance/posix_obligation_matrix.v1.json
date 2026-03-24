@@ -5,15 +5,15 @@
   "summary": {
     "total_exported": 3980,
     "tracked_symbols": 3980,
-    "total_obligations": 214,
-    "covered_obligations": 46,
-    "mapped_without_execution": 90,
-    "obligations_with_execution_failures": 78,
-    "error_condition_obligations": 44,
-    "async_concurrency_obligations": 39,
-    "symbols_missing_any_mapping": 3811,
-    "symbols_missing_execution_evidence": 52,
-    "symbols_missing_error_conditions": 129,
+    "total_obligations": 223,
+    "covered_obligations": 82,
+    "mapped_without_execution": 72,
+    "obligations_with_execution_failures": 69,
+    "error_condition_obligations": 47,
+    "async_concurrency_obligations": 41,
+    "symbols_missing_any_mapping": 3802,
+    "symbols_missing_execution_evidence": 44,
+    "symbols_missing_error_conditions": 135,
     "symbols_missing_async_concurrency": 0
   },
   "obligations": [
@@ -24,7 +24,7 @@
       "symbol_family": "setjmp_ops",
       "owner": "setjmp_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "async_concurrency",
         "functional"
@@ -39,10 +39,10 @@
         "tests/conformance/fixtures/setjmp_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 1,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 1,
         "timeout": 0,
         "crash": 0
       }
@@ -587,8 +587,8 @@
       "symbol": "dlclose",
       "symbol_family": "loader_edges",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "coverage_state": "mapped_without_execution",
+      "support_status": "Implemented",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -604,10 +604,10 @@
         "tests/conformance/fixtures/loader_edges.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -648,7 +648,7 @@
       "symbol": "dlopen",
       "symbol_family": "dlfcn_ops",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
@@ -680,7 +680,7 @@
       "symbol": "dlopen",
       "symbol_family": "loader_edges",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
@@ -697,10 +697,10 @@
         "tests/conformance/fixtures/loader_edges.json"
       ],
       "execution": {
-        "total": 1,
+        "total": 3,
         "pass": 0,
         "fail": 0,
-        "error": 1,
+        "error": 3,
         "timeout": 0,
         "crash": 0
       }
@@ -711,7 +711,7 @@
       "symbol": "dlsym",
       "symbol_family": "dlfcn_ops",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "coverage_state": "execution_failures",
       "obligation_kinds": [
         "error_condition",
@@ -744,8 +744,8 @@
       "symbol": "dlsym",
       "symbol_family": "loader_edges",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
-      "coverage_state": "mapped_without_execution",
+      "support_status": "Implemented",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "error_condition",
         "functional"
@@ -760,10 +760,10 @@
         "tests/conformance/fixtures/loader_edges.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 1,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 1,
         "timeout": 0,
         "crash": 0
       }
@@ -807,7 +807,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -821,8 +821,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -836,7 +836,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -850,8 +850,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -912,6 +912,38 @@
       "artifact_refs": [
         "tests/conformance/c_fixture_spec.json",
         "tests/integration/fixture_nss.c"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "execve::posix_execve_2",
+      "posix_ref": "POSIX execve(2)",
+      "symbol": "execve",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "async_concurrency",
+        "error_condition",
+        "functional"
+      ],
+      "modes": [
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::spawn_exec_ops::execve_eacces_strict::strict",
+        "fixture::spawn_exec_ops::execve_replaces_process_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json"
       ],
       "execution": {
         "total": 0,
@@ -1185,7 +1217,7 @@
       "symbol_family": "regex_glob_ops",
       "owner": "string_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -1200,10 +1232,10 @@
         "tests/conformance/fixtures/regex_glob_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -1501,7 +1533,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -1515,8 +1547,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -1530,7 +1562,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -1544,8 +1576,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -1778,7 +1810,7 @@
       "symbol_family": "grp_ops",
       "owner": "grp_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -1796,10 +1828,10 @@
         "tests/conformance/fixtures/grp_ops.json"
       ],
       "execution": {
-        "total": 3,
-        "pass": 0,
+        "total": 4,
+        "pass": 4,
         "fail": 0,
-        "error": 3,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -1843,7 +1875,7 @@
       "symbol_family": "grp_ops",
       "owner": "grp_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -1861,10 +1893,10 @@
         "tests/conformance/fixtures/grp_ops.json"
       ],
       "execution": {
-        "total": 3,
-        "pass": 0,
+        "total": 4,
+        "pass": 4,
         "fail": 0,
-        "error": 3,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -1908,7 +1940,7 @@
       "symbol_family": "resolv/dns",
       "owner": "resolv_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -1924,8 +1956,8 @@
         "tests/conformance/fixtures/resolver.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 2,
+        "pass": 2,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -1939,7 +1971,7 @@
       "symbol_family": "session_ops",
       "owner": "unistd_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -1955,10 +1987,10 @@
         "tests/conformance/fixtures/session_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -1970,7 +2002,7 @@
       "symbol_family": "session_ops",
       "owner": "unistd_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -1984,10 +2016,10 @@
         "tests/conformance/fixtures/session_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 1,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 1,
         "timeout": 0,
         "crash": 0
       }
@@ -2121,7 +2153,7 @@
       "symbol_family": "pwd_ops",
       "owner": "pwd_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -2139,10 +2171,10 @@
         "tests/conformance/fixtures/pwd_ops.json"
       ],
       "execution": {
-        "total": 3,
-        "pass": 0,
+        "total": 4,
+        "pass": 4,
         "fail": 0,
-        "error": 3,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -2186,7 +2218,7 @@
       "symbol_family": "pwd_ops",
       "owner": "pwd_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -2204,10 +2236,10 @@
         "tests/conformance/fixtures/pwd_ops.json"
       ],
       "execution": {
-        "total": 3,
-        "pass": 0,
+        "total": 4,
+        "pass": 4,
         "fail": 0,
-        "error": 3,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -2286,7 +2318,7 @@
       "symbol_family": "session_ops",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -2300,10 +2332,10 @@
         "tests/conformance/fixtures/session_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 1,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 1,
         "timeout": 0,
         "crash": 0
       }
@@ -2409,7 +2441,7 @@
       "symbol_family": "regex_glob_ops",
       "owner": "string_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -2425,10 +2457,10 @@
         "tests/conformance/fixtures/regex_glob_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -2572,7 +2604,7 @@
       "symbol_family": "iconv/phase1",
       "owner": "iconv_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -2586,8 +2618,8 @@
         "tests/conformance/fixtures/iconv_phase1.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -2632,7 +2664,7 @@
       "symbol_family": "iconv/phase1",
       "owner": "iconv_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -2646,8 +2678,8 @@
         "tests/conformance/fixtures/iconv_phase1.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -3902,6 +3934,35 @@
       }
     },
     {
+      "obligation_id": "msgget::posix_msgget_2",
+      "posix_ref": "POSIX msgget(2)",
+      "symbol": "msgget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "functional"
+      ],
+      "modes": [
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::msgget_create_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
       "obligation_id": "munmap::posix_munmap",
       "posix_ref": "POSIX munmap",
       "symbol": "munmap",
@@ -3937,7 +3998,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -3951,8 +4012,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -3966,7 +4027,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "error_condition",
         "functional"
@@ -3981,8 +4042,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -3996,7 +4057,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -4010,8 +4071,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -4025,7 +4086,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -4039,8 +4100,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -4054,7 +4115,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -4068,8 +4129,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -4083,7 +4144,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -4097,8 +4158,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -4112,7 +4173,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -4126,8 +4187,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -4298,6 +4359,40 @@
       }
     },
     {
+      "obligation_id": "posix_spawn::posix_posix_spawn_3",
+      "posix_ref": "POSIX posix_spawn(3)",
+      "symbol": "posix_spawn",
+      "symbol_family": "spawn_exec_ops",
+      "owner": "process_abi",
+      "support_status": "Implemented",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "async_concurrency",
+        "error_condition",
+        "functional"
+      ],
+      "modes": [
+        "hardened",
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::spawn_exec_ops::posix_spawn_echo_hardened::hardened",
+        "fixture::spawn_exec_ops::posix_spawn_echo_strict::strict",
+        "fixture::spawn_exec_ops::posix_spawn_nonexistent_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/spawn_exec_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
       "obligation_id": "printf::posix_1_2017_stdio_formatted_i_o_contracts_for_snprintf_sprintf_fprintf_printf_dprintf_and_va_list_variants_vsnprintf_vsprintf_vdprintf_with_return_length_semantics",
       "posix_ref": "POSIX.1-2017 stdio formatted I/O contracts for snprintf/sprintf/fprintf/printf/dprintf and va_list variants vsnprintf/vsprintf/vdprintf with return-length semantics",
       "symbol": "printf",
@@ -4336,7 +4431,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4359,9 +4454,9 @@
       ],
       "execution": {
         "total": 6,
-        "pass": 0,
+        "pass": 6,
         "fail": 0,
-        "error": 6,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4373,7 +4468,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4396,9 +4491,9 @@
       ],
       "execution": {
         "total": 6,
-        "pass": 0,
+        "pass": 6,
         "fail": 0,
-        "error": 6,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4410,7 +4505,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4433,9 +4528,9 @@
       ],
       "execution": {
         "total": 6,
-        "pass": 0,
+        "pass": 6,
         "fail": 0,
-        "error": 6,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4447,7 +4542,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "functional"
@@ -4465,9 +4560,9 @@
       ],
       "execution": {
         "total": 2,
-        "pass": 0,
+        "pass": 2,
         "fail": 0,
-        "error": 2,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4479,7 +4574,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4502,9 +4597,9 @@
       ],
       "execution": {
         "total": 6,
-        "pass": 0,
+        "pass": 6,
         "fail": 0,
-        "error": 6,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4516,7 +4611,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4541,9 +4636,9 @@
       ],
       "execution": {
         "total": 8,
-        "pass": 0,
+        "pass": 8,
         "fail": 0,
-        "error": 8,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4555,7 +4650,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "functional"
@@ -4573,9 +4668,9 @@
       ],
       "execution": {
         "total": 2,
-        "pass": 0,
+        "pass": 2,
         "fail": 0,
-        "error": 2,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4587,7 +4682,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4614,9 +4709,9 @@
       ],
       "execution": {
         "total": 10,
-        "pass": 0,
+        "pass": 10,
         "fail": 0,
-        "error": 10,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4628,7 +4723,7 @@
       "symbol_family": "pthread/cond",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "functional"
@@ -4646,9 +4741,9 @@
       ],
       "execution": {
         "total": 2,
-        "pass": 0,
+        "pass": 2,
         "fail": 0,
-        "error": 2,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4793,7 +4888,7 @@
       "symbol_family": "pthread/tls_keys",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4814,9 +4909,9 @@
       ],
       "execution": {
         "total": 4,
-        "pass": 0,
+        "pass": 4,
         "fail": 0,
-        "error": 4,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4897,7 +4992,7 @@
       "symbol_family": "pthread/tls_keys",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4920,9 +5015,9 @@
       ],
       "execution": {
         "total": 6,
-        "pass": 0,
+        "pass": 6,
         "fail": 0,
-        "error": 6,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -4934,7 +5029,7 @@
       "symbol_family": "pthread/tls_keys",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -4959,9 +5054,9 @@
       ],
       "execution": {
         "total": 8,
-        "pass": 0,
+        "pass": 8,
         "fail": 0,
-        "error": 8,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -5172,7 +5267,7 @@
       "symbol_family": "pthread/tls_keys",
       "owner": "pthread_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "error_condition",
@@ -5195,9 +5290,9 @@
       ],
       "execution": {
         "total": 6,
-        "pass": 0,
+        "pass": 6,
         "fail": 0,
-        "error": 6,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -5394,7 +5489,7 @@
       "symbol_family": "regex_glob_ops",
       "owner": "string_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -5410,10 +5505,10 @@
         "tests/conformance/fixtures/regex_glob_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -5425,7 +5520,7 @@
       "symbol_family": "regex_glob_ops",
       "owner": "string_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "async_concurrency",
         "functional"
@@ -5441,10 +5536,10 @@
         "tests/conformance/fixtures/regex_glob_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -5475,6 +5570,96 @@
         "pass": 0,
         "fail": 0,
         "error": 1,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "semctl::posix_semctl_2",
+      "posix_ref": "POSIX semctl(2)",
+      "symbol": "semctl",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "functional"
+      ],
+      "modes": [
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::semctl_setval_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "semget::posix_semget_2",
+      "posix_ref": "POSIX semget(2)",
+      "symbol": "semget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "functional"
+      ],
+      "modes": [
+        "hardened",
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::semget_create_hardened::hardened",
+        "fixture::sysv_ipc_ops::semget_create_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "semop::posix_semop_2",
+      "posix_ref": "POSIX semop(2)",
+      "symbol": "semop",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "error_condition",
+        "functional"
+      ],
+      "modes": [
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::semop_wait_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -5551,7 +5736,7 @@
       "symbol_family": "grp_ops",
       "owner": "grp_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -5567,10 +5752,10 @@
         "tests/conformance/fixtures/grp_ops.json"
       ],
       "execution": {
-        "total": 1,
-        "pass": 0,
+        "total": 2,
+        "pass": 2,
         "fail": 0,
-        "error": 1,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -5614,7 +5799,7 @@
       "symbol_family": "pwd_ops",
       "owner": "pwd_abi",
       "support_status": "Implemented",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -5630,10 +5815,10 @@
         "tests/conformance/fixtures/pwd_ops.json"
       ],
       "execution": {
-        "total": 1,
-        "pass": 0,
+        "total": 2,
+        "pass": 2,
         "fail": 0,
-        "error": 1,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -5677,7 +5862,7 @@
       "symbol_family": "session_ops",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "execution_failures",
       "obligation_kinds": [
         "functional"
       ],
@@ -5693,10 +5878,10 @@
         "tests/conformance/fixtures/session_ops.json"
       ],
       "execution": {
-        "total": 0,
+        "total": 2,
         "pass": 0,
         "fail": 0,
-        "error": 0,
+        "error": 2,
         "timeout": 0,
         "crash": 0
       }
@@ -5723,6 +5908,95 @@
       "artifact_refs": [
         "tests/conformance/c_fixture_spec.json",
         "tests/integration/fixture_stdio.c"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "shmat::posix_shmat_2",
+      "posix_ref": "POSIX shmat(2)",
+      "symbol": "shmat",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "functional"
+      ],
+      "modes": [
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::shmat_attach_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "shmdt::posix_shmdt_2",
+      "posix_ref": "POSIX shmdt(2)",
+      "symbol": "shmdt",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "functional"
+      ],
+      "modes": [
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::shmdt_detach_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
+      ],
+      "execution": {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "error": 0,
+        "timeout": 0,
+        "crash": 0
+      }
+    },
+    {
+      "obligation_id": "shmget::posix_shmget_2",
+      "posix_ref": "POSIX shmget(2)",
+      "symbol": "shmget",
+      "symbol_family": "sysv_ipc_ops",
+      "owner": "unistd_abi",
+      "support_status": "RawSyscall",
+      "coverage_state": "mapped_without_execution",
+      "obligation_kinds": [
+        "functional"
+      ],
+      "modes": [
+        "hardened",
+        "strict"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::shmget_create_hardened::hardened",
+        "fixture::sysv_ipc_ops::shmget_create_strict::strict"
+      ],
+      "artifact_refs": [
+        "tests/conformance/fixtures/sysv_ipc_ops.json"
       ],
       "execution": {
         "total": 0,
@@ -6439,7 +6713,7 @@
       "symbol_family": "pthread/tls_keys",
       "owner": "unknown",
       "support_status": "Untracked",
-      "coverage_state": "execution_failures",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "async_concurrency",
         "functional"
@@ -6463,9 +6737,9 @@
       ],
       "execution": {
         "total": 8,
-        "pass": 0,
+        "pass": 8,
         "fail": 0,
-        "error": 8,
+        "error": 0,
         "timeout": 0,
         "crash": 0
       }
@@ -6678,7 +6952,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -6692,8 +6966,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -6707,7 +6981,7 @@
       "symbol_family": "locale_ops",
       "owner": "locale_abi",
       "support_status": "Implemented",
-      "coverage_state": "mapped_without_execution",
+      "coverage_state": "covered",
       "obligation_kinds": [
         "functional"
       ],
@@ -6721,8 +6995,8 @@
         "tests/conformance/fixtures/locale_ops.json"
       ],
       "execution": {
-        "total": 0,
-        "pass": 0,
+        "total": 1,
+        "pass": 1,
         "fail": 0,
         "error": 0,
         "timeout": 0,
@@ -6950,7 +7224,7 @@
       "symbol": "_IO_adjust_column",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -6962,7 +7236,7 @@
       "symbol": "_IO_adjust_wcolumn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -6974,7 +7248,7 @@
       "symbol": "_IO_default_doallocate",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -6986,7 +7260,7 @@
       "symbol": "_IO_default_finish",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -6998,7 +7272,7 @@
       "symbol": "_IO_default_pbackfail",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7010,7 +7284,7 @@
       "symbol": "_IO_default_uflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7022,7 +7296,7 @@
       "symbol": "_IO_default_xsgetn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7034,7 +7308,7 @@
       "symbol": "_IO_default_xsputn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7046,7 +7320,7 @@
       "symbol": "_IO_do_write",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7058,7 +7332,7 @@
       "symbol": "_IO_doallocbuf",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7178,7 +7452,7 @@
       "symbol": "_IO_file_attach",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7190,7 +7464,7 @@
       "symbol": "_IO_file_close",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7202,7 +7476,7 @@
       "symbol": "_IO_file_close_it",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7214,7 +7488,7 @@
       "symbol": "_IO_file_doallocate",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7226,7 +7500,7 @@
       "symbol": "_IO_file_finish",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7238,7 +7512,7 @@
       "symbol": "_IO_file_fopen",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7250,7 +7524,7 @@
       "symbol": "_IO_file_init",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7262,7 +7536,7 @@
       "symbol": "_IO_file_jumps",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7274,7 +7548,7 @@
       "symbol": "_IO_file_open",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7286,7 +7560,7 @@
       "symbol": "_IO_file_overflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7298,7 +7572,7 @@
       "symbol": "_IO_file_read",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7310,7 +7584,7 @@
       "symbol": "_IO_file_seek",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7322,7 +7596,7 @@
       "symbol": "_IO_file_seekoff",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7334,7 +7608,7 @@
       "symbol": "_IO_file_setbuf",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7346,7 +7620,7 @@
       "symbol": "_IO_file_stat",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7358,7 +7632,7 @@
       "symbol": "_IO_file_sync",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7370,7 +7644,7 @@
       "symbol": "_IO_file_underflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7382,7 +7656,7 @@
       "symbol": "_IO_file_write",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7394,7 +7668,7 @@
       "symbol": "_IO_file_xsputn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7430,7 +7704,7 @@
       "symbol": "_IO_flush_all_linebuffered",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7490,7 +7764,7 @@
       "symbol": "_IO_free_backup_area",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7502,7 +7776,7 @@
       "symbol": "_IO_free_wbackup_area",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7598,7 +7872,7 @@
       "symbol": "_IO_getline",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7610,7 +7884,7 @@
       "symbol": "_IO_getline_info",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7622,7 +7896,7 @@
       "symbol": "_IO_gets",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7634,7 +7908,7 @@
       "symbol": "_IO_init",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7646,7 +7920,7 @@
       "symbol": "_IO_init_marker",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7658,7 +7932,7 @@
       "symbol": "_IO_init_wmarker",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7670,7 +7944,7 @@
       "symbol": "_IO_iter_begin",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7682,7 +7956,7 @@
       "symbol": "_IO_iter_end",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7694,7 +7968,7 @@
       "symbol": "_IO_iter_file",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7706,7 +7980,7 @@
       "symbol": "_IO_iter_next",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7718,7 +7992,7 @@
       "symbol": "_IO_least_wmarker",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7730,7 +8004,7 @@
       "symbol": "_IO_link_in",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7742,7 +8016,7 @@
       "symbol": "_IO_list_all",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7754,7 +8028,7 @@
       "symbol": "_IO_list_lock",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7766,7 +8040,7 @@
       "symbol": "_IO_list_resetlock",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7778,7 +8052,7 @@
       "symbol": "_IO_list_unlock",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7790,7 +8064,7 @@
       "symbol": "_IO_marker_delta",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7802,7 +8076,7 @@
       "symbol": "_IO_marker_difference",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7838,7 +8112,7 @@
       "symbol": "_IO_popen",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7862,7 +8136,7 @@
       "symbol": "_IO_proc_close",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7874,7 +8148,7 @@
       "symbol": "_IO_proc_open",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7910,7 +8184,7 @@
       "symbol": "_IO_remove_marker",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7922,7 +8196,7 @@
       "symbol": "_IO_seekmark",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7958,7 +8232,7 @@
       "symbol": "_IO_seekwmark",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -7970,7 +8244,7 @@
       "symbol": "_IO_setb",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8030,7 +8304,7 @@
       "symbol": "_IO_sputbackc",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8042,7 +8316,7 @@
       "symbol": "_IO_sputbackwc",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8066,7 +8340,7 @@
       "symbol": "_IO_str_init_readonly",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8078,7 +8352,7 @@
       "symbol": "_IO_str_init_static",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8090,7 +8364,7 @@
       "symbol": "_IO_str_overflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8102,7 +8376,7 @@
       "symbol": "_IO_str_pbackfail",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8114,7 +8388,7 @@
       "symbol": "_IO_str_seekoff",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8126,7 +8400,7 @@
       "symbol": "_IO_str_underflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8138,7 +8412,7 @@
       "symbol": "_IO_sungetc",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8150,7 +8424,7 @@
       "symbol": "_IO_sungetwc",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8162,7 +8436,7 @@
       "symbol": "_IO_switch_to_get_mode",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8174,7 +8448,7 @@
       "symbol": "_IO_switch_to_main_wget_area",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8186,7 +8460,7 @@
       "symbol": "_IO_switch_to_wbackup_area",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8198,7 +8472,7 @@
       "symbol": "_IO_switch_to_wget_mode",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8210,7 +8484,7 @@
       "symbol": "_IO_un_link",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8234,7 +8508,7 @@
       "symbol": "_IO_unsave_markers",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8246,7 +8520,7 @@
       "symbol": "_IO_unsave_wmarkers",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8270,7 +8544,7 @@
       "symbol": "_IO_vfscanf",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8294,7 +8568,7 @@
       "symbol": "_IO_wdefault_doallocate",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8306,7 +8580,7 @@
       "symbol": "_IO_wdefault_finish",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8318,7 +8592,7 @@
       "symbol": "_IO_wdefault_pbackfail",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8330,7 +8604,7 @@
       "symbol": "_IO_wdefault_uflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8342,7 +8616,7 @@
       "symbol": "_IO_wdefault_xsgetn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8354,7 +8628,7 @@
       "symbol": "_IO_wdefault_xsputn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8366,7 +8640,7 @@
       "symbol": "_IO_wdo_write",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8378,7 +8652,7 @@
       "symbol": "_IO_wdoallocbuf",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8390,7 +8664,7 @@
       "symbol": "_IO_wfile_jumps",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8402,7 +8676,7 @@
       "symbol": "_IO_wfile_overflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8414,7 +8688,7 @@
       "symbol": "_IO_wfile_seekoff",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8426,7 +8700,7 @@
       "symbol": "_IO_wfile_sync",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8438,7 +8712,7 @@
       "symbol": "_IO_wfile_underflow",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8450,7 +8724,7 @@
       "symbol": "_IO_wfile_xsputn",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8462,7 +8736,7 @@
       "symbol": "_IO_wmarker_delta",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -8474,7 +8748,7 @@
       "symbol": "_IO_wsetb",
       "symbol_family": "io_internal",
       "owner": "io_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10358,7 +10632,7 @@
       "symbol": "__gconv",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10370,7 +10644,7 @@
       "symbol": "__gconv_close",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10382,7 +10656,7 @@
       "symbol": "__gconv_create_spec",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10394,7 +10668,7 @@
       "symbol": "__gconv_destroy_spec",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10406,7 +10680,7 @@
       "symbol": "__gconv_get_alias_db",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10418,7 +10692,7 @@
       "symbol": "__gconv_get_cache",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10430,7 +10704,7 @@
       "symbol": "__gconv_get_modules_db",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10442,7 +10716,7 @@
       "symbol": "__gconv_open",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -10454,7 +10728,7 @@
       "symbol": "__gconv_transliterate",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -17042,7 +17316,7 @@
       "symbol": "_authenticate",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -17410,7 +17684,6 @@
         "fixture::setjmp_ops::sigsetjmp_returns_zero_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -19380,7 +19653,7 @@
       "symbol": "authnone_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -19392,7 +19665,7 @@
       "symbol": "authunix_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -19404,7 +19677,7 @@
       "symbol": "authunix_create_default",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -19950,7 +20223,7 @@
       "symbol": "callrpc",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21467,7 +21740,7 @@
       "symbol": "clnt_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21503,7 +21776,7 @@
       "symbol": "clnt_perror",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21539,7 +21812,7 @@
       "symbol": "clnt_sperror",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21551,7 +21824,7 @@
       "symbol": "clntraw_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21563,7 +21836,7 @@
       "symbol": "clnttcp_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21575,7 +21848,7 @@
       "symbol": "clntudp_bufcreate",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21587,7 +21860,7 @@
       "symbol": "clntudp_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -21599,7 +21872,7 @@
       "symbol": "clntunix_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -23683,7 +23956,7 @@
       "symbol": "dladdr1",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -23695,7 +23968,7 @@
       "symbol": "dlclose",
       "symbol_family": "dlfcn",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [
         "POSIX dlclose(3)"
       ],
@@ -23704,7 +23977,6 @@
         "fixture::loader_edges::dlclose_double_close_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -23712,7 +23984,7 @@
       "symbol": "dlinfo",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -23724,7 +23996,7 @@
       "symbol": "dlmopen",
       "symbol_family": "glibc_internal",
       "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -23736,7 +24008,7 @@
       "symbol": "dlopen",
       "symbol_family": "dlfcn",
       "owner": "dlfcn_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [
         "POSIX dlopen",
         "POSIX dlopen(3)"
@@ -23754,9 +24026,9 @@
     },
     {
       "symbol": "dlvsym",
-      "symbol_family": "glibc_internal",
-      "owner": "glibc_internal_abi",
-      "support_status": "GlibcCallThrough",
+      "symbol_family": "dlfcn",
+      "owner": "dlfcn_abi",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -23975,7 +24247,6 @@
         "fixture::locale_ops::duplocale_handle_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -24906,11 +25177,15 @@
       "symbol_family": "process",
       "owner": "process_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX execve(2)"
+      ],
+      "test_refs": [
+        "fixture::spawn_exec_ops::execve_eacces_strict::strict",
+        "fixture::spawn_exec_ops::execve_replaces_process_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence"
       ]
     },
     {
@@ -28998,7 +29273,6 @@
         "fixture::regex_glob_ops::fnmatch_wildcard_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -29296,7 +29570,6 @@
         "fixture::locale_ops::freelocale_void_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -31004,7 +31277,6 @@
         "fixture::resolv/dns::gethostbyname_numeric_ipv4_hardened::hardened"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -31165,7 +31437,6 @@
         "fixture::session_ops::getlogin_returns_user_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -31181,7 +31452,6 @@
         "fixture::session_ops::getlogin_r_returns_user_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -32092,7 +32362,6 @@
         "fixture::session_ops::getsid_returns_sid_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -32501,7 +32770,6 @@
         "fixture::regex_glob_ops::glob_star_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -32996,7 +33264,7 @@
       "symbol": "if_indextoname",
       "symbol_family": "inet",
       "owner": "inet_abi",
-      "support_status": "RawSyscall",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -33020,7 +33288,7 @@
       "symbol": "if_nametoindex",
       "symbol_family": "inet",
       "owner": "inet_abi",
-      "support_status": "RawSyscall",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -38365,11 +38633,15 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX msgget(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::msgget_create_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence",
+        "missing_error_condition_obligation"
       ]
     },
     {
@@ -38784,23 +39056,6 @@
       ]
     },
     {
-      "symbol": "newlocale",
-      "symbol_family": "locale",
-      "owner": "locale_abi",
-      "support_status": "Implemented",
-      "mapped_posix_refs": [
-        "POSIX.1-2008 newlocale",
-        "POSIX.1-2008 newlocale hardened fallback"
-      ],
-      "test_refs": [
-        "fixture::locale_ops::newlocale_c_locale_strict::strict",
-        "fixture::locale_ops::newlocale_unsupported_hardened::hardened"
-      ],
-      "gap_reasons": [
-        "missing_execution_evidence"
-      ]
-    },
-    {
       "symbol": "nextafter",
       "symbol_family": "math",
       "owner": "math_abi",
@@ -39200,7 +39455,6 @@
         "fixture::locale_ops::nl_langinfo_unknown_hardened::hardened"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -39218,7 +39472,6 @@
         "fixture::locale_ops::nl_langinfo_l_unknown_hardened::hardened"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -40067,11 +40320,16 @@
       "symbol_family": "process",
       "owner": "process_abi",
       "support_status": "Implemented",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX posix_spawn(3)"
+      ],
+      "test_refs": [
+        "fixture::spawn_exec_ops::posix_spawn_echo_hardened::hardened",
+        "fixture::spawn_exec_ops::posix_spawn_echo_strict::strict",
+        "fixture::spawn_exec_ops::posix_spawn_nonexistent_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence"
       ]
     },
     {
@@ -43370,7 +43628,6 @@
         "fixture::regex_glob_ops::regcomp_basic_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -43399,7 +43656,6 @@
         "fixture::regex_glob_ops::regexec_nomatch_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -43467,7 +43723,7 @@
       "symbol": "registerrpc",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -45283,11 +45539,15 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX semctl(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::semctl_setval_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence",
+        "missing_error_condition_obligation"
       ]
     },
     {
@@ -45295,11 +45555,16 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX semget(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::semget_create_hardened::hardened",
+        "fixture::sysv_ipc_ops::semget_create_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence",
+        "missing_error_condition_obligation"
       ]
     },
     {
@@ -45307,11 +45572,14 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX semop(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::semop_wait_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence"
       ]
     },
     {
@@ -46130,7 +46398,6 @@
         "fixture::session_ops::setsid_creates_session_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },
@@ -46372,11 +46639,15 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX shmat(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::shmat_attach_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence",
+        "missing_error_condition_obligation"
       ]
     },
     {
@@ -46396,11 +46667,15 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX shmdt(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::shmdt_detach_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence",
+        "missing_error_condition_obligation"
       ]
     },
     {
@@ -46408,11 +46683,16 @@
       "symbol_family": "unistd",
       "owner": "unistd_abi",
       "support_status": "RawSyscall",
-      "mapped_posix_refs": [],
-      "test_refs": [],
+      "mapped_posix_refs": [
+        "POSIX shmget(2)"
+      ],
+      "test_refs": [
+        "fixture::sysv_ipc_ops::shmget_create_hardened::hardened",
+        "fixture::sysv_ipc_ops::shmget_create_strict::strict"
+      ],
       "gap_reasons": [
-        "missing_test_mapping",
-        "missing_posix_traceability"
+        "missing_execution_evidence",
+        "missing_error_condition_obligation"
       ]
     },
     {
@@ -49610,7 +49890,7 @@
       "symbol": "svc_exit",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49634,7 +49914,7 @@
       "symbol": "svc_getreq",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49646,7 +49926,7 @@
       "symbol": "svc_getreq_common",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49658,7 +49938,7 @@
       "symbol": "svc_getreq_poll",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49670,7 +49950,7 @@
       "symbol": "svc_getreqset",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49706,7 +49986,7 @@
       "symbol": "svc_register",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49718,7 +49998,7 @@
       "symbol": "svc_run",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49730,7 +50010,7 @@
       "symbol": "svc_sendreply",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49742,7 +50022,7 @@
       "symbol": "svc_unregister",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49766,7 +50046,7 @@
       "symbol": "svcerr_auth",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49778,7 +50058,7 @@
       "symbol": "svcerr_decode",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49790,7 +50070,7 @@
       "symbol": "svcerr_noproc",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49802,7 +50082,7 @@
       "symbol": "svcerr_noprog",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49814,7 +50094,7 @@
       "symbol": "svcerr_progvers",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49826,7 +50106,7 @@
       "symbol": "svcerr_systemerr",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49838,7 +50118,7 @@
       "symbol": "svcerr_weakauth",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49850,7 +50130,7 @@
       "symbol": "svcfd_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49862,7 +50142,7 @@
       "symbol": "svcraw_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49874,7 +50154,7 @@
       "symbol": "svctcp_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49886,7 +50166,7 @@
       "symbol": "svcudp_bufcreate",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49898,7 +50178,7 @@
       "symbol": "svcudp_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49910,7 +50190,7 @@
       "symbol": "svcudp_enablecache",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49922,7 +50202,7 @@
       "symbol": "svcunix_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -49934,7 +50214,7 @@
       "symbol": "svcunixfd_create",
       "symbol_family": "rpc",
       "owner": "rpc_abi",
-      "support_status": "GlibcCallThrough",
+      "support_status": "Implemented",
       "mapped_posix_refs": [],
       "test_refs": [],
       "gap_reasons": [
@@ -52211,7 +52491,6 @@
         "fixture::locale_ops::uselocale_query_strict::strict"
       ],
       "gap_reasons": [
-        "missing_execution_evidence",
         "missing_error_condition_obligation"
       ]
     },

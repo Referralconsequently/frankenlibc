@@ -536,12 +536,12 @@ pub unsafe extern "C" fn __getcwd_chk(buf: *mut c_char, len: usize, buflen: usiz
     if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
-    unsafe { libc::syscall(libc::SYS_getcwd, buf, len) as *mut c_char }
+    unsafe { crate::unistd_abi::getcwd(buf, len) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __getwd_chk(buf: *mut c_char, buflen: usize) -> *mut c_char {
-    unsafe { libc::syscall(libc::SYS_getcwd, buf, buflen) as *mut c_char }
+    unsafe { crate::unistd_abi::getcwd(buf, buflen) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -554,7 +554,7 @@ pub unsafe extern "C" fn __readlink_chk(
     if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
-    unsafe { libc::readlink(path, buf, len) }
+    unsafe { crate::unistd_abi::readlink(path, buf, len) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn __readlinkat_chk(
     if buflen != usize::MAX && len > buflen {
         unsafe { __chk_fail() }
     }
-    unsafe { libc::readlinkat(dirfd, path, buf, len) }
+    unsafe { crate::unistd_abi::readlinkat(dirfd, path, buf, len) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]

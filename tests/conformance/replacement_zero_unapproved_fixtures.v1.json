@@ -1,188 +1,204 @@
 {
   "schema_version": "v1",
   "bead": "bd-27kh",
-  "description": "Deterministic fixture suite for replacement-profile zero-unapproved-callthrough policy across all GlibcCallThrough families.",
+  "description": "Deterministic fixture suite for replacement-profile zero-unapproved-callthrough policy across all source-scanned interpose callthrough families.",
   "source_of_truth": {
-    "support_matrix": "support_matrix.json",
     "replacement_profile": "tests/conformance/replacement_profile.json",
-    "guard_script": "scripts/check_replacement_guard.sh"
+    "guard_script": "scripts/check_replacement_guard.sh",
+    "source_scan": "crates/frankenlibc-abi/src/*_abi.rs"
   },
   "fixtures": [
     {
-      "id": "interpose_allow_none_vprintf",
+      "id": "interpose_allow_c11threads_abi___errno_location",
       "mode": "interpose",
-      "module": "None",
-      "symbol": "vprintf",
+      "module": "c11threads_abi",
+      "symbol": "__errno_location",
       "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "interpose_allow_dlfcn_dlopen",
-      "mode": "interpose",
-      "module": "dlfcn_abi",
-      "symbol": "dlopen",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_inet_if_nameindex",
-      "mode": "interpose",
-      "module": "inet_abi",
-      "symbol": "if_nameindex",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_locale_nl_langinfo",
-      "mode": "interpose",
-      "module": "locale_abi",
-      "symbol": "nl_langinfo",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_process_posix_spawn",
-      "mode": "interpose",
-      "module": "process_abi",
-      "symbol": "posix_spawn",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_pthread_pthread_cancel",
-      "mode": "interpose",
-      "module": "pthread_abi",
-      "symbol": "pthread_cancel",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_stdio_scanf",
-      "mode": "interpose",
-      "module": "stdio_abi",
-      "symbol": "scanf",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_string_glob",
-      "mode": "interpose",
-      "module": "string_abi",
-      "symbol": "glob",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_time_strptime",
-      "mode": "interpose",
-      "module": "time_abi",
-      "symbol": "strptime",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_unistd_openlog",
-      "mode": "interpose",
-      "module": "unistd_abi",
-      "symbol": "openlog",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "interpose_allow_wchar_wprintf",
-      "mode": "interpose",
-      "module": "wchar_abi",
-      "symbol": "wprintf",
-      "expected_outcome": "allowed",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "replacement_forbid_none_vprintf",
+      "id": "replacement_forbid_c11threads_abi___errno_location",
       "mode": "replacement",
-      "module": "None",
-      "symbol": "vprintf",
+      "module": "c11threads_abi",
+      "symbol": "__errno_location",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_dlfcn_dlsym",
+      "id": "interpose_allow_fortify_abi_pread",
+      "mode": "interpose",
+      "module": "fortify_abi",
+      "symbol": "pread",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_fortify_abi_pread64",
       "mode": "replacement",
-      "module": "dlfcn_abi",
+      "module": "fortify_abi",
+      "symbol": "pread64",
+      "expected_outcome": "forbidden",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "interpose_allow_glibc_internal_abi_sched_get_priority_max",
+      "mode": "interpose",
+      "module": "glibc_internal_abi",
+      "symbol": "sched_get_priority_max",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_glibc_internal_abi_sched_get_priority_min",
+      "mode": "replacement",
+      "module": "glibc_internal_abi",
+      "symbol": "sched_get_priority_min",
+      "expected_outcome": "forbidden",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "interpose_allow_io_internal_abi_dlsym",
+      "mode": "interpose",
+      "module": "io_internal_abi",
       "symbol": "dlsym",
-      "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_inet_if_freenameindex",
+      "id": "replacement_forbid_io_internal_abi_open",
       "mode": "replacement",
-      "module": "inet_abi",
-      "symbol": "if_freenameindex",
+      "module": "io_internal_abi",
+      "symbol": "open",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_locale_nl_langinfo",
+      "id": "interpose_allow_malloc_abi_malloc",
+      "mode": "interpose",
+      "module": "malloc_abi",
+      "symbol": "malloc",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_malloc_abi_free",
       "mode": "replacement",
-      "module": "locale_abi",
-      "symbol": "nl_langinfo",
+      "module": "malloc_abi",
+      "symbol": "free",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_process_posix_spawnp",
+      "id": "interpose_allow_process_abi_sigemptyset",
+      "mode": "interpose",
+      "module": "process_abi",
+      "symbol": "sigemptyset",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_process_abi_sigaddset",
       "mode": "replacement",
       "module": "process_abi",
-      "symbol": "posix_spawnp",
+      "symbol": "sigaddset",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_pthread_pthread_testcancel",
+      "id": "interpose_allow_pthread_abi_dlsym",
+      "mode": "interpose",
+      "module": "pthread_abi",
+      "symbol": "dlsym",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_pthread_abi_dlopen",
       "mode": "replacement",
       "module": "pthread_abi",
-      "symbol": "pthread_testcancel",
+      "symbol": "dlopen",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_stdio_sscanf",
+      "id": "interpose_allow_rpc_abi_fread",
+      "mode": "interpose",
+      "module": "rpc_abi",
+      "symbol": "fread",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_rpc_abi_fwrite",
+      "mode": "replacement",
+      "module": "rpc_abi",
+      "symbol": "fwrite",
+      "expected_outcome": "forbidden",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "interpose_allow_signal_abi_sigemptyset",
+      "mode": "interpose",
+      "module": "signal_abi",
+      "symbol": "sigemptyset",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_signal_abi_sigaddset",
+      "mode": "replacement",
+      "module": "signal_abi",
+      "symbol": "sigaddset",
+      "expected_outcome": "forbidden",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "interpose_allow_stdio_abi_mkstemp",
+      "mode": "interpose",
+      "module": "stdio_abi",
+      "symbol": "mkstemp",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_stdio_abi_mkstemp",
       "mode": "replacement",
       "module": "stdio_abi",
-      "symbol": "sscanf",
+      "symbol": "mkstemp",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_string_regexec",
+      "id": "interpose_allow_stdlib_abi_fflush",
+      "mode": "interpose",
+      "module": "stdlib_abi",
+      "symbol": "fflush",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
+    },
+    {
+      "id": "replacement_forbid_stdlib_abi_cfmakeraw",
       "mode": "replacement",
-      "module": "string_abi",
-      "symbol": "regexec",
+      "module": "stdlib_abi",
+      "symbol": "cfmakeraw",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_time_strptime",
-      "mode": "replacement",
-      "module": "time_abi",
-      "symbol": "strptime",
-      "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "id": "interpose_allow_unistd_abi_socket",
+      "mode": "interpose",
+      "module": "unistd_abi",
+      "symbol": "socket",
+      "expected_outcome": "allowed",
+      "evidence_source": "replacement_guard_source_scan"
     },
     {
-      "id": "replacement_forbid_unistd_wordexp",
+      "id": "replacement_forbid_unistd_abi_connect",
       "mode": "replacement",
       "module": "unistd_abi",
-      "symbol": "wordexp",
+      "symbol": "connect",
       "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
-    },
-    {
-      "id": "replacement_forbid_wchar_vswscanf",
-      "mode": "replacement",
-      "module": "wchar_abi",
-      "symbol": "vswscanf",
-      "expected_outcome": "forbidden",
-      "evidence_source": "support_matrix"
+      "evidence_source": "replacement_guard_source_scan"
     }
   ],
   "required_log_fields": [
@@ -197,21 +213,22 @@
     "artifact_ref"
   ],
   "summary": {
-    "fixture_count": 22,
-    "interpose_allowed_count": 11,
-    "replacement_forbidden_count": 11,
+    "fixture_count": 24,
+    "interpose_allowed_count": 12,
+    "replacement_forbidden_count": 12,
     "covered_callthrough_modules": [
-      "None",
-      "dlfcn_abi",
-      "inet_abi",
-      "locale_abi",
+      "c11threads_abi",
+      "fortify_abi",
+      "glibc_internal_abi",
+      "io_internal_abi",
+      "malloc_abi",
       "process_abi",
       "pthread_abi",
+      "rpc_abi",
+      "signal_abi",
       "stdio_abi",
-      "string_abi",
-      "time_abi",
-      "unistd_abi",
-      "wchar_abi"
+      "stdlib_abi",
+      "unistd_abi"
     ]
   }
 }

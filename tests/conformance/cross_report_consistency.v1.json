@@ -1,21 +1,19 @@
 {
   "schema_version": "v1",
   "bead": "bd-2vv.11",
-  "generated_at": "2026-02-27T05:21:12Z",
-  "consistency_hash": "c205fd76cd5d6997",
+  "generated_at": "2026-03-24T00:32:40Z",
+  "consistency_hash": "20aa6562d3efca86",
   "summary": {
-    "overall_verdict": "fail",
-    "total_findings": 16,
+    "overall_verdict": "pass",
+    "total_findings": 11,
     "by_severity": {
-      "error": 2,
-      "info": 1,
-      "warning": 13
+      "info": 3,
+      "warning": 8
     },
     "by_verdict": {
-      "drift": 6,
-      "fail": 2,
+      "drift": 1,
       "inconsistent": 7,
-      "pass": 1
+      "pass": 3
     },
     "reports_loaded": 5,
     "reports_total": 5
@@ -36,74 +34,18 @@
   },
   "findings": [
     {
-      "rule": "symbol_count_cross",
-      "severity": "error",
-      "report_pair": "support_matrix vs reality_report",
-      "expected": 2776,
-      "actual": 2774,
-      "affected_symbols": [],
-      "verdict": "fail",
-      "description": "support_matrix total (2776) != reality_report total (2774)"
-    },
-    {
-      "rule": "symbol_count_cross",
-      "severity": "error",
-      "report_pair": "support_matrix vs replacement_levels",
-      "expected": 2776,
-      "actual": 250,
-      "affected_symbols": [],
-      "verdict": "fail",
-      "description": "support_matrix total (2776) != replacement_levels total (250)"
+      "rule": "symbol_count",
+      "severity": "info",
+      "report_pair": "all",
+      "verdict": "pass",
+      "description": "All reports agree on 3980 symbols"
     },
     {
       "rule": "status_distribution",
-      "severity": "warning",
-      "report_pair": "support_matrix vs reality_report",
-      "expected": 2056,
-      "actual": 1580,
-      "affected_symbols": [],
-      "verdict": "drift",
-      "description": "Status 'Implemented': support_matrix=2056, reality_report=1580"
-    },
-    {
-      "rule": "status_distribution",
-      "severity": "warning",
-      "report_pair": "support_matrix vs reality_report",
-      "expected": 336,
-      "actual": 810,
-      "affected_symbols": [],
-      "verdict": "drift",
-      "description": "Status 'GlibcCallThrough': support_matrix=336, reality_report=810"
-    },
-    {
-      "rule": "status_distribution",
-      "severity": "warning",
-      "report_pair": "support_matrix vs replacement_levels",
-      "expected": 2056,
-      "actual": 147,
-      "affected_symbols": [],
-      "verdict": "drift",
-      "description": "Status 'Implemented': support_matrix=2056, replacement_levels=147"
-    },
-    {
-      "rule": "status_distribution",
-      "severity": "warning",
-      "report_pair": "support_matrix vs replacement_levels",
-      "expected": 384,
-      "actual": 83,
-      "affected_symbols": [],
-      "verdict": "drift",
-      "description": "Status 'RawSyscall': support_matrix=384, replacement_levels=83"
-    },
-    {
-      "rule": "status_distribution",
-      "severity": "warning",
-      "report_pair": "support_matrix vs replacement_levels",
-      "expected": 336,
-      "actual": 20,
-      "affected_symbols": [],
-      "verdict": "drift",
-      "description": "Status 'GlibcCallThrough': support_matrix=336, replacement_levels=20"
+      "severity": "info",
+      "report_pair": "all",
+      "verdict": "pass",
+      "description": "Status distributions consistent across reports"
     },
     {
       "rule": "claim_alignment",
@@ -181,7 +123,7 @@
       "report_pair": "support_matrix vs replacement_profile",
       "affected_symbols": [],
       "verdict": "drift",
-      "description": "Module total_call_throughs: support_matrix has 0 callthrough, profile census claims 4"
+      "description": "Module total_call_throughs: support_matrix has 0 callthrough, profile census claims 337"
     },
     {
       "rule": "no_unknown_status",

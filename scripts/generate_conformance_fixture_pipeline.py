@@ -34,6 +34,7 @@ def load_json_file(path):
 REQUIRED_CASE_FIELDS = ["name", "function", "inputs", "expected_output", "mode"]
 VALID_MODES = {"strict", "hardened", "both"}
 MIN_CASES_THRESHOLD = 10
+MIN_COVERAGE_PCT = 5.0
 
 
 def validate_fixture_file(fixture_path):
@@ -46,29 +47,45 @@ def validate_fixture_file(fixture_path):
     except (json.JSONDecodeError, OSError) as e:
         return {}, [f"Failed to load: {e}"]
 
-    if "version" not in data:
+    if "version" not in data and "schema_version" not in data:
         issues.append("Missing 'version' field")
-    if "cases" not in data:
+    if "cases" in data:
+        cases = data.get("cases", [])
+        if not isinstance(cases, list):
+            issues.append("'cases' is not an array")
+            return {}, issues
+
+        for i, case in enumerate(cases):
+            for field in REQUIRED_CASE_FIELDS:
+                if field not in case:
+                    issues.append(f"Case {i}: missing required field '{field}'")
+
+            mode = case.get("mode", "")
+            if mode and mode not in VALID_MODES:
+                issues.append(f"Case {i}: invalid mode '{mode}'")
+
+            fn = case.get("function", "")
+            if fn:
+                cases_by_symbol[fn] += 1
+    elif "program_scenarios" in data or "unsupported_scenarios" in data:
+        program_scenarios = data.get("program_scenarios", [])
+        unsupported_scenarios = data.get("unsupported_scenarios", [])
+        if not isinstance(program_scenarios, list):
+            issues.append("'program_scenarios' is not an array")
+            return {}, issues
+        if not isinstance(unsupported_scenarios, list):
+            issues.append("'unsupported_scenarios' is not an array")
+            return {}, issues
+        family = data.get("family", "")
+        for scenario in program_scenarios:
+            if family:
+                cases_by_symbol[family] += 1
+        for scenario in unsupported_scenarios:
+            if family:
+                cases_by_symbol[family] += 1
+    else:
         issues.append("Missing 'cases' array")
         return {}, issues
-
-    cases = data.get("cases", [])
-    if not isinstance(cases, list):
-        issues.append("'cases' is not an array")
-        return {}, issues
-
-    for i, case in enumerate(cases):
-        for field in REQUIRED_CASE_FIELDS:
-            if field not in case:
-                issues.append(f"Case {i}: missing required field '{field}'")
-
-        mode = case.get("mode", "")
-        if mode and mode not in VALID_MODES:
-            issues.append(f"Case {i}: invalid mode '{mode}'")
-
-        fn = case.get("function", "")
-        if fn:
-            cases_by_symbol[fn] += 1
 
     return dict(cases_by_symbol), issues
 
@@ -218,6 +235,7 @@ def main():
             "symbols_below_threshold": symbols_below_threshold,
             "symbols_with_zero_fixtures": symbols_with_zero,
             "coverage_pct": coverage_pct,
+            "min_coverage_pct": MIN_COVERAGE_PCT,
             "threshold_pct": threshold_pct,
             "min_cases_threshold": MIN_CASES_THRESHOLD,
             "fixture_format_issues": total_issues,

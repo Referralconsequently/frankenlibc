@@ -38,10 +38,22 @@ fn healing_action_variants_from_source(root: &Path) -> Vec<String> {
         .find('{')
         .map(|offset| start + offset + 1)
         .expect("HealingAction enum should include opening brace");
-    let body_end = heal_source[body_start..]
-        .find('}')
-        .map(|offset| body_start + offset)
-        .expect("HealingAction enum should include closing brace");
+    let mut depth = 1usize;
+    let mut body_end = None;
+    for (offset, ch) in heal_source[body_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    body_end = Some(body_start + offset);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let body_end = body_end.expect("HealingAction enum should include closing brace");
     let body = &heal_source[body_start..body_end];
     let mut variants = Vec::new();
     for line in body.lines() {

@@ -19,14 +19,11 @@
         "test_gate": "cargo test --workspace passes"
       },
       "current_state": {
-        "implemented_pct": 87,
+        "implemented_pct": 90,
         "raw_syscall_pct": 10,
-        "callthrough_pct": 3,
+        "callthrough_pct": 0,
         "stub_pct": 0,
-        "callthrough_modules": [
-          "dlfcn_abi",
-          "stdio_abi"
-        ],
+        "callthrough_modules": [],
         "stub_modules": []
       },
       "status": "achieved"
@@ -77,6 +74,9 @@
       },
       "blockers": [
         "dlfcn_abi call-throughs (4 symbols) need raw syscall migration",
+        "io_internal_abi call-throughs (63 symbols) need native replacement or redesign",
+        "rpc_abi call-throughs (38 symbols) need native replacement or explicit de-scope",
+        "glibc_internal_abi call-throughs (12 symbols) need elimination before standalone use",
         "C fixture suite (bd-3jh) not yet built",
         "Perf benchmarks (bd-2r0) not yet enforced"
       ],
@@ -106,7 +106,9 @@
         ]
       },
       "blockers": [
-        "stdio_abi: 16 call-throughs need native implementation",
+        "io_internal_abi: 63 call-throughs need native implementation or surface reduction",
+        "rpc_abi: 38 call-throughs need native implementation or removal from replacement target",
+        "glibc_internal_abi: 12 call-throughs need elimination",
         "CRT bootstrap (bd-qwm) not started",
         "rtld (bd-3rn) not started",
         "NSS backend (bd-1rf) not started",
@@ -118,18 +120,15 @@
   "current_level": "L0",
   "current_assessment": {
     "total_symbols": 3980,
-    "implemented": 3457,
-    "raw_syscall": 406,
-    "callthrough": 117,
+    "implemented": 3576,
+    "raw_syscall": 404,
+    "callthrough": 0,
     "stub": 0,
-    "implemented_pct": 87,
+    "implemented_pct": 90,
     "raw_syscall_pct": 10,
-    "callthrough_pct": 3,
+    "callthrough_pct": 0,
     "stub_pct": 0,
-    "callthrough_breakdown": {
-      "dlfcn_abi": 4,
-      "stdio_abi": 16
-    },
+    "callthrough_breakdown": {},
     "stub_breakdown": {}
   },
   "release_tag_policy": {

@@ -1,27 +1,27 @@
 {
   "index_version": 1,
   "bead_id": "bd-2xp3",
-  "generated_utc": "2026-02-14T08:35:17.475Z",
+  "generated_utc": "2026-03-23T23:59:44.782Z",
   "artifacts": [
     {
       "path": "tests/conformance/setjmp_semantics_contract.v1.json",
       "kind": "json",
-      "sha256": "9e4ac3970fb5bb7324189bae8596f5736fde88f848b49f40cb4fcb5c4ce413c5"
+      "sha256": "2ccfdf2c4860a532b9163c029ab8e98cdaf87227e289b95fab21b7e4aadc5a3c"
     },
     {
       "path": "target/conformance/setjmp_semantics_contract.report.json",
       "kind": "json",
-      "sha256": "1c0111a7e91bc39946ccd74d88c75c7a079a89ebb8f6d84edbaa7f770ec421e5"
+      "sha256": "fee83b38378820d061c0a55a932fb7ef3c8f5cbb3986658a77ba13d94624229c"
     },
     {
       "path": "target/conformance/setjmp_semantics_contract.log.jsonl",
       "kind": "jsonl",
-      "sha256": "432fa7277d7470217b625bbd860cb532a50228d2d5d703e3ef5612a4132a0fdc"
+      "sha256": "00a1579282a7d85fe92fd8d065ee83931b177fe6e88290f4a9619b5cf466c9b4"
     },
     {
       "path": "tests/cve_arena/results/bd-2xp3/trace.jsonl",
       "kind": "jsonl",
-      "sha256": "432fa7277d7470217b625bbd860cb532a50228d2d5d703e3ef5612a4132a0fdc"
+      "sha256": "00a1579282a7d85fe92fd8d065ee83931b177fe6e88290f4a9619b5cf466c9b4"
     }
   ]
 }

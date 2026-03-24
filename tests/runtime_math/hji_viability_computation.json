@@ -1,5 +1,5 @@
 {
-  "schema_version": "v1",
+  "schema_version": "1.0",
   "model": "discrete_hji_risk_latency_adverse",
   "grid_resolution": 4,
   "state_count": 64,

@@ -164,9 +164,19 @@ pub fn setstate(state_buf: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static TEST_RANDOM_SV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_random_sv_tests() -> MutexGuard<'static, ()> {
+        TEST_RANDOM_SV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn test_srandom_deterministic() {
+        let _guard = lock_random_sv_tests();
         srandom(42);
         let a = random();
         srandom(42);
@@ -176,6 +186,7 @@ mod tests {
 
     #[test]
     fn test_random_range() {
+        let _guard = lock_random_sv_tests();
         srandom(1);
         for _ in 0..200 {
             let v = random();
@@ -185,6 +196,7 @@ mod tests {
 
     #[test]
     fn test_initstate_setstate_basic() {
+        let _guard = lock_random_sv_tests();
         // Verify initstate seeds and setstate restores without panicking.
         // Seed first to ensure non-zero table state.
         srandom(777);
@@ -203,6 +215,7 @@ mod tests {
 
     #[test]
     fn test_initstate_too_small_buf() {
+        let _guard = lock_random_sv_tests();
         let mut buf = [0u8; 4]; // too small
         let token = initstate(1, &mut buf);
         assert_eq!(token, 0);

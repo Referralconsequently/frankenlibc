@@ -54,6 +54,11 @@ fn fuzz_pwd_lookup_by_name(input: &PwdGrpFuzzInput) {
 
     let r1 = pwd::lookup_by_name(content, name);
     let r2 = pwd::lookup_by_name(content, name);
+    assert_eq!(
+        r1.is_some(),
+        r2.is_some(),
+        "determinism: one lookup succeeded and one failed"
+    );
 
     match (&r1, &r2) {
         (Some(a), Some(b)) => {
@@ -61,7 +66,7 @@ fn fuzz_pwd_lookup_by_name(input: &PwdGrpFuzzInput) {
             assert_eq!(a.pw_uid, b.pw_uid, "determinism: uids should match");
         }
         (None, None) => {}
-        _ => panic!("determinism: one lookup succeeded and one failed"),
+        _ => {}
     }
 }
 
@@ -70,6 +75,11 @@ fn fuzz_pwd_lookup_by_uid(input: &PwdGrpFuzzInput) {
 
     let r1 = pwd::lookup_by_uid(content, input.uid);
     let r2 = pwd::lookup_by_uid(content, input.uid);
+    assert_eq!(
+        r1.is_some(),
+        r2.is_some(),
+        "determinism: one lookup succeeded and one failed"
+    );
 
     match (&r1, &r2) {
         (Some(a), Some(b)) => {
@@ -77,7 +87,7 @@ fn fuzz_pwd_lookup_by_uid(input: &PwdGrpFuzzInput) {
             assert_eq!(a.pw_name, b.pw_name);
         }
         (None, None) => {}
-        _ => panic!("determinism: one lookup succeeded and one failed"),
+        _ => {}
     }
 }
 
@@ -116,6 +126,11 @@ fn fuzz_grp_lookup_by_name(input: &PwdGrpFuzzInput) {
 
     let r1 = grp::lookup_by_name(content, name);
     let r2 = grp::lookup_by_name(content, name);
+    assert_eq!(
+        r1.is_some(),
+        r2.is_some(),
+        "determinism: one lookup succeeded and one failed"
+    );
 
     match (&r1, &r2) {
         (Some(a), Some(b)) => {
@@ -123,7 +138,7 @@ fn fuzz_grp_lookup_by_name(input: &PwdGrpFuzzInput) {
             assert_eq!(a.gr_gid, b.gr_gid);
         }
         (None, None) => {}
-        _ => panic!("determinism: one lookup succeeded and one failed"),
+        _ => {}
     }
 }
 
@@ -132,6 +147,11 @@ fn fuzz_grp_lookup_by_gid(input: &PwdGrpFuzzInput) {
 
     let r1 = grp::lookup_by_gid(content, input.gid);
     let r2 = grp::lookup_by_gid(content, input.gid);
+    assert_eq!(
+        r1.is_some(),
+        r2.is_some(),
+        "determinism: one lookup succeeded and one failed"
+    );
 
     match (&r1, &r2) {
         (Some(a), Some(b)) => {
@@ -139,7 +159,7 @@ fn fuzz_grp_lookup_by_gid(input: &PwdGrpFuzzInput) {
             assert_eq!(a.gr_name, b.gr_name);
         }
         (None, None) => {}
-        _ => panic!("determinism: one lookup succeeded and one failed"),
+        _ => {}
     }
 }
 

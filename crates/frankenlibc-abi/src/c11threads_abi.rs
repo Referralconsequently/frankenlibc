@@ -96,7 +96,9 @@ pub unsafe extern "C" fn thrd_create(
     });
     let ctx_ptr = Box::into_raw(ctx) as *mut c_void;
 
-    let rc = unsafe { libc::pthread_create(thr, std::ptr::null(), trampoline, ctx_ptr) };
+    let rc = unsafe {
+        crate::pthread_abi::pthread_create(thr, std::ptr::null(), Some(trampoline), ctx_ptr)
+    };
     if rc != 0 {
         // Clean up on failure — reclaim the Box.
         drop(unsafe { Box::from_raw(ctx_ptr as *mut TrampolineCtx) });
@@ -410,7 +412,9 @@ pub unsafe extern "C" fn call_once(flag: *mut OnceFlag, func: Option<extern "C" 
         return;
     }
     // C11 call_once returns void (unlike pthread_once which returns int).
-    unsafe { libc::pthread_once(flag, func.unwrap()) };
+    let init_routine =
+        func.map(|f| unsafe { std::mem::transmute::<extern "C" fn(), unsafe extern "C" fn()>(f) });
+    unsafe { crate::pthread_abi::pthread_once(flag, init_routine) };
 }
 
 // ===========================================================================

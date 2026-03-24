@@ -40,7 +40,15 @@ pub struct FixtureSet {
 impl FixtureSet {
     /// Load fixture set from JSON string.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+        match serde_json::from_str(json) {
+            Ok(set) => Ok(set),
+            Err(primary_err) => {
+                let value: serde_json::Value = serde_json::from_str(json)?;
+                StructuredFixtureSet::try_from_value(&value)
+                    .ok_or(primary_err)
+                    .map(StructuredFixtureSet::into_fixture_set)
+            }
+        }
     }
 
     /// Serialize fixture set to JSON string.
@@ -62,6 +70,95 @@ where
 {
     let value = serde_json::Value::deserialize(deserializer)?;
     Ok(normalize_expected_output_value(&value))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StructuredProgramScenario {
+    scenario_id: String,
+    source: String,
+    #[serde(default)]
+    expected: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StructuredUnsupportedScenario {
+    scenario_id: String,
+    #[serde(default)]
+    expected_outcome: String,
+    #[serde(default)]
+    expected_errno: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StructuredFixtureSet {
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    schema_version: String,
+    family: String,
+    captured_at: String,
+    #[serde(default)]
+    program_scenarios: Vec<StructuredProgramScenario>,
+    #[serde(default)]
+    unsupported_scenarios: Vec<StructuredUnsupportedScenario>,
+}
+
+impl StructuredFixtureSet {
+    fn try_from_value(value: &serde_json::Value) -> Option<Self> {
+        value.get("family")?;
+        if value.get("program_scenarios").is_none() && value.get("unsupported_scenarios").is_none()
+        {
+            return None;
+        }
+        serde_json::from_value(value.clone()).ok()
+    }
+
+    fn into_fixture_set(self) -> FixtureSet {
+        let version = if self.version.is_empty() {
+            self.schema_version
+        } else {
+            self.version
+        };
+
+        let mut cases = Vec::new();
+
+        for scenario in self.program_scenarios {
+            cases.push(FixtureCase {
+                name: scenario.scenario_id,
+                function: self.family.clone(),
+                spec_section: scenario.source,
+                inputs: serde_json::json!({
+                    "scenario_kind": "program",
+                    "expected": scenario.expected,
+                }),
+                expected_output: String::from("structured_program_scenario"),
+                expected_errno: 0,
+                mode: String::from("both"),
+            });
+        }
+
+        for scenario in self.unsupported_scenarios {
+            cases.push(FixtureCase {
+                name: scenario.scenario_id,
+                function: self.family.clone(),
+                spec_section: String::from("unsupported_deferred"),
+                inputs: serde_json::json!({
+                    "scenario_kind": "unsupported",
+                    "expected_outcome": scenario.expected_outcome,
+                }),
+                expected_output: normalize_expected_output_value(&scenario.expected_errno),
+                expected_errno: 0,
+                mode: String::from("both"),
+            });
+        }
+
+        FixtureSet {
+            version,
+            family: self.family,
+            captured_at: self.captured_at,
+            cases,
+        }
+    }
 }
 
 pub(crate) fn normalize_expected_output_value(value: &serde_json::Value) -> String {
@@ -338,7 +435,7 @@ mod tests {
 
     #[test]
     fn normalize_expected_output_float() {
-        let v = serde_json::json!(3.14);
-        assert_eq!(normalize_expected_output_value(&v), "3.14");
+        let v = serde_json::json!(2.5);
+        assert_eq!(normalize_expected_output_value(&v), "2.5");
     }
 }
