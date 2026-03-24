@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-1p5v",
-  "description": "Temporary, auditable waivers for known high/critical stub-TODO debt while active closure beads are in flight.",
+  "description": "Terminal-state waiver policy for stub/TODO debt regression prevention. Empty waivers are valid only while the active debt set remains empty.",
   "policy": {
     "forbidden_without_waiver": {
       "source_debt_scopes": [
@@ -28,10 +28,10 @@
     "expiry_policy": "Waivers are temporary. Expired or stale waivers fail the guard.",
     "default_decision": "deny",
     "burn_down_thresholds": {
-      "max_total_non_implemented": 93,
-      "max_symbols_unscheduled": 93,
-      "max_unscheduled_waves": 11,
-      "max_unscheduled_share_pct": 100.0
+      "max_total_non_implemented": 0,
+      "max_symbols_unscheduled": 0,
+      "max_unscheduled_waves": 0,
+      "max_unscheduled_share_pct": 0.0
     },
     "downgrade_evidence_requirements": [
       "symbol",

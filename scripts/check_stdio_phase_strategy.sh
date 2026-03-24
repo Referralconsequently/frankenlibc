@@ -125,9 +125,11 @@ phase1_required_statuses = set(
 )
 if not phase1_required_statuses:
     phase1_required_statuses = {"Implemented", "RawSyscall"}
-deferred_status = str(
-    artifact.get("support_contract", {}).get("deferred_surface_status", "GlibcCallThrough")
+deferred_statuses = set(
+    artifact.get("support_contract", {}).get("deferred_surface_statuses", [])
 )
+if not deferred_statuses:
+    deferred_statuses = {"Implemented", "RawSyscall"}
 
 bad_phase1 = sorted(
     symbol
@@ -143,11 +145,11 @@ if bad_phase1:
 bad_deferred = sorted(
     symbol
     for symbol in deferred_set
-    if status_by_symbol.get(symbol) != deferred_status
+    if status_by_symbol.get(symbol) not in deferred_statuses
 )
 if bad_deferred:
     fail(
-        "deferred_surface symbols must remain explicit callthrough in support_matrix; "
+        "deferred_surface symbols must remain explicitly supported in support_matrix; "
         f"violations={[(s, status_by_symbol.get(s)) for s in bad_deferred]}"
     )
 
@@ -218,10 +220,10 @@ if int(summary.get("phase1_required_count", -1)) != len(phase1_set):
     fail("summary.phase1_required_count mismatch")
 if int(summary.get("deferred_count", -1)) != len(deferred_set):
     fail("summary.deferred_count mismatch")
-if int(summary.get("phase1_non_callthrough_count", -1)) != len(phase1_set):
-    fail("summary.phase1_non_callthrough_count mismatch")
-if int(summary.get("deferred_callthrough_count", -1)) != len(deferred_set):
-    fail("summary.deferred_callthrough_count mismatch")
+if int(summary.get("phase1_ready_count", -1)) != len(phase1_set):
+    fail("summary.phase1_ready_count mismatch")
+if int(summary.get("deferred_ready_count", -1)) != len(deferred_set):
+    fail("summary.deferred_ready_count mismatch")
 
 report = {
     "schema_version": "v1",
@@ -236,8 +238,8 @@ report = {
     },
     "summary": {
         "stdio_symbol_count": len(stdio_all_set),
-        "phase1_non_callthrough_count": len(phase1_set),
-        "deferred_callthrough_count": len(deferred_set),
+        "phase1_ready_count": len(phase1_set),
+        "deferred_ready_count": len(deferred_set),
         "phase_count": len(phases),
         "phase1_required_count": len(phase1_set),
         "deferred_count": len(deferred_set),
@@ -274,7 +276,7 @@ event = {
         "phase1_required_count": len(phase1_set),
         "deferred_count": len(deferred_set),
         "phase1_required_statuses": sorted(phase1_required_statuses),
-        "deferred_surface_status": deferred_status,
+        "deferred_surface_statuses": sorted(deferred_statuses),
     },
 }
 line = json.dumps(event, separators=(",", ":"))

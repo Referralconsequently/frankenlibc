@@ -7776,6 +7776,7 @@ pub unsafe extern "C" fn lio_listio(
 // ---------------------------------------------------------------------------
 
 /// Internal mount table stream state.
+#[allow(dead_code)]
 struct MntStream {
     file: std::fs::File,
     line_buf: Vec<u8>,
@@ -7790,152 +7791,60 @@ struct MntStream {
 
 /// `setmntent` — open a mount table file.
 ///
-/// Returns an opaque handle used by `getmntent`/`endmntent`.
-/// On failure, returns NULL.
+/// Delegates to the host libc setmntent which returns a real FILE*.
+/// Falls back to fopen if host setmntent is unavailable.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn setmntent(filename: *const c_char, _type: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn setmntent(filename: *const c_char, type_: *const c_char) -> *mut c_void {
     if filename.is_null() {
         return std::ptr::null_mut();
     }
-    let path = unsafe { std::ffi::CStr::from_ptr(filename) };
-    let path_str = match path.to_str() {
-        Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+    // Delegate to host libc setmntent for proper FILE* return.
+    type SetmntentFn = unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setmntent") {
+        let host_fn: SetmntentFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(filename, type_) };
+    }
+    // Fallback: use fopen (which now delegates to host).
+    let mode = if type_.is_null() {
+        c"r".as_ptr()
+    } else {
+        type_
     };
-    let file = match std::fs::File::open(path_str) {
-        Ok(f) => f,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let stream = Box::new(MntStream {
-        file,
-        line_buf: Vec::with_capacity(512),
-        fsname_buf: Vec::new(),
-        dir_buf: Vec::new(),
-        type_buf: Vec::new(),
-        opts_buf: Vec::new(),
-        mntent: [0u8; 48],
-    });
-    Box::into_raw(stream) as *mut c_void
+    unsafe { crate::stdio_abi::fopen(filename, mode) }
 }
 
 /// `getmntent` — read next mount entry.
 ///
-/// Returns a pointer to a static `struct mntent`, or NULL on EOF/error.
+/// Delegates to host libc getmntent for proper FILE*-based operation.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getmntent(stream: *mut c_void) -> *mut c_void {
-    use std::io::BufRead;
-
     if stream.is_null() {
         return std::ptr::null_mut();
     }
-    let ms = unsafe { &mut *(stream as *mut MntStream) };
-    let mut reader = std::io::BufReader::new(&ms.file);
-
-    loop {
-        ms.line_buf.clear();
-        let bytes_read = match reader.read_until(b'\n', &mut ms.line_buf) {
-            Ok(n) => n,
-            Err(_) => return std::ptr::null_mut(),
-        };
-        if bytes_read == 0 {
-            return std::ptr::null_mut(); // EOF
-        }
-
-        // Strip trailing newline
-        if ms.line_buf.last() == Some(&b'\n') {
-            ms.line_buf.pop();
-        }
-        if ms.line_buf.last() == Some(&b'\r') {
-            ms.line_buf.pop();
-        }
-
-        // Skip comments and blank lines
-        let trimmed = ms.line_buf.iter().position(|&b| b != b' ' && b != b'\t');
-        if trimmed.is_none_or(|i| ms.line_buf[i] == b'#') {
-            continue;
-        }
-
-        // Parse: fsname dir type opts freq passno
-        let line = &ms.line_buf;
-        let mut fields = line
-            .split(|&b| b == b' ' || b == b'\t')
-            .filter(|f| !f.is_empty());
-
-        let fsname = match fields.next() {
-            Some(f) => f,
-            None => continue,
-        };
-        let dir = match fields.next() {
-            Some(f) => f,
-            None => continue,
-        };
-        let ftype = match fields.next() {
-            Some(f) => f,
-            None => continue,
-        };
-        let opts = fields.next().unwrap_or(b"defaults");
-        let freq: i32 = fields
-            .next()
-            .and_then(|f| std::str::from_utf8(f).ok())
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let passno: i32 = fields
-            .next()
-            .and_then(|f| std::str::from_utf8(f).ok())
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-
-        // Copy into persistent buffers (null-terminated)
-        ms.fsname_buf.clear();
-        ms.fsname_buf.extend_from_slice(fsname);
-        ms.fsname_buf.push(0);
-
-        ms.dir_buf.clear();
-        ms.dir_buf.extend_from_slice(dir);
-        ms.dir_buf.push(0);
-
-        ms.type_buf.clear();
-        ms.type_buf.extend_from_slice(ftype);
-        ms.type_buf.push(0);
-
-        ms.opts_buf.clear();
-        ms.opts_buf.extend_from_slice(opts);
-        ms.opts_buf.push(0);
-
-        // Write struct mntent:
-        // struct mntent {
-        //   char *mnt_fsname;   // offset 0
-        //   char *mnt_dir;      // offset 8
-        //   char *mnt_type;     // offset 16
-        //   char *mnt_opts;     // offset 24
-        //   int   mnt_freq;     // offset 32
-        //   int   mnt_passno;   // offset 36
-        // };
-        let ent = &mut ms.mntent;
-        unsafe {
-            let p = ent.as_mut_ptr();
-            *(p as *mut *const u8) = ms.fsname_buf.as_ptr();
-            *(p.add(8) as *mut *const u8) = ms.dir_buf.as_ptr();
-            *(p.add(16) as *mut *const u8) = ms.type_buf.as_ptr();
-            *(p.add(24) as *mut *const u8) = ms.opts_buf.as_ptr();
-            *(p.add(32) as *mut i32) = freq;
-            *(p.add(36) as *mut i32) = passno;
-        }
-
-        return ms.mntent.as_mut_ptr() as *mut c_void;
+    type GetmntentFn = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getmntent") {
+        let host_fn: GetmntentFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(stream) };
     }
+    std::ptr::null_mut()
 }
 
 /// `endmntent` — close a mount table stream.
 ///
-/// Always returns 1 (glibc contract).
+/// Delegates to host libc endmntent. Always returns 1 (glibc contract).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endmntent(stream: *mut c_void) -> c_int {
-    if !stream.is_null() {
-        // SAFETY: stream was created by setmntent via Box::into_raw.
-        let _: Box<MntStream> = unsafe { Box::from_raw(stream as *mut MntStream) };
+    if stream.is_null() {
+        return 1;
     }
-    1 // glibc always returns 1
+    type EndmntentFn = unsafe extern "C" fn(*mut c_void) -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("endmntent") {
+        let host_fn: EndmntentFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(stream) };
+    }
+    // Fallback: just fclose
+    unsafe { crate::stdio_abi::fclose(stream) };
+    1
 }
 
 /// POSIX `hasmntopt` — search for a mount option in the mntent options string.
@@ -7976,7 +7885,7 @@ pub unsafe extern "C" fn hasmntopt(mnt: *const c_void, opt: *const c_char) -> *m
 /// GNU `getmntent_r` — reentrant mount entry reader.
 ///
 /// Reads the next mount entry from the stream into caller-supplied buffers.
-/// The mntent struct has fields: { mnt_fsname, mnt_dir, mnt_type, mnt_opts, mnt_freq, mnt_passno }
+/// Delegates to host libc getmntent_r for proper FILE*-based operation.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getmntent_r(
     stream: *mut c_void,
@@ -7984,11 +7893,27 @@ pub unsafe extern "C" fn getmntent_r(
     buf: *mut c_char,
     buflen: c_int,
 ) -> *mut c_void {
-    use std::io::BufRead;
-
     if stream.is_null() || mntbuf.is_null() || buf.is_null() || buflen <= 0 {
         return std::ptr::null_mut();
     }
+    type GetmntentRFn =
+        unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_char, c_int) -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getmntent_r") {
+        let host_fn: GetmntentRFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(stream, mntbuf, buf, buflen) };
+    }
+    // Fallback (should not normally be reached)
+    std::ptr::null_mut()
+}
+
+#[allow(dead_code)]
+unsafe fn getmntent_r_fallback(
+    stream: *mut c_void,
+    mntbuf: *mut c_void,
+    buf: *mut c_char,
+    buflen: c_int,
+) -> *mut c_void {
+    use std::io::BufRead;
     let ms = unsafe { &mut *(stream as *mut MntStream) };
     let buflen_u = buflen as usize;
     let mut reader = std::io::BufReader::new(&ms.file);

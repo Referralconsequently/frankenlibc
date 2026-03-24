@@ -117,6 +117,40 @@ unsafe fn bump_alloc(size: usize) -> *mut c_void {
     }
 }
 
+#[cold]
+unsafe fn bump_alloc_aligned(size: usize, alignment: usize) -> *mut c_void {
+    let request = size.max(1);
+    let alignment = alignment.max(BUMP_ALIGN).next_power_of_two();
+    let total = request
+        .saturating_add(alignment)
+        .saturating_add(BUMP_HEADER_SIZE);
+    loop {
+        let pos = BUMP_POS.load(Ordering::Relaxed);
+        let aligned_pos = (pos + BUMP_ALIGN - 1) & !(BUMP_ALIGN - 1);
+        let new_pos = aligned_pos.saturating_add(total);
+        if new_pos > BUMP_SIZE {
+            return std::ptr::null_mut();
+        }
+        if BUMP_POS
+            .compare_exchange_weak(pos, new_pos, Ordering::AcqRel, Ordering::Relaxed)
+            .is_ok()
+        {
+            let base = BUMP_HEAP.0.get().cast::<u8>();
+            // SAFETY: aligned_pos..new_pos is reserved for this allocation.
+            // The header is written immediately before the aligned user
+            // pointer so the existing bump metadata lookup still works.
+            unsafe {
+                let reservation = base.add(aligned_pos) as usize;
+                let user_addr = (reservation + BUMP_HEADER_SIZE + alignment - 1) & !(alignment - 1);
+                let header = (user_addr - BUMP_HEADER_SIZE) as *mut usize;
+                header.write(BUMP_MAGIC);
+                header.add(1).write(request);
+                return user_addr as *mut c_void;
+            }
+        }
+    }
+}
+
 /// Fallback allocator using raw mmap syscall.  Used when the static bump
 /// heap is exhausted.  No symbol resolution or libc calls — pure syscall.
 #[cold]
@@ -395,20 +429,11 @@ unsafe fn native_libc_memalign(alignment: usize, size: usize) -> *mut c_void {
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        // Bump allocator is already 16-byte aligned; for larger alignments
-        // over-allocate and manually align.
-        let extra = if alignment > 16 { alignment } else { 0 };
-        let ptr = unsafe { bump_alloc(size + extra) };
-        if ptr.is_null() || alignment <= 16 {
-            return ptr;
-        }
-        let addr = ptr as usize;
-        let aligned = (addr + alignment - 1) & !(alignment - 1);
-        return aligned as *mut c_void;
+        return unsafe { bump_alloc_aligned(size, alignment) };
     }
     let result = match unsafe { host_memalign_fn() } {
         Some(host_memalign) => unsafe { host_memalign(alignment, size) },
-        None => unsafe { bump_alloc(size + alignment.max(16)) },
+        None => unsafe { bump_alloc_aligned(size, alignment) },
     };
     NATIVE_MEMALIGN_REENTRY.store(false, Ordering::Release);
     result

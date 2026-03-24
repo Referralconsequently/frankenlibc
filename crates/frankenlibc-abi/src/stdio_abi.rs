@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char, c_int, c_void};
 use std::os::raw::c_long;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use frankenlibc_core::errno;
@@ -25,7 +26,12 @@ use crate::malloc_abi::{known_remaining, malloc};
 use crate::runtime_policy;
 use crate::unistd_abi::{sys_read_fd, sys_write_fd};
 
+type HostFopenFn = unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_void;
+type HostFdopenFn = unsafe extern "C" fn(c_int, *const c_char) -> *mut c_void;
 type HostFcloseFn = unsafe extern "C" fn(*mut c_void) -> c_int;
+type HostFwriteFn = unsafe extern "C" fn(*const c_void, usize, usize, *mut c_void) -> usize;
+type HostFputsFn = unsafe extern "C" fn(*const c_char, *mut c_void) -> c_int;
+type HostFputcFn = unsafe extern "C" fn(c_int, *mut c_void) -> c_int;
 type HostFilenoFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 type HostFeofFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 type HostFerrorFn = unsafe extern "C" fn(*mut c_void) -> c_int;
@@ -41,7 +47,12 @@ type HostGetdelimFn =
     unsafe extern "C" fn(*mut *mut c_char, *mut usize, c_int, *mut c_void) -> isize;
 type HostGetlineFn = unsafe extern "C" fn(*mut *mut c_char, *mut usize, *mut c_void) -> isize;
 
+static HOST_FOPEN_FN: OnceLock<usize> = OnceLock::new();
+static HOST_FDOPEN_FN: OnceLock<usize> = OnceLock::new();
 static HOST_FCLOSE_FN: OnceLock<usize> = OnceLock::new();
+static HOST_FWRITE_FN: OnceLock<usize> = OnceLock::new();
+static HOST_FPUTS_FN: OnceLock<usize> = OnceLock::new();
+static HOST_FPUTC_FN: OnceLock<usize> = OnceLock::new();
 static HOST_FILENO_FN: OnceLock<usize> = OnceLock::new();
 static HOST_FEOF_FN: OnceLock<usize> = OnceLock::new();
 static HOST_FERROR_FN: OnceLock<usize> = OnceLock::new();
@@ -62,6 +73,11 @@ static HOST_GETLINE_FN: OnceLock<usize> = OnceLock::new();
 
 fn repair_enabled(heals_enabled: bool, action: MembraneAction) -> bool {
     heals_enabled || matches!(action, MembraneAction::Repair(_))
+}
+
+#[inline]
+fn prefer_host_stdio_streams() -> bool {
+    HOST_STDIO_BOOTSTRAPPED.load(Ordering::Acquire)
 }
 
 unsafe fn scan_c_str_len(ptr: *const c_char, bound: Option<usize>) -> (usize, bool) {
@@ -319,6 +335,36 @@ unsafe fn sync_host_errno(default_errno: c_int) {
 }
 
 #[inline]
+unsafe fn host_fopen_fn() -> Option<HostFopenFn> {
+    unsafe { host_stdio_symbol(&HOST_FOPEN_FN, "fopen") }
+        .map(|ptr| unsafe { std::mem::transmute(ptr) })
+}
+
+#[inline]
+unsafe fn host_fdopen_fn() -> Option<HostFdopenFn> {
+    unsafe { host_stdio_symbol(&HOST_FDOPEN_FN, "fdopen") }
+        .map(|ptr| unsafe { std::mem::transmute(ptr) })
+}
+
+#[inline]
+unsafe fn host_fwrite_fn() -> Option<HostFwriteFn> {
+    unsafe { host_stdio_symbol(&HOST_FWRITE_FN, "fwrite") }
+        .map(|ptr| unsafe { std::mem::transmute(ptr) })
+}
+
+#[inline]
+unsafe fn host_fputs_fn() -> Option<HostFputsFn> {
+    unsafe { host_stdio_symbol(&HOST_FPUTS_FN, "fputs") }
+        .map(|ptr| unsafe { std::mem::transmute(ptr) })
+}
+
+#[inline]
+unsafe fn host_fputc_fn() -> Option<HostFputcFn> {
+    unsafe { host_stdio_symbol(&HOST_FPUTC_FN, "fputc") }
+        .map(|ptr| unsafe { std::mem::transmute(ptr) })
+}
+
+#[inline]
 unsafe fn host_fclose_fn() -> Option<HostFcloseFn> {
     unsafe { host_stdio_symbol(&HOST_FCLOSE_FN, "fclose") }
         .map(|ptr| unsafe { std::mem::transmute(ptr) })
@@ -512,10 +558,36 @@ pub static mut stdout: *mut c_void = STDOUT_SENTINEL as *mut c_void;
 #[allow(non_upper_case_globals)]
 pub static mut stderr: *mut c_void = STDERR_SENTINEL as *mut c_void;
 
+static HOST_STDIO_BOOTSTRAPPED: AtomicBool = AtomicBool::new(false);
+
 /// Internal stream id for stdin-backed scanf helpers.
 #[inline]
 pub(crate) const fn stdin_stream_id() -> usize {
     STDIN_SENTINEL
+}
+
+/// Resolve host libc's stdin/stdout/stderr FILE* pointers and update our globals.
+/// Called from startup after host symbols are resolved.
+pub(crate) fn init_host_stdio_streams() {
+    // Resolve _IO_2_1_{stdin,stdout,stderr}_ from host glibc.
+    // These are the actual FILE structs that programs dereference.
+    let stdin_addr = crate::host_resolve::resolve_host_symbol_raw("_IO_2_1_stdin_");
+    let stdout_addr = crate::host_resolve::resolve_host_symbol_raw("_IO_2_1_stdout_");
+    let stderr_addr = crate::host_resolve::resolve_host_symbol_raw("_IO_2_1_stderr_");
+
+    if let (Some(stdin_addr), Some(stdout_addr), Some(stderr_addr)) =
+        (stdin_addr, stdout_addr, stderr_addr)
+        && stdin_addr != 0
+        && stdout_addr != 0
+        && stderr_addr != 0
+    {
+        unsafe {
+            stdin = stdin_addr as *mut c_void;
+            stdout = stdout_addr as *mut c_void;
+            stderr = stderr_addr as *mut c_void;
+        }
+        HOST_STDIO_BOOTSTRAPPED.store(true, Ordering::Release);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -523,6 +595,9 @@ pub(crate) const fn stdin_stream_id() -> usize {
 // ---------------------------------------------------------------------------
 
 /// POSIX `fopen`.
+///
+/// Delegates to host libc fopen to return a real FILE* that programs can
+/// safely dereference (e.g., for glibc _IO_FILE flag checks).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> *mut c_void {
     if pathname.is_null() || mode.is_null() {
@@ -530,14 +605,24 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
         return std::ptr::null_mut();
     }
 
-    // Parse mode string.
+    // Delegate to host libc fopen for a real FILE*.
+    if prefer_host_stdio_streams()
+        && let Some(host_fopen) = unsafe { host_fopen_fn() }
+    {
+        let result = unsafe { host_fopen(pathname, mode) };
+        if result.is_null() {
+            unsafe { sync_host_errno(errno::ENOENT) };
+        }
+        return result;
+    }
+
+    // Fallback: use our custom stream registry (FILE* will be a numeric ID,
+    // which may crash programs that dereference it as a struct pointer).
     let mode_bytes = unsafe { CStr::from_ptr(mode) }.to_bytes();
     let Some(open_flags) = parse_mode(mode_bytes) else {
         unsafe { set_abi_errno(errno::EINVAL) };
         return std::ptr::null_mut();
     };
-
-    // Convert to O_* flags and call open(2) via libc syscall.
     let oflags = flags_to_oflags(&open_flags);
     let create_mode: libc::mode_t = 0o666;
     let fd = unsafe {
@@ -549,7 +634,6 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
             create_mode,
         ) as c_int
     };
-
     if fd < 0 {
         let e = std::io::Error::last_os_error()
             .raw_os_error()
@@ -557,11 +641,8 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
         unsafe { set_abi_errno(e) };
         return std::ptr::null_mut();
     }
-
-    // Create stream and register it.
     let mut stream = StdioStream::new(fd, open_flags);
     if open_flags.append {
-        // POSIX append streams start at end-of-file for logical position tracking.
         let end_off = unsafe { libc::syscall(libc::SYS_lseek, fd, 0, libc::SEEK_END) };
         if end_off >= 0 {
             stream.set_offset(end_off as i64);
@@ -886,6 +967,11 @@ pub unsafe extern "C" fn fputc(c: c_int, stream: *mut c_void) -> c_int {
 
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let Some(s) = reg.streams.get_mut(&id) else {
+        drop(reg);
+        // Not in our registry — delegate to host libc fputc (real FILE*).
+        if let Some(host_fputc) = unsafe { host_fputc_fn() } {
+            return unsafe { host_fputc(c, stream) };
+        }
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 5, true);
         return libc::EOF;
     };
@@ -1204,6 +1290,11 @@ pub unsafe extern "C" fn fputs(s: *const c_char, stream: *mut c_void) -> c_int {
 
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let Some(stream_obj) = reg.streams.get_mut(&id) else {
+        drop(reg);
+        // Not in our registry — delegate to host libc fputs (real FILE*).
+        if let Some(host_fputs) = unsafe { host_fputs_fn() } {
+            return unsafe { host_fputs(s, stream) };
+        }
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 10, true);
         return libc::EOF;
     };
@@ -1481,6 +1572,11 @@ pub unsafe extern "C" fn fwrite(
 
     let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let Some(s) = reg.streams.get_mut(&id) else {
+        drop(reg);
+        // Not in our registry — delegate to host libc fwrite (real FILE*).
+        if let Some(host_fwrite) = unsafe { host_fwrite_fn() } {
+            return unsafe { host_fwrite(ptr, size, nmemb, stream) };
+        }
         runtime_policy::observe(ApiFamily::Stdio, decision.profile, 15, true);
         return 0;
     };
@@ -3669,6 +3765,17 @@ pub unsafe extern "C" fn fdopen(fd: c_int, mode: *const c_char) -> *mut c_void {
         return std::ptr::null_mut();
     }
 
+    // Delegate to host libc fdopen for a real FILE*.
+    if prefer_host_stdio_streams()
+        && let Some(host_fdopen) = unsafe { host_fdopen_fn() }
+    {
+        let result = unsafe { host_fdopen(fd, mode) };
+        if result.is_null() {
+            unsafe { sync_host_errno(errno::EINVAL) };
+        }
+        return result;
+    }
+
     let (_, decision) = runtime_policy::decide(ApiFamily::Stdio, fd as usize, 0, false, false, 0);
     if matches!(decision.action, MembraneAction::Deny) {
         unsafe { set_abi_errno(errno::EACCES) };
@@ -5101,22 +5208,10 @@ mod _io_internal {
     }
 
     // glibc _IO_2_1_{stdin,stdout,stderr}_ are the actual FILE struct objects.
-    // In interpose mode these resolve to the host glibc's objects via the
-    // existing stdin/stdout/stderr statics. We export aliases that point to
-    // our sentinel addresses so programs that reference _IO_2_1_* link correctly.
-    // They must be large enough to hold glibc's `_IO_FILE_plus` (224 bytes on 64-bit)
-    // and must be mutable so `_IO_stdfiles_init` doesn't segfault writing to them.
-
-    /// `_IO_2_1_stdin_` — glibc internal stdin FILE object alias.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub static mut _IO_2_1_stdin_: [u8; 256] = [0; 256];
-
-    /// `_IO_2_1_stdout_` — glibc internal stdout FILE object alias.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub static mut _IO_2_1_stdout_: [u8; 256] = [0; 256];
-
-    /// `_IO_2_1_stderr_` — glibc internal stderr FILE object alias.
-    #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-    pub static mut _IO_2_1_stderr_: [u8; 256] = [0; 256];
+    // We do NOT export these symbols — doing so would shadow glibc's real
+    // FILE structs with zeroed memory, breaking _IO_un_link and other
+    // internal glibc operations that traverse the IO list. Instead, we let
+    // the host's symbols remain visible and point our stdin/stdout/stderr
+    // globals to the host's real FILE objects via init_host_stdio_streams().
 } // mod _io_internal
 pub use _io_internal::*;

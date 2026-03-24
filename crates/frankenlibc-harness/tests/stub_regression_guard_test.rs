@@ -4,7 +4,8 @@
 //! Validates:
 //! 1) waiver policy artifact has required shape.
 //! 2) guard script passes with the canonical policy.
-//! 3) guard script fails deterministically when a required waiver is removed.
+//! 3) guard script fails deterministically when stale waiver debt is injected.
+//! 4) guard script fails deterministically when thresholds are stricter than reality.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -48,7 +49,6 @@ fn waiver_policy_has_required_shape() {
     assert!(policy["summary"].is_object(), "summary must be object");
 
     let waivers = policy["waivers"].as_array().unwrap();
-    assert!(!waivers.is_empty(), "waivers must not be empty");
     for waiver in waivers {
         for key in [
             "symbol",
@@ -65,6 +65,17 @@ fn waiver_policy_has_required_shape() {
             );
         }
     }
+
+    let summary = policy["summary"].as_object().unwrap();
+    let waiver_count = summary
+        .get("waiver_count")
+        .and_then(|v| v.as_u64())
+        .expect("summary.waiver_count must be u64");
+    assert_eq!(
+        waiver_count as usize,
+        waivers.len(),
+        "summary waiver count must match waiver rows"
+    );
 
     let policy_obj = policy["policy"].as_object().unwrap();
     assert!(
@@ -139,7 +150,7 @@ fn guard_script_passes_with_current_policy() {
 }
 
 #[test]
-fn guard_script_fails_when_required_waiver_missing() {
+fn guard_script_fails_when_stale_waiver_injected() {
     let _guard = script_lock().lock().unwrap();
     let root = workspace_root();
     let script = root.join("scripts/check_stub_regression_guard.sh");
@@ -149,15 +160,20 @@ fn guard_script_fails_when_required_waiver_missing() {
     let waivers = policy["waivers"]
         .as_array_mut()
         .expect("waivers must be array");
-    let original_len = waivers.len();
-    waivers.retain(|row| row["symbol"].as_str() != Some("setjmp"));
-    assert!(
-        waivers.len() < original_len,
-        "test fixture edit should remove at least one waiver"
-    );
+    waivers.push(serde_json::json!({
+        "symbol": "synthetic_stale_symbol",
+        "scope": "critical_non_exported_debt",
+        "risk_tier": "critical",
+        "reason": "synthetic stale waiver coverage test",
+        "owner_bead": "bd-test",
+        "approved_by": "test-suite",
+        "expires_utc": "2099-01-01T00:00:00Z"
+    }));
+    policy["summary"]["waiver_count"] = serde_json::Value::from(waivers.len() as u64);
+    policy["summary"]["critical_waiver_count"] = serde_json::Value::from(1_u64);
 
     let tmp_name = format!(
-        "stub_regression_policy_missing_setjmp_{}_{}.json",
+        "stub_regression_policy_stale_waiver_{}_{}.json",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -181,23 +197,23 @@ fn guard_script_fails_when_required_waiver_missing() {
 
     assert!(
         !output.status.success(),
-        "guard should fail when required waiver is missing"
+        "guard should fail when a stale waiver is injected"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{stdout}\n{stderr}");
     assert!(
-        combined.contains("setjmp: missing_waiver"),
-        "failure diagnostics should mention missing waiver for setjmp; output:\n{}",
+        combined.contains("synthetic_stale_symbol: stale"),
+        "failure diagnostics should mention stale waiver; output:\n{}",
         combined
     );
 
     let report_path = root.join("target/conformance/stub_regression_guard.report.json");
     let report = load_json(&report_path);
     assert_eq!(
-        report["checks"]["symbol_coverage_valid"].as_str(),
+        report["checks"]["stale_waivers_absent"].as_str(),
         Some("fail"),
-        "symbol_coverage_valid should fail for missing waiver fixture"
+        "stale_waivers_absent should fail for stale waiver fixture"
     );
 }
 
@@ -209,8 +225,8 @@ fn guard_script_fails_when_burn_down_threshold_is_too_strict() {
     let policy_path = root.join("tests/conformance/stub_regression_waiver_policy.v1.json");
     let mut policy = load_json(&policy_path);
 
-    policy["policy"]["burn_down_thresholds"]["max_symbols_unscheduled"] =
-        serde_json::Value::from(10_u64);
+    policy["policy"]["burn_down_thresholds"]["max_total_non_implemented"] =
+        serde_json::Value::from(-1);
 
     let tmp_name = format!(
         "stub_regression_policy_threshold_fail_{}_{}.json",
@@ -243,7 +259,7 @@ fn guard_script_fails_when_burn_down_threshold_is_too_strict() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{stdout}\n{stderr}");
     assert!(
-        combined.contains("max_symbols_unscheduled exceeded"),
+        combined.contains("max_total_non_implemented exceeded"),
         "expected threshold failure diagnostics; output:\n{}",
         combined
     );

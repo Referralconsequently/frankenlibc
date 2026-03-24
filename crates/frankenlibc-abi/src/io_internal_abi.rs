@@ -12,59 +12,138 @@
 #![allow(non_snake_case, non_upper_case_globals)]
 
 use std::ffi::{c_char, c_int, c_void};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::ptr;
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use crate::stdio_abi;
 
 // ---------------------------------------------------------------------------
-// Global variable symbols (exported as static AtomicPtr, lazily resolved)
+// Global variable symbols
 // ---------------------------------------------------------------------------
 
-// Sentinel value indicating \"not yet resolved\".
+// Sentinel value indicating "not yet resolved".
 const UNRESOLVED: *mut c_void = std::ptr::dangling_mut::<c_void>();
+const IO_JUMPS_EXPORT_SIZE: usize = 168;
 
-fn resolve_global(name: &std::ffi::CStr, slot: &AtomicPtr<c_void>) -> *mut c_void {
-    let mut ptr = slot.load(Ordering::Acquire);
-    if ptr == UNRESOLVED {
-        let resolved = unsafe { libc::dlsym(libc::RTLD_NEXT, name.as_ptr()) };
-        // Use compare_exchange to ensure only one thread stores the result.
-        match slot.compare_exchange(UNRESOLVED, resolved, Ordering::AcqRel, Ordering::Acquire) {
-            Ok(_) => ptr = resolved,
-            Err(current) => ptr = current,
-        }
-    }
-    ptr
+#[repr(C, align(16))]
+pub struct IoJumpsExport {
+    bytes: [u8; IO_JUMPS_EXPORT_SIZE],
 }
 
+impl IoJumpsExport {
+    const fn zeroed() -> Self {
+        Self {
+            bytes: [0; IO_JUMPS_EXPORT_SIZE],
+        }
+    }
+}
+
+static HOST_LIBIO_BOOTSTRAPPED: AtomicBool = AtomicBool::new(false);
+
 /// `_IO_list_all` — head of the linked list of all open FILE streams.
-/// Lazily resolved from glibc on first access.
+/// Exported as the head pointer value glibc expects to walk during teardown.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static _IO_list_all: AtomicPtr<c_void> = AtomicPtr::new(UNRESOLVED);
+pub static mut _IO_list_all: *mut c_void = std::ptr::null_mut();
 
 /// `_IO_file_jumps` — default FILE vtable for regular files.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static _IO_file_jumps: AtomicPtr<c_void> = AtomicPtr::new(UNRESOLVED);
+pub static mut _IO_file_jumps: IoJumpsExport = IoJumpsExport::zeroed();
 
 /// `_IO_wfile_jumps` — default FILE vtable for wide-oriented files.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static _IO_wfile_jumps: AtomicPtr<c_void> = AtomicPtr::new(UNRESOLVED);
+pub static mut _IO_wfile_jumps: IoJumpsExport = IoJumpsExport::zeroed();
+
+static HOST_IO_LIST_ALL: AtomicPtr<c_void> = AtomicPtr::new(UNRESOLVED);
+static HOST_IO_FILE_JUMPS: AtomicPtr<c_void> = AtomicPtr::new(UNRESOLVED);
+static HOST_IO_WFILE_JUMPS: AtomicPtr<c_void> = AtomicPtr::new(UNRESOLVED);
+
+unsafe fn copy_host_object(symbol: &str, dst: *mut u8, len: usize) {
+    let Some(src) = crate::host_resolve::resolve_host_symbol_raw(symbol) else {
+        return;
+    };
+    // SAFETY: caller guarantees `dst` points at writable export storage and
+    // `resolve_host_symbol_raw` returns a valid mapped host object address.
+    unsafe { ptr::copy_nonoverlapping(src as *const u8, dst, len) };
+}
+
+pub(crate) unsafe fn bootstrap_host_libio_exports() {
+    if HOST_LIBIO_BOOTSTRAPPED.load(Ordering::Acquire) {
+        return;
+    }
+
+    if let Some(host_list_ptr_addr) = crate::host_resolve::resolve_host_symbol_raw("_IO_list_all") {
+        // SAFETY: host `_IO_list_all` is an 8-byte object containing the list head pointer.
+        unsafe {
+            _IO_list_all = *(host_list_ptr_addr as *const *mut c_void);
+        }
+        let io_list_all = unsafe { _IO_list_all };
+        HOST_IO_LIST_ALL.store(io_list_all, Ordering::Release);
+    }
+
+    if let Some(host_jumps) = crate::host_resolve::resolve_host_symbol_raw("_IO_file_jumps") {
+        HOST_IO_FILE_JUMPS.store(host_jumps as *mut c_void, Ordering::Release);
+        // SAFETY: export storage is writable and sized for the host jump table on x86_64 glibc.
+        unsafe {
+            copy_host_object(
+                "_IO_file_jumps",
+                ptr::addr_of_mut!(_IO_file_jumps).cast::<u8>(),
+                IO_JUMPS_EXPORT_SIZE,
+            );
+        }
+    }
+
+    if let Some(host_wjumps) = crate::host_resolve::resolve_host_symbol_raw("_IO_wfile_jumps") {
+        HOST_IO_WFILE_JUMPS.store(host_wjumps as *mut c_void, Ordering::Release);
+        // SAFETY: export storage is writable and sized for the host jump table on x86_64 glibc.
+        unsafe {
+            copy_host_object(
+                "_IO_wfile_jumps",
+                ptr::addr_of_mut!(_IO_wfile_jumps).cast::<u8>(),
+                IO_JUMPS_EXPORT_SIZE,
+            );
+        }
+    }
+
+    // NOTE: _IO_2_1_{stdin,stdout,stderr}_ exports have been removed.
+    // Copying host FILE structs into our address space breaks glibc's
+    // internal _IO_list chain (entries point to host addresses, not ours).
+    // The host's original _IO_2_1_* symbols remain visible since we no
+    // longer shadow them.
+
+    HOST_LIBIO_BOOTSTRAPPED.store(true, Ordering::Release);
+}
 
 /// Accessor: resolve `_IO_list_all` from glibc on first call.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_list_all_get() -> *mut c_void {
-    resolve_global(c"_IO_list_all", &_IO_list_all)
+    unsafe { bootstrap_host_libio_exports() };
+    let cached = HOST_IO_LIST_ALL.load(Ordering::Acquire);
+    if cached != UNRESOLVED {
+        return cached;
+    }
+    let Some(host_list_ptr_addr) = crate::host_resolve::resolve_host_symbol_raw("_IO_list_all")
+    else {
+        return std::ptr::null_mut();
+    };
+    // SAFETY: host `_IO_list_all` points to a process-global pointer-sized object.
+    let head = unsafe { *(host_list_ptr_addr as *const *mut c_void) };
+    let _ =
+        HOST_IO_LIST_ALL.compare_exchange(UNRESOLVED, head, Ordering::AcqRel, Ordering::Acquire);
+    head
 }
 
 /// Accessor: resolve `_IO_file_jumps` from glibc on first call.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_file_jumps_get() -> *mut c_void {
-    resolve_global(c"_IO_file_jumps", &_IO_file_jumps)
+    unsafe { bootstrap_host_libio_exports() };
+    ptr::addr_of_mut!(_IO_file_jumps).cast::<u8>().cast()
 }
 
 /// Accessor: resolve `_IO_wfile_jumps` from glibc on first call.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _IO_wfile_jumps_get() -> *mut c_void {
-    resolve_global(c"_IO_wfile_jumps", &_IO_wfile_jumps)
+    unsafe { bootstrap_host_libio_exports() };
+    ptr::addr_of_mut!(_IO_wfile_jumps).cast::<u8>().cast()
 }
 
 // ===========================================================================

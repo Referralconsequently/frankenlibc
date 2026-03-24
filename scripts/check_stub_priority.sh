@@ -67,11 +67,12 @@ try:
     v = r.get('schema_version', 0)
     tiers = r.get('symbol_ranking', {}).get('tiers', [])
     modules = r.get('module_ranking', {}).get('entries', [])
+    total_non_impl = r.get('summary', {}).get('total_non_implemented', 0)
     if v < 1:
         print('INVALID: schema_version < 1')
     elif not tiers:
         print('INVALID: empty symbol_ranking.tiers')
-    elif not modules:
+    elif total_non_impl > 0 and not modules:
         print('INVALID: empty module_ranking.entries')
     else:
         total = sum(len(t.get('symbols', [])) for t in tiers)

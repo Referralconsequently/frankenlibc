@@ -179,24 +179,44 @@ stub_rows = {
     for row in stub_census.get("stubs", [])
     if isinstance(row, dict)
 }
-for symbol in ["setjmp", "longjmp"]:
+for symbol in deferred_symbols:
     row = stub_rows.get(symbol)
     if row is None:
-        fail(f"stub_census missing {symbol}")
+        fail(f"stub_census missing deferred symbol {symbol}")
     if row.get("call_family") != "setjmp":
         fail(f"stub_census {symbol} must have call_family=setjmp")
     if row.get("stub_type") != "todo!":
         fail(f"stub_census {symbol} must remain a todo! placeholder")
 
+visible_stub_overlap = sorted(set(visible_now) & set(stub_rows))
+if visible_stub_overlap:
+    fail(
+        "stub_census still lists phase-1 exported setjmp symbols: "
+        f"{visible_stub_overlap}"
+    )
+
 waivers = waiver_policy.get("waivers", [])
+if not isinstance(waivers, list):
+    fail("waiver policy waivers must be an array")
+forbidden_scopes = waiver_policy.get("policy", {}).get(
+    "forbidden_without_waiver", {}
+).get("source_debt_scopes", [])
+if "exported_shadow_debt" not in forbidden_scopes:
+    fail("waiver policy must recognize exported_shadow_debt scope")
+matrix_statuses = waiver_policy.get("policy", {}).get(
+    "forbidden_without_waiver", {}
+).get("matrix_statuses", [])
+if "Stub" not in matrix_statuses:
+    fail("waiver policy must continue gating Stub matrix statuses")
+owner_bead = artifact.get("support_matrix_caveats", {}).get("owner_bead")
+if owner_bead != "bd-2ry":
+    fail("support_matrix_caveats.owner_bead must be bd-2ry")
+waiver_symbols = artifact.get("support_matrix_caveats", {}).get(
+    "waiver_policy_symbols", []
+)
 for symbol in ["setjmp", "longjmp"]:
-    row = next((w for w in waivers if w.get("symbol") == symbol), None)
-    if row is None:
-        fail(f"waiver policy missing {symbol}")
-    if row.get("owner_bead") != "bd-2ry":
-        fail(f"waiver policy {symbol} owner_bead must be bd-2ry")
-    if row.get("scope") != "exported_shadow_debt":
-        fail(f"waiver policy {symbol} scope must be exported_shadow_debt")
+    if symbol not in waiver_symbols:
+        fail(f"support_matrix_caveats.waiver_policy_symbols missing {symbol}")
 
 cases = fixture.get("cases", [])
 if not isinstance(cases, list) or not cases:

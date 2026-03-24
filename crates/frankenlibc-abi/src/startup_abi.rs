@@ -417,9 +417,13 @@ unsafe extern "C" fn host_delegate_main_wrapper(
     let resolved_envp = unsafe { resolve_startup_envp(argc, argv, envp) };
     init_process_globals(argv, resolved_envp);
     crate::host_resolve::bootstrap_host_symbols();
+    unsafe { crate::io_internal_abi::bootstrap_host_libio_exports() };
+    crate::stdio_abi::init_host_stdio_streams();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    crate::runtime_policy::signal_runtime_ready();
+    // NOTE: signal_runtime_ready() intentionally omitted — keep membrane in
+    // passthrough mode to avoid validation-pipeline re-entrancy under LD_PRELOAD.
+    // The passthrough `decide()` fast-path already returns Allow for every call.
 
     let main_ptr = HOST_DELEGATED_MAIN.load(Ordering::Acquire);
     if main_ptr == 0 {
@@ -447,6 +451,8 @@ unsafe fn delegate_to_host_libc_start_main(
     let resolved_envp = unsafe { resolve_startup_envp(argc, ubp_av, environ) };
     init_process_globals(ubp_av, resolved_envp);
     crate::host_resolve::bootstrap_host_symbols();
+    crate::stdio_abi::init_host_stdio_streams();
+    unsafe { crate::io_internal_abi::bootstrap_host_libio_exports() };
     let delegated_main = main.map_or(0usize, |f| f as usize);
     HOST_DELEGATED_MAIN.store(delegated_main, Ordering::Release);
     let wrapped_main = if delegated_main == 0 {
@@ -724,6 +730,8 @@ unsafe fn startup_phase0_impl(
     let resolved_envp = unsafe { resolve_startup_envp(argc, ubp_av, envp) };
     init_process_globals(ubp_av, resolved_envp);
     crate::host_resolve::bootstrap_host_symbols();
+    crate::stdio_abi::init_host_stdio_streams();
+    unsafe { crate::io_internal_abi::bootstrap_host_libio_exports() };
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
     crate::runtime_policy::signal_runtime_ready();
@@ -848,9 +856,11 @@ pub unsafe extern "C" fn __libc_start_main(
     let envp = unsafe { resolve_startup_envp(argc, ubp_av, environ) };
     init_process_globals(ubp_av, envp);
     crate::host_resolve::bootstrap_host_symbols();
+    unsafe { crate::io_internal_abi::bootstrap_host_libio_exports() };
+    crate::stdio_abi::init_host_stdio_streams();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    crate::runtime_policy::signal_runtime_ready();
+    // signal_runtime_ready() omitted — same reasoning as host_delegate_main_wrapper.
     let rc = match main {
         Some(main_fn) => unsafe { main_fn(argc, ubp_av, envp) },
         None => 0,

@@ -20,6 +20,9 @@ static HOST_CALLOC: AtomicUsize = AtomicUsize::new(0);
 static HOST_REALLOC: AtomicUsize = AtomicUsize::new(0);
 static HOST_FREE: AtomicUsize = AtomicUsize::new(0);
 static HOST_ERRNO_LOCATION: AtomicUsize = AtomicUsize::new(0);
+static HOST_DLVSYM: AtomicUsize = AtomicUsize::new(0);
+static HOST_DL_ITERATE_PHDR: AtomicUsize = AtomicUsize::new(0);
+static HOST_DLADDR: AtomicUsize = AtomicUsize::new(0);
 static RESOLVED: AtomicUsize = AtomicUsize::new(0);
 static HOST_IMAGE: OnceLock<LoadedGlibcImage> = OnceLock::new();
 
@@ -28,7 +31,17 @@ pub(crate) unsafe fn host_dlvsym_next_raw(
     symbol: *const c_char,
     version: *const c_char,
 ) -> *mut c_void {
-    // SAFETY: callers provide symbol/version pointers for host-side symbol lookup.
+    // Use the ELF-resolved host dlvsym to avoid calling our interposed dlvsym,
+    // which during bootstrap passthrough resolves from our export table instead
+    // of delegating to the real host dynamic linker.
+    let addr = HOST_DLVSYM.load(Ordering::Acquire);
+    if addr != 0 {
+        type DlvsymFn =
+            unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> *mut c_void;
+        let host_dlvsym: DlvsymFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_dlvsym(libc::RTLD_NEXT, symbol, version) };
+    }
+    // Fallback: try libc::dlvsym (may recurse into our interposed dlvsym)
     unsafe { libc::dlvsym(libc::RTLD_NEXT, symbol, version) }
 }
 
@@ -86,9 +99,15 @@ fn find_glibc_image_via_phdr() -> Option<(usize, [u8; 512])> {
         base: 0,
         path: [0; 512],
     };
+    let host_dl_iterate = host_dl_iterate_phdr_cached()?;
+    type DlIteratePhdrFn = unsafe extern "C" fn(
+        Option<unsafe extern "C" fn(*mut libc::dl_phdr_info, usize, *mut c_void) -> libc::c_int>,
+        *mut c_void,
+    ) -> libc::c_int;
+    let host_dl_iterate: DlIteratePhdrFn = unsafe { core::mem::transmute(host_dl_iterate) };
     // SAFETY: callback and out-pointer remain valid for the synchronous iteration.
     unsafe {
-        libc::dl_iterate_phdr(
+        host_dl_iterate(
             Some(find_glibc_base_cb),
             (&mut target as *mut DlIterateTarget).cast(),
         );
@@ -141,7 +160,10 @@ fn find_glibc_image_via_maps() -> Option<(usize, [u8; 512])> {
 }
 
 fn loaded_glibc_image() -> Option<(usize, [u8; 512])> {
-    find_glibc_image_via_phdr().or_else(find_glibc_image_via_maps)
+    // Prefer the raw `/proc/self/maps` scan during bootstrap. Calling
+    // `dl_iterate_phdr` before we have already cached the host implementation
+    // can recurse back through our own interposed loader ABI.
+    find_glibc_image_via_maps().or_else(find_glibc_image_via_phdr)
 }
 
 struct LoadedGlibcImage {
@@ -294,18 +316,20 @@ fn load_glibc_image() -> Option<&'static LoadedGlibcImage> {
     }
     let len = stat.st_size as usize;
     // SAFETY: read-only private file mapping for ELF parsing.
+    // Use raw SYS_mmap syscall to avoid going through our interposed mmap.
     let mapped = unsafe {
-        libc::mmap(
-            std::ptr::null_mut(),
+        libc::syscall(
+            libc::SYS_mmap,
+            std::ptr::null::<c_void>(),
             len,
             libc::PROT_READ,
             libc::MAP_PRIVATE,
             fd,
-            0,
-        )
+            0i64,
+        ) as *mut c_void
     };
     unsafe { raw_close(fd) };
-    if mapped == libc::MAP_FAILED {
+    if std::ptr::eq(mapped, libc::MAP_FAILED) || (mapped as isize) < 0 {
         return None;
     }
     let image = LoadedGlibcImage {
@@ -317,10 +341,19 @@ fn load_glibc_image() -> Option<&'static LoadedGlibcImage> {
     HOST_IMAGE.get()
 }
 
-pub(crate) fn bootstrap_host_symbols() {
-    if RESOLVED.load(Ordering::Relaxed) != 0 {
+/// Early-resolve the host dlvsym so that subsequent host_dlvsym_next_raw calls
+/// bypass our interposed dlvsym. Must be called before delegate_to_host_libc_start_main.
+pub(crate) fn ensure_host_dlvsym() {
+    if HOST_DLVSYM.load(Ordering::Acquire) != 0 {
         return;
     }
+    if let Some(addr) = resolve_host_symbol_raw("dlvsym") {
+        HOST_DLVSYM.store(addr, Ordering::Release);
+    }
+}
+
+pub(crate) fn bootstrap_host_symbols() {
+    let mut unresolved = 0usize;
     for (symbol, cache) in [
         ("pthread_create", &HOST_PTHREAD_CREATE),
         ("pthread_join", &HOST_PTHREAD_JOIN),
@@ -332,13 +365,20 @@ pub(crate) fn bootstrap_host_symbols() {
         ("realloc", &HOST_REALLOC),
         ("free", &HOST_FREE),
         ("__errno_location", &HOST_ERRNO_LOCATION),
+        ("dlvsym", &HOST_DLVSYM),
+        ("dl_iterate_phdr", &HOST_DL_ITERATE_PHDR),
+        ("dladdr", &HOST_DLADDR),
     ] {
-        let a = resolve_host_symbol_raw(symbol).unwrap_or(0);
-        if a != 0 {
-            cache.store(a, Ordering::Release);
+        if cache.load(Ordering::Acquire) == 0 {
+            let a = resolve_host_symbol_raw(symbol).unwrap_or(0);
+            if a != 0 {
+                cache.store(a, Ordering::Release);
+            } else {
+                unresolved += 1;
+            }
         }
     }
-    RESOLVED.store(1, Ordering::Release);
+    RESOLVED.store((unresolved == 0) as usize, Ordering::Release);
 }
 
 pub(crate) fn resolve_host_symbol_raw(symbol: &str) -> Option<usize> {
@@ -403,6 +443,20 @@ pub(crate) fn host_free_raw() -> Option<unsafe extern "C" fn(*mut c_void)> {
 
 pub(crate) fn host_errno_location_raw() -> Option<unsafe extern "C" fn() -> *mut c_int> {
     load_host_symbol(&HOST_ERRNO_LOCATION).map(|addr| unsafe { core::mem::transmute(addr) })
+}
+
+/// Get the cached host `dl_iterate_phdr` address (non-blocking, no recursion).
+#[inline]
+pub(crate) fn host_dl_iterate_phdr_cached() -> Option<usize> {
+    let addr = HOST_DL_ITERATE_PHDR.load(Ordering::Acquire);
+    (addr != 0).then_some(addr)
+}
+
+/// Get the cached host `dladdr` address (non-blocking, no recursion).
+#[inline]
+pub(crate) fn host_dladdr_cached() -> Option<usize> {
+    let addr = HOST_DLADDR.load(Ordering::Acquire);
+    (addr != 0).then_some(addr)
 }
 
 #[inline]

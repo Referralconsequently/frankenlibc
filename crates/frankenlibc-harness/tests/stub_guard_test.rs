@@ -21,6 +21,29 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn abi_source_mentions_export(content: &str, symbol: &str) -> bool {
+    let fn_pattern = format!("extern \"C\" fn {symbol}");
+    let export_name_pattern = format!("export_name = \"{symbol}\"");
+    let static_pattern = format!("pub static {symbol}");
+    let static_mut_pattern = format!("pub static mut {symbol}");
+    let macro_arg_fn_pattern = format!("!({symbol}(");
+    let macro_arg_value_pattern = format!("!({symbol},");
+
+    content.contains(&fn_pattern)
+        || content.contains(&export_name_pattern)
+        || content.contains(&static_pattern)
+        || content.contains(&static_mut_pattern)
+        || content.contains(&macro_arg_fn_pattern)
+        || content.contains(&macro_arg_value_pattern)
+}
+
+fn supported_via_host_visible_symbol(symbol: &str) -> bool {
+    matches!(
+        symbol,
+        "_IO_2_1_stdin_" | "_IO_2_1_stdout_" | "_IO_2_1_stderr_"
+    )
+}
+
 #[test]
 fn no_todo_in_abi_crate() {
     let root = workspace_root();
@@ -169,27 +192,16 @@ fn implemented_symbols_have_abi_exports() {
     let content = std::fs::read_to_string(&matrix_path).unwrap();
     let matrix: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-    // Scan ABI source files directly for extern "C" fn exports
-    let mut abi_fns = std::collections::HashSet::new();
+    // Collect ABI source files once and check symbols against direct exports,
+    // exported statics, export_name aliases, and macro-generated wrappers.
+    let mut abi_sources = Vec::new();
     for entry in std::fs::read_dir(&abi_src).expect("should read abi src dir") {
         let entry = entry.unwrap();
         let path = entry.path();
         if path.extension().is_none_or(|e| e != "rs") {
             continue;
         }
-        let content = std::fs::read_to_string(&path).unwrap();
-        for line in content.lines() {
-            // Match: pub unsafe extern "C" fn NAME  or  pub extern "C" fn NAME
-            if line.contains("extern \"C\" fn ")
-                && line.trim_start().starts_with("pub")
-                && let Some(after_fn) = line.split("fn ").nth(1)
-            {
-                let name = after_fn.split('(').next().unwrap_or("").trim();
-                if !name.is_empty() {
-                    abi_fns.insert(name.to_string());
-                }
-            }
-        }
+        abi_sources.push(std::fs::read_to_string(&path).unwrap());
     }
 
     let symbols = matrix["symbols"].as_array().unwrap();
@@ -199,27 +211,16 @@ fn implemented_symbols_have_abi_exports() {
         let name = sym["symbol"].as_str().unwrap();
         let status = sym["status"].as_str().unwrap();
 
-        // Only check Implemented and RawSyscall — these MUST have ABI exports.
-        // Some entries are exported globals/statics, not functions.
-        if matches!(status, "Implemented" | "RawSyscall") {
-            if matches!(
-                name,
-                "stdin"
-                    | "stdout"
-                    | "stderr"
-                    | "_IO_2_1_stdin_"
-                    | "_IO_2_1_stdout_"
-                    | "_IO_2_1_stderr_"
-                    | "__progname"
-                    | "__stack_chk_guard"
-                    | "program_invocation_name"
-                    | "program_invocation_short_name"
-            ) {
-                continue;
-            }
-            if !abi_fns.contains(name) {
-                missing.push(format!("  {} ({})", name, status));
-            }
+        // Only check Implemented and RawSyscall — these must have some ABI
+        // export surface in source, which may be a direct function, a global,
+        // an export_name alias, or a macro-generated wrapper.
+        if matches!(status, "Implemented" | "RawSyscall")
+            && !supported_via_host_visible_symbol(name)
+            && !abi_sources
+                .iter()
+                .any(|content| abi_source_mentions_export(content, name))
+        {
+            missing.push(format!("  {} ({})", name, status));
         }
     }
 

@@ -2498,9 +2498,9 @@ GLIBC_2.2.5 {
         _IO_sgetn;
         _IO_seekoff;
         _IO_seekpos;
-        _IO_2_1_stdin_;
-        _IO_2_1_stdout_;
-        _IO_2_1_stderr_;
+        /* _IO_2_1_{stdin,stdout,stderr}_ intentionally NOT exported.
+           Shadowing glibc's real FILE structs breaks _IO_list chain management.
+           The host's versions remain visible for programs that reference them. */
 
         /* GNU old regex API */
         re_set_syntax;

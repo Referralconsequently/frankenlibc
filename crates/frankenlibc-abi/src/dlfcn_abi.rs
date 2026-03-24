@@ -429,66 +429,47 @@ pub unsafe extern "C" fn dlerror() -> *const c_char {
 // dl_iterate_phdr / dladdr — native fallback (no host call-through)
 // ---------------------------------------------------------------------------
 
+/// `dl_iterate_phdr` — enumerate loaded shared objects.
+///
+/// Delegates to the host dynamic linker so that libgcc exception-unwinding,
+/// backtrace libraries, and any caller that enumerates DSOs works correctly.
+/// Uses the cached host address (resolved during bootstrap) to avoid recursion
+/// into resolve_host_symbol_raw.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dl_iterate_phdr(
-    callback: Option<unsafe extern "C" fn(*mut c_void, usize, *mut c_void) -> c_int>,
+    callback: Option<unsafe extern "C" fn(*mut libc::dl_phdr_info, usize, *mut c_void) -> c_int>,
     data: *mut c_void,
 ) -> c_int {
-    let callback_addr = callback.map_or(0usize, |cb| cb as usize);
-    let (_, decision) = runtime_policy::decide(
-        ApiFamily::Loader,
-        callback_addr,
-        data as usize,
-        false,
-        true,
-        0,
-    );
-    if matches!(decision.action, MembraneAction::Deny) {
-        set_dlerror(dlfcn_core::ERR_OPERATION_UNAVAILABLE);
-        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
-        return -1;
+    type DlIteratePhdrFn = unsafe extern "C" fn(
+        Option<unsafe extern "C" fn(*mut libc::dl_phdr_info, usize, *mut c_void) -> c_int>,
+        *mut c_void,
+    ) -> c_int;
+    if let Some(addr) = crate::host_resolve::host_dl_iterate_phdr_cached() {
+        let host_fn: DlIteratePhdrFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(callback, data) };
     }
-
-    // Phase-1 native replacement-safe fallback: report no entries instead of
-    // calling into host loader internals.
-    let _ = callback;
-    let _ = data;
-    clear_dlerror();
-    runtime_policy::observe(ApiFamily::Loader, decision.profile, 6, false);
+    // During early bootstrap before symbols are resolved, return 0 (no entries).
     0
 }
 
+/// `dladdr` — resolve address to shared object info.
+///
+/// Delegates to the host dynamic linker for correct DSO metadata.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn dladdr(addr: *const c_void, info: *mut c_void) -> c_int {
-    let (_, decision) = runtime_policy::decide(
-        ApiFamily::Loader,
-        addr as usize,
-        info as usize,
-        false,
-        true,
-        0,
-    );
-    if matches!(decision.action, MembraneAction::Deny) {
-        set_dlerror(dlfcn_core::ERR_OPERATION_UNAVAILABLE);
-        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
-        return 0;
-    }
-
-    if addr.is_null() {
+    if addr.is_null() || info.is_null() {
         set_dlerror(dlfcn_core::ERR_INVALID_HANDLE);
-        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
         return 0;
     }
-
-    if info.is_null() {
-        // POSIX does not define behavior for null info, but returning 0 (failure)
-        // is the safest path for libc replacement.
-        runtime_policy::observe(ApiFamily::Loader, decision.profile, 5, true);
-        return 0;
+    type DladdrFn = unsafe extern "C" fn(*const c_void, *mut c_void) -> c_int;
+    if let Some(host_addr) = crate::host_resolve::host_dladdr_cached() {
+        let host_fn: DladdrFn = unsafe { core::mem::transmute(host_addr) };
+        let rc = unsafe { host_fn(addr, info) };
+        if rc != 0 {
+            clear_dlerror();
+            return rc;
+        }
     }
-
-    // Native fallback currently does not expose loader metadata.
     set_dlerror(dlfcn_core::ERR_OPERATION_UNAVAILABLE);
-    runtime_policy::observe(ApiFamily::Loader, decision.profile, 6, true);
     0
 }
