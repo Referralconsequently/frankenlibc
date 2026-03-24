@@ -34,6 +34,9 @@ pub enum Action {
 // ---------------------------------------------------------------------------
 
 /// Internal hash table slot.
+/// Must be `#[repr(C)]` because `search()` casts `*mut HashSlot` to `*mut Entry`,
+/// relying on the key/data fields being at the same offsets as `Entry`.
+#[repr(C)]
 struct HashSlot {
     key: *mut c_char,
     data: *mut c_void,

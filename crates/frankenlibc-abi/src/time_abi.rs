@@ -33,6 +33,7 @@ pub unsafe extern "C" fn time(tloc: *mut i64) -> i64 {
     let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
     let rc = unsafe { raw_clock_gettime(libc::CLOCK_REALTIME, &mut ts) };
     if rc != 0 {
+        unsafe { set_abi_errno(last_host_errno(errno::EINVAL)) };
         return -1;
     }
     let secs = ts.tv_sec;
@@ -74,6 +75,7 @@ pub unsafe extern "C" fn clock() -> i64 {
     let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
     let rc = unsafe { raw_clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut ts) };
     if rc != 0 {
+        unsafe { set_abi_errno(last_host_errno(errno::EINVAL)) };
         return -1;
     }
     ts.tv_sec * time_core::CLOCKS_PER_SEC + ts.tv_nsec / (1_000_000_000 / time_core::CLOCKS_PER_SEC)
@@ -220,7 +222,7 @@ pub unsafe extern "C" fn gettimeofday(tv: *mut libc::timeval, tz: *mut c_void) -
     let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
     let rc = unsafe { raw_clock_gettime(libc::CLOCK_REALTIME, &mut ts) };
     if rc != 0 {
-        unsafe { set_abi_errno(errno::EINVAL) };
+        unsafe { set_abi_errno(last_host_errno(errno::EINVAL)) };
         return -1;
     }
 

@@ -2898,11 +2898,12 @@ pub unsafe extern "C" fn pthread_cancel(thread: libc::pthread_t) -> c_int {
     let thread_key = pthread_handle_key(thread);
     set_cancellation_pending(thread_key, true);
 
+    // If cancelling ourselves in async mode, act on it immediately.
     if thread_key == current_cancel_key()
         && cancel_enabled_for_current_thread()
         && cancel_async_for_current_thread()
     {
-        let _ = consume_pending_cancel_for_current_thread();
+        unsafe { pthread_testcancel() };
     }
 
     0

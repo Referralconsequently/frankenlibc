@@ -219,9 +219,9 @@ fn cfset_input_output_independent() {
     unsafe { cfsetispeed(&mut t, libc::B9600) };
     unsafe { cfsetospeed(&mut t, libc::B115200) };
 
-    // On Linux, c_cflag stores both and they may overlap,
-    // but setting output should not corrupt prior flags
+    let ispeed = unsafe { cfgetispeed(&t) };
     let ospeed = unsafe { cfgetospeed(&t) };
+    assert_eq!(ispeed, libc::B9600, "input speed should remain B9600");
     assert_eq!(ospeed, libc::B115200, "output speed should be B115200");
 }
 

@@ -376,6 +376,22 @@ fn readdir_null_returns_null() {
     assert!(ent.is_null());
 }
 
+#[test]
+fn readdir_closed_dir_sets_ebadf() {
+    let path = CString::new("/proc/self/fd").unwrap();
+    let dirp = unsafe { opendir(path.as_ptr()) };
+    assert!(!dirp.is_null());
+    assert_eq!(unsafe { closedir(dirp) }, 0);
+
+    unsafe { frankenlibc_abi::errno_abi::set_abi_errno(0) };
+    let ent = unsafe { readdir(dirp) };
+    assert!(ent.is_null());
+    assert_eq!(
+        unsafe { *frankenlibc_abi::errno_abi::__errno_location() },
+        libc::EBADF
+    );
+}
+
 // ===========================================================================
 // scandir with alphasort comparator
 // ===========================================================================
@@ -498,6 +514,20 @@ fn readdir_r_null_dirp() {
     let mut result: *mut libc::dirent = std::ptr::null_mut();
     let rc = unsafe { readdir_r(std::ptr::null_mut(), &mut entry, &mut result) };
     assert!(rc != 0 || result.is_null());
+}
+
+#[test]
+fn readdir_r_closed_dir_reports_error() {
+    let path = CString::new("/proc/self/fd").unwrap();
+    let dirp = unsafe { opendir(path.as_ptr()) };
+    assert!(!dirp.is_null());
+    assert_eq!(unsafe { closedir(dirp) }, 0);
+
+    let mut entry: libc::dirent = unsafe { std::mem::zeroed() };
+    let mut result: *mut libc::dirent = std::ptr::null_mut();
+    let rc = unsafe { readdir_r(dirp, &mut entry, &mut result) };
+    assert_eq!(rc, libc::EBADF);
+    assert!(result.is_null());
 }
 
 // ===========================================================================

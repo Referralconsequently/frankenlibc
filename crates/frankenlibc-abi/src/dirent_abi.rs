@@ -138,11 +138,13 @@ pub unsafe extern "C" fn readdir(dirp: *mut DIR) -> *mut libc::dirent {
     let (_mode, decision) =
         runtime_policy::decide(ApiFamily::IoFd, dirp as usize, 0, false, true, 0);
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_abi_errno(errno::EBADF) };
         runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
         return std::ptr::null_mut();
     }
 
     if dirp.is_null() {
+        unsafe { set_abi_errno(errno::EBADF) };
         runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
         return std::ptr::null_mut();
     }
@@ -152,6 +154,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DIR) -> *mut libc::dirent {
     let map = match registry.as_mut() {
         Some(m) => m,
         None => {
+            unsafe { set_abi_errno(errno::EBADF) };
             runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
             return std::ptr::null_mut();
         }
@@ -160,6 +163,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DIR) -> *mut libc::dirent {
     let state = match map.get_mut(&handle) {
         Some(s) => s,
         None => {
+            unsafe { set_abi_errno(errno::EBADF) };
             runtime_policy::observe(ApiFamily::IoFd, decision.profile, 5, true);
             return std::ptr::null_mut();
         }
@@ -218,6 +222,7 @@ pub unsafe extern "C" fn readdir(dirp: *mut DIR) -> *mut libc::dirent {
         });
     }
 
+    unsafe { set_abi_errno(errno::EIO) };
     runtime_policy::observe(ApiFamily::IoFd, decision.profile, 10, true);
     std::ptr::null_mut()
 }
