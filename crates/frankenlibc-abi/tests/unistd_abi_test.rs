@@ -10,6 +10,7 @@
 use std::ffi::{CString, c_char, c_int, c_void};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::FileTypeExt;
+use std::os::unix::io::AsRawFd;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::errno_abi::__errno_location;
@@ -21,6 +22,28 @@ use frankenlibc_abi::unistd_abi::{
     read, readlink, rename, rmdir, semctl, semop, shmdt, stat, symlink, sysconf, truncate, umask,
     uname, unlink, usleep, write,
 };
+
+#[test]
+fn isatty_invalid_fd_sets_ebadf() {
+    let rc = unsafe { isatty(-1) };
+    assert_eq!(rc, 0);
+    let err = unsafe { *__errno_location() };
+    assert_eq!(err, libc::EBADF);
+}
+
+#[test]
+fn isatty_regular_file_sets_enotty_like_host() {
+    let file = std::fs::File::open("/etc/hosts").unwrap();
+    let fd = file.as_raw_fd();
+
+    let rc = unsafe { isatty(fd) };
+    assert_eq!(rc, 0);
+    let err = unsafe { *__errno_location() };
+    assert!(
+        err == libc::ENOTTY || err == libc::EINVAL,
+        "non-terminal fd should report ENOTTY-compatible errno, got {err}"
+    );
+}
 
 // ---------------------------------------------------------------------------
 // glob64 / globfree64 tests

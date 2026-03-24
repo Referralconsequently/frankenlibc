@@ -3,7 +3,8 @@
 //! Bootstrap provides the POSIX "C"/"POSIX" locale only. `setlocale` accepts
 //! these names and rejects all others. `localeconv` returns C-locale defaults.
 
-use std::ffi::{CStr, c_char, c_int, c_void};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
+use std::sync::{Mutex, OnceLock};
 
 use frankenlibc_core::locale as locale_core;
 use frankenlibc_membrane::runtime_math::{ApiFamily, MembraneAction};
@@ -279,16 +280,64 @@ static DEFAULT_TEXT_DOMAIN: &[u8] = b"messages\0";
 /// Default locale directory.
 static DEFAULT_LOCALE_DIR: &[u8] = b"/usr/share/locale\0";
 
+struct TextDomainState {
+    current: *mut c_char,
+    pool: Vec<CString>,
+}
+
+// SAFETY: access is synchronized via the surrounding Mutex, and the raw
+// pointers refer either to static storage or heap allocations owned by `pool`.
+unsafe impl Send for TextDomainState {}
+
+struct LocaleDirState {
+    current_by_domain: std::collections::HashMap<Vec<u8>, *mut c_char>,
+    pool: Vec<CString>,
+}
+
+// SAFETY: access is synchronized via the surrounding Mutex, and the raw
+// pointers refer either to static storage or heap allocations owned by `pool`.
+unsafe impl Send for LocaleDirState {}
+
+fn text_domain_storage() -> &'static Mutex<TextDomainState> {
+    static STORAGE: OnceLock<Mutex<TextDomainState>> = OnceLock::new();
+    STORAGE.get_or_init(|| {
+        Mutex::new(TextDomainState {
+            current: DEFAULT_TEXT_DOMAIN.as_ptr() as *mut c_char,
+            pool: Vec::new(),
+        })
+    })
+}
+
+fn locale_dir_bindings() -> &'static Mutex<LocaleDirState> {
+    static STORAGE: OnceLock<Mutex<LocaleDirState>> = OnceLock::new();
+    STORAGE.get_or_init(|| {
+        Mutex::new(LocaleDirState {
+            current_by_domain: std::collections::HashMap::new(),
+            pool: Vec::new(),
+        })
+    })
+}
+
 /// GNU `textdomain` — set/query current text domain.
 ///
 /// In C-locale mode, the domain is irrelevant since no translations are loaded.
 /// Returns the domain name for API compatibility.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn textdomain(domainname: *const c_char) -> *mut c_char {
+    let storage = text_domain_storage();
+    let mut current = storage.lock().unwrap_or_else(|e| e.into_inner());
     if domainname.is_null() {
-        DEFAULT_TEXT_DOMAIN.as_ptr() as *mut c_char
+        current.current
+    } else if unsafe { *domainname } == 0 {
+        current.current = DEFAULT_TEXT_DOMAIN.as_ptr() as *mut c_char;
+        current.current
     } else {
-        domainname as *mut c_char
+        let name = unsafe { CStr::from_ptr(domainname) }.to_bytes();
+        let owned = CString::new(name).expect("textdomain name must be NUL-free");
+        let ptr = owned.as_ptr() as *mut c_char;
+        current.pool.push(owned);
+        current.current = ptr;
+        ptr
     }
 }
 
@@ -298,13 +347,30 @@ pub unsafe extern "C" fn textdomain(domainname: *const c_char) -> *mut c_char {
 /// API compatibility.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn bindtextdomain(
-    _domainname: *const c_char,
+    domainname: *const c_char,
     dirname: *const c_char,
 ) -> *mut c_char {
+    if domainname.is_null() {
+        return DEFAULT_LOCALE_DIR.as_ptr() as *mut c_char;
+    }
+
+    let domain = unsafe { CStr::from_ptr(domainname) }.to_bytes();
+    let storage = locale_dir_bindings();
+    let mut bindings = storage.lock().unwrap_or_else(|e| e.into_inner());
+
     if dirname.is_null() {
-        DEFAULT_LOCALE_DIR.as_ptr() as *mut c_char
+        if let Some(bound) = bindings.current_by_domain.get(domain) {
+            *bound
+        } else {
+            DEFAULT_LOCALE_DIR.as_ptr() as *mut c_char
+        }
     } else {
-        dirname as *mut c_char
+        let dir = unsafe { CStr::from_ptr(dirname) }.to_bytes();
+        let owned = CString::new(dir).expect("locale directory must be NUL-free");
+        let ptr = owned.as_ptr() as *mut c_char;
+        bindings.pool.push(owned);
+        bindings.current_by_domain.insert(domain.to_vec(), ptr);
+        ptr
     }
 }
 
@@ -353,7 +419,9 @@ pub unsafe extern "C" fn newlocale(
         locale_core::is_c_locale(name)
     };
 
-    if accept || !base.is_null() {
+    let _ = base;
+
+    if accept {
         runtime_policy::observe(ApiFamily::Locale, decision.profile, 6, false);
         c_locale_handle()
     } else if mode.heals_enabled() {

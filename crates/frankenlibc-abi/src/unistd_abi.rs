@@ -246,9 +246,13 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
     let mut ws = std::mem::MaybeUninit::<libc::winsize>::zeroed();
     // SAFETY: ioctl(TIOCGWINSZ) writes into `ws` on success.
     let rc = unsafe { syscall::sys_ioctl(fd, libc::TIOCGWINSZ as usize, ws.as_mut_ptr() as usize) };
-    let success = rc.is_ok();
-    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 6, !success);
-    if success { 1 } else { 0 }
+    if let Err(err) = rc {
+        unsafe { set_abi_errno(err) };
+        runtime_policy::observe(ApiFamily::Stdio, decision.profile, 6, true);
+        return 0;
+    }
+    runtime_policy::observe(ApiFamily::Stdio, decision.profile, 6, false);
+    1
 }
 
 // ---------------------------------------------------------------------------

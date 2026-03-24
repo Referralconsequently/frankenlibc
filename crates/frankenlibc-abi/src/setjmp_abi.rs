@@ -199,38 +199,85 @@ fn restore_entrypoint(env: *mut c_void, val: c_int, is_signal_variant: bool) -> 
 }
 
 /// C ABI `setjmp` entrypoint.
+///
+/// Delegates to the host libc's `setjmp` for correct CPU context capture.
+/// Our metadata capture is informational only.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn setjmp(env: *mut c_void) -> c_int {
+    type SetjmpFn = unsafe extern "C" fn(*mut c_void) -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setjmp") {
+        let host_fn: SetjmpFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(env) };
+    }
     capture_entrypoint(env, false)
 }
 
 /// C ABI `_setjmp` entrypoint.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _setjmp(env: *mut c_void) -> c_int {
+    type SetjmpFn = unsafe extern "C" fn(*mut c_void) -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("_setjmp") {
+        let host_fn: SetjmpFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(env) };
+    }
     capture_entrypoint(env, false)
 }
 
 /// C ABI `sigsetjmp` entrypoint.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigsetjmp(env: *mut c_void, savemask: c_int) -> c_int {
+    type SigsetjmpFn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("__sigsetjmp") {
+        let host_fn: SigsetjmpFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { host_fn(env, savemask) };
+    }
     capture_entrypoint(env, savemask != 0)
 }
 
 /// C ABI `longjmp` entrypoint.
+///
+/// Delegates to the host libc's `longjmp` for correct stack unwinding.
+/// Our capture-side metadata is informational; the actual jmp_buf context
+/// is managed by the host.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn longjmp(env: *mut c_void, val: c_int) -> ! {
+    type LongjmpFn = unsafe extern "C" fn(*mut c_void, c_int) -> !;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("longjmp") {
+        let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(env, val) }
+    }
     restore_entrypoint(env, val, false)
 }
 
 /// C ABI `_longjmp` entrypoint.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _longjmp(env: *mut c_void, val: c_int) -> ! {
+    type LongjmpFn = unsafe extern "C" fn(*mut c_void, c_int) -> !;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("_longjmp") {
+        let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(env, val) }
+    }
+    // Fall back to longjmp if _longjmp not found
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("longjmp") {
+        let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(env, val) }
+    }
     restore_entrypoint(env, val, false)
 }
 
 /// C ABI `siglongjmp` entrypoint.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn siglongjmp(env: *mut c_void, val: c_int) -> ! {
+    type LongjmpFn = unsafe extern "C" fn(*mut c_void, c_int) -> !;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("siglongjmp") {
+        let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(env, val) }
+    }
+    // Fall back to longjmp
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("longjmp") {
+        let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(env, val) }
+    }
     restore_entrypoint(env, val, true)
 }
 

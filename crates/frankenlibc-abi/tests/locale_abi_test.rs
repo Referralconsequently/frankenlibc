@@ -182,7 +182,28 @@ fn textdomain_null_returns_default() {
 fn textdomain_set_returns_name() {
     let name = CString::new("myapp").unwrap();
     let result = unsafe { textdomain(name.as_ptr()) };
-    assert_eq!(result as *const c_char, name.as_ptr());
+    let domain = unsafe { CStr::from_ptr(result) };
+    assert_eq!(domain.to_bytes(), b"myapp");
+}
+
+#[test]
+fn textdomain_query_reflects_previous_set() {
+    let name = CString::new("frankenlibc-test-domain").unwrap();
+    let set_result = unsafe { textdomain(name.as_ptr()) };
+    let set_name = unsafe { CStr::from_ptr(set_result) };
+    assert_eq!(set_name.to_bytes(), b"frankenlibc-test-domain");
+
+    let query = unsafe { textdomain(ptr::null()) };
+    let queried = unsafe { CStr::from_ptr(query) };
+    assert_eq!(queried.to_bytes(), b"frankenlibc-test-domain");
+}
+
+#[test]
+fn textdomain_empty_resets_to_default() {
+    let empty = CString::new("").unwrap();
+    let result = unsafe { textdomain(empty.as_ptr()) };
+    let domain = unsafe { CStr::from_ptr(result) };
+    assert_eq!(domain.to_bytes(), b"messages");
 }
 
 #[test]
@@ -199,7 +220,44 @@ fn bindtextdomain_set_dirname() {
     let domain = CString::new("myapp").unwrap();
     let dirname = CString::new("/opt/locale").unwrap();
     let result = unsafe { bindtextdomain(domain.as_ptr(), dirname.as_ptr()) };
-    assert_eq!(result as *const c_char, dirname.as_ptr());
+    let dir = unsafe { CStr::from_ptr(result) };
+    assert_eq!(dir.to_bytes(), b"/opt/locale");
+}
+
+#[test]
+fn bindtextdomain_query_reflects_previous_set() {
+    let domain = CString::new("myapp").unwrap();
+    let dirname = CString::new("/tmp/frankenlibc-locale").unwrap();
+    let set_result = unsafe { bindtextdomain(domain.as_ptr(), dirname.as_ptr()) };
+    let set_dir = unsafe { CStr::from_ptr(set_result) };
+    assert_eq!(set_dir.to_bytes(), b"/tmp/frankenlibc-locale");
+
+    let query = unsafe { bindtextdomain(domain.as_ptr(), ptr::null()) };
+    let queried = unsafe { CStr::from_ptr(query) };
+    assert_eq!(queried.to_bytes(), b"/tmp/frankenlibc-locale");
+}
+
+#[test]
+fn bindtextdomain_keeps_domains_separate() {
+    let domain_a = CString::new("app-a").unwrap();
+    let domain_b = CString::new("app-b").unwrap();
+    let dir_a = CString::new("/tmp/frankenlibc-locale-a").unwrap();
+    let dir_b = CString::new("/tmp/frankenlibc-locale-b").unwrap();
+
+    let result_a = unsafe { bindtextdomain(domain_a.as_ptr(), dir_a.as_ptr()) };
+    let result_b = unsafe { bindtextdomain(domain_b.as_ptr(), dir_b.as_ptr()) };
+
+    let bound_a = unsafe { CStr::from_ptr(result_a) };
+    let bound_b = unsafe { CStr::from_ptr(result_b) };
+    assert_eq!(bound_a.to_bytes(), b"/tmp/frankenlibc-locale-a");
+    assert_eq!(bound_b.to_bytes(), b"/tmp/frankenlibc-locale-b");
+
+    let query_a = unsafe { bindtextdomain(domain_a.as_ptr(), ptr::null()) };
+    let query_b = unsafe { bindtextdomain(domain_b.as_ptr(), ptr::null()) };
+    let queried_a = unsafe { CStr::from_ptr(query_a) };
+    let queried_b = unsafe { CStr::from_ptr(query_b) };
+    assert_eq!(queried_a.to_bytes(), b"/tmp/frankenlibc-locale-a");
+    assert_eq!(queried_b.to_bytes(), b"/tmp/frankenlibc-locale-b");
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +369,20 @@ fn newlocale_empty_string_succeeds() {
 fn newlocale_null_locale_succeeds() {
     let loc = unsafe { newlocale(libc::LC_ALL_MASK, ptr::null(), ptr::null_mut()) };
     assert!(!loc.is_null());
+}
+
+#[test]
+fn newlocale_invalid_name_with_base_still_fails() {
+    let c_name = CString::new("C").unwrap();
+    let base = unsafe { newlocale(libc::LC_ALL_MASK, c_name.as_ptr(), ptr::null_mut()) };
+    assert!(!base.is_null());
+
+    let invalid = CString::new("en_US.UTF-8").unwrap();
+    let loc = unsafe { newlocale(libc::LC_ALL_MASK, invalid.as_ptr(), base) };
+    assert!(
+        loc.is_null(),
+        "unsupported locale names must not succeed merely because base is non-null"
+    );
 }
 
 #[test]
