@@ -1834,7 +1834,7 @@ pub unsafe extern "C" fn sysconf(name: c_int) -> libc::c_long {
         libc::_SC_NPROCESSORS_ONLN | libc::_SC_NPROCESSORS_CONF => {
             // Read from /sys/devices/system/cpu/online or fallback.
             // Simple approach: use SYS_sched_getaffinity to count CPUs.
-            let mut mask = [0u8; 128]; // 1024 CPUs max
+            let mut mask = [0u8; 512]; // 4096 CPUs max (supports large NUMA systems)
             let rc = unsafe {
                 libc::syscall(
                     libc::SYS_sched_getaffinity,

@@ -64,7 +64,14 @@ unsafe fn native_setenv(name: *const c_char, value: *const c_char, overwrite: c_
         // Reentrant: silently succeed without modifying environ.
         return 0;
     }
-    let rc = unsafe { native_setenv_sym(name, value, overwrite) };
+    // Prefer host resolution to avoid versioned-symbol recursion under LD_PRELOAD.
+    type SetenvFn = unsafe extern "C" fn(*const c_char, *const c_char, c_int) -> c_int;
+    let rc = if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setenv") {
+        let host_fn: SetenvFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(name, value, overwrite) }
+    } else {
+        unsafe { native_setenv_sym(name, value, overwrite) }
+    };
     NATIVE_SETENV_REENTRY.store(false, Ordering::Release);
     rc
 }
@@ -85,7 +92,13 @@ unsafe fn native_unsetenv(name: *const c_char) -> c_int {
         // Reentrant: remove from environ by scanning and shifting.
         return unsafe { remove_from_environ(name) };
     }
-    let rc = unsafe { native_unsetenv_sym(name) };
+    type UnsetenvFn = unsafe extern "C" fn(*const c_char) -> c_int;
+    let rc = if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("unsetenv") {
+        let host_fn: UnsetenvFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(name) }
+    } else {
+        unsafe { native_unsetenv_sym(name) }
+    };
     NATIVE_UNSETENV_REENTRY.store(false, Ordering::Release);
     rc
 }
@@ -1350,8 +1363,16 @@ pub unsafe extern "C" fn putenv(string: *mut c_char) -> c_int {
         return unsafe { super::stdlib_abi::unsetenv(string) };
     }
 
-    // Delegate to native putenv.
-    let ret = unsafe { native_putenv_sym(string) };
+    // Delegate to host putenv via ELF resolver to avoid recursion
+    // (the link_name "putenv@GLIBC_2.2.5" can resolve to our own putenv
+    // under LD_PRELOAD).
+    type PutenvFn = unsafe extern "C" fn(*mut c_char) -> c_int;
+    let ret = if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("putenv") {
+        let host_fn: PutenvFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(string) }
+    } else {
+        unsafe { native_putenv_sym(string) }
+    };
 
     runtime_policy::observe(ApiFamily::Stdlib, decision.profile, 10, ret != 0);
     ret

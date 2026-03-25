@@ -2487,8 +2487,24 @@ pub unsafe extern "C" fn pthread_once(
 // only need to be self-consistent (not glibc-layout-compatible).
 // ---------------------------------------------------------------------------
 
-/// Default stack size: 2 MiB (matches glibc default).
-const ATTR_DEFAULT_STACK_SIZE: usize = 2 * 1024 * 1024;
+/// Default stack size for new threads.
+/// Override at runtime with `FRANKENLIBC_THREAD_STACK_SIZE` (bytes).
+/// glibc uses 8 MiB; our default is 2 MiB as a compact baseline.
+fn attr_default_stack_size() -> usize {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static CACHED: AtomicUsize = AtomicUsize::new(0);
+    let cached = CACHED.load(Ordering::Relaxed);
+    if cached != 0 {
+        return cached;
+    }
+    let size = std::env::var("FRANKENLIBC_THREAD_STACK_SIZE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v >= ATTR_MIN_STACK_SIZE)
+        .unwrap_or(2 * 1024 * 1024);
+    CACHED.store(size, Ordering::Relaxed);
+    size
+}
 
 /// POSIX `PTHREAD_SCOPE_SYSTEM` — system contention scope (1:1 threading model).
 const PTHREAD_SCOPE_SYSTEM: c_int = 0;
@@ -2532,7 +2548,7 @@ impl PthreadAttrDefaults {
     fn new() -> Self {
         Self {
             detach_state: libc::PTHREAD_CREATE_JOINABLE,
-            stack_size: ATTR_DEFAULT_STACK_SIZE,
+            stack_size: attr_default_stack_size(),
             guard_size: ATTR_DEFAULT_GUARD_SIZE,
             inherit_sched: PTHREAD_INHERIT_SCHED_VAL,
             sched_policy: 0, // SCHED_OTHER
@@ -2588,7 +2604,7 @@ pub unsafe extern "C" fn pthread_attr_init(attr: *mut libc::pthread_attr_t) -> c
     unsafe {
         (*data).magic = MANAGED_ATTR_MAGIC;
         (*data).detach_state = libc::PTHREAD_CREATE_JOINABLE;
-        (*data).stack_size = ATTR_DEFAULT_STACK_SIZE;
+        (*data).stack_size = attr_default_stack_size();
         (*data).guard_size = ATTR_DEFAULT_GUARD_SIZE;
         (*data).stack_addr = 0;
         (*data).inherit_sched = PTHREAD_INHERIT_SCHED_VAL;

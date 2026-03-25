@@ -10,11 +10,13 @@
 use std::ffi::c_int;
 use std::sync::Mutex;
 
+use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::signal_abi::{
     __libc_current_sigrtmax, __libc_current_sigrtmin, kill, sigabbrev_np, sigaction, sigaddset,
     sigandset, sigdelset, sigdescr_np, sigemptyset, sigfillset, sighold, sigignore, siginterrupt,
     sigisemptyset, sigismember, signal, sigorset, sigpending, sigprocmask, sigrelse,
 };
+use frankenlibc_core::errno;
 
 static TEST_GUARD: Mutex<()> = Mutex::new(());
 
@@ -37,8 +39,10 @@ fn sigemptyset_zeros_set() {
 
 #[test]
 fn sigemptyset_null_returns_neg1() {
+    unsafe { *__errno_location() = 0 };
     let rc = unsafe { sigemptyset(std::ptr::null_mut()) };
     assert_eq!(rc, -1);
+    assert_eq!(unsafe { *__errno_location() }, errno::EINVAL);
 }
 
 #[test]
@@ -55,8 +59,10 @@ fn sigfillset_sets_all_bits() {
 
 #[test]
 fn sigfillset_null_returns_neg1() {
+    unsafe { *__errno_location() = 0 };
     let rc = unsafe { sigfillset(std::ptr::null_mut()) };
     assert_eq!(rc, -1);
+    assert_eq!(unsafe { *__errno_location() }, errno::EINVAL);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,15 +196,19 @@ fn sigisemptyset_nonempty() {
 
 #[test]
 fn sigisemptyset_null_returns_neg1() {
+    unsafe { *__errno_location() = 0 };
     let rc = unsafe { sigisemptyset(std::ptr::null()) };
     assert_eq!(rc, -1);
+    assert_eq!(unsafe { *__errno_location() }, errno::EINVAL);
 }
 
 #[test]
 fn sigandset_null_returns_neg1() {
     let set: libc::sigset_t = unsafe { std::mem::zeroed() };
+    unsafe { *__errno_location() = 0 };
     let rc = unsafe { sigandset(std::ptr::null_mut(), &set, &set) };
     assert_eq!(rc, -1);
+    assert_eq!(unsafe { *__errno_location() }, errno::EINVAL);
 }
 
 // ---------------------------------------------------------------------------

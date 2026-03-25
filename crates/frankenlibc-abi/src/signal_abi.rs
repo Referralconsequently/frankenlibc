@@ -217,6 +217,7 @@ pub unsafe extern "C" fn pthread_sigmask(
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigemptyset(set: *mut libc::sigset_t) -> c_int {
     if set.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     // Zero the entire sigset_t structure.
@@ -233,6 +234,7 @@ pub unsafe extern "C" fn sigemptyset(set: *mut libc::sigset_t) -> c_int {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigfillset(set: *mut libc::sigset_t) -> c_int {
     if set.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     // Set all bits in the sigset_t structure.
@@ -691,6 +693,7 @@ pub unsafe extern "C" fn sigandset(
     right: *const libc::sigset_t,
 ) -> c_int {
     if dest.is_null() || left.is_null() || right.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     // SAFETY: sigset_t on Linux is an array of unsigned longs.
@@ -714,6 +717,7 @@ pub unsafe extern "C" fn sigorset(
     right: *const libc::sigset_t,
 ) -> c_int {
     if dest.is_null() || left.is_null() || right.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     // SAFETY: sigset_t on Linux is an array of unsigned longs.
@@ -733,6 +737,7 @@ pub unsafe extern "C" fn sigorset(
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigisemptyset(set: *const libc::sigset_t) -> c_int {
     if set.is_null() {
+        unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }
     // SAFETY: sigset_t on Linux is an array of unsigned longs.
