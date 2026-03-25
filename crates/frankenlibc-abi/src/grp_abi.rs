@@ -61,6 +61,8 @@ struct GrpStorage {
     iter_idx: usize,
     /// Cache hit/miss/reload/invalidation counters.
     cache_metrics: CacheMetrics,
+    /// Most recent backend I/O error encountered while refreshing the cache.
+    last_io_error: Option<c_int>,
 }
 
 impl GrpStorage {
@@ -82,6 +84,7 @@ impl GrpStorage {
             last_parse_stats: frankenlibc_core::grp::ParseStats::default(),
             iter_idx: 0,
             cache_metrics: CacheMetrics::default(),
+            last_io_error: None,
         }
     }
 
@@ -108,6 +111,7 @@ impl GrpStorage {
         self.iter_idx = 0;
         self.entries_generation = 0;
         self.last_parse_stats = frankenlibc_core::grp::ParseStats::default();
+        self.last_io_error = None;
     }
 
     fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
@@ -138,6 +142,7 @@ impl GrpStorage {
             && cached_fp == now_fp
         {
             self.cache_metrics.hits += 1;
+            self.last_io_error = None;
             return;
         }
 
@@ -157,6 +162,7 @@ impl GrpStorage {
                 self.cache_fingerprint = Some(next_fp);
                 self.cache_generation = self.cache_generation.wrapping_add(1);
                 self.cache_metrics.reloads += 1;
+                self.last_io_error = None;
 
                 if had_cache {
                     self.entries.clear();
@@ -166,7 +172,7 @@ impl GrpStorage {
                     self.cache_metrics.invalidations += 1;
                 }
             }
-            Err(_) => {
+            Err(err) => {
                 if self.file_cache.is_some() || !self.entries.is_empty() {
                     self.cache_metrics.invalidations += 1;
                 }
@@ -176,12 +182,21 @@ impl GrpStorage {
                 self.iter_idx = 0;
                 self.entries_generation = 0;
                 self.last_parse_stats = frankenlibc_core::grp::ParseStats::default();
+                self.last_io_error = Some(err.raw_os_error().unwrap_or(errno::EIO));
             }
         }
     }
 
     fn current_content(&self) -> &[u8] {
         self.file_cache.as_deref().unwrap_or_default()
+    }
+
+    fn backend_io_error(&self) -> Option<c_int> {
+        if self.file_cache.is_none() {
+            self.last_io_error
+        } else {
+            None
+        }
     }
 
     fn rebuild_entries(&mut self) {
@@ -265,6 +280,10 @@ fn lookup_group_by_gid(gid: u32) -> Option<frankenlibc_core::grp::Group> {
     })
 }
 
+fn group_backend_io_error() -> Option<c_int> {
+    GRP_TLS.with(|cell| cell.borrow().backend_io_error())
+}
+
 fn do_getgrnam(name: &[u8]) -> *mut libc::group {
     GRP_TLS.with(|cell| {
         let mut storage = cell.borrow_mut();
@@ -305,6 +324,11 @@ pub unsafe extern "C" fn getgrnam(name: *const c_char) -> *mut libc::group {
     // SAFETY: name is non-null.
     let name_cstr = unsafe { std::ffi::CStr::from_ptr(name) };
     let result = do_getgrnam(name_cstr.to_bytes());
+    if result.is_null()
+        && let Some(err) = group_backend_io_error()
+    {
+        unsafe { set_abi_errno(err) };
+    }
     runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, result.is_null());
     result
 }
@@ -320,6 +344,11 @@ pub unsafe extern "C" fn getgrgid(gid: libc::gid_t) -> *mut libc::group {
     }
 
     let result = do_getgrgid(gid);
+    if result.is_null()
+        && let Some(err) = group_backend_io_error()
+    {
+        unsafe { set_abi_errno(err) };
+    }
     runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, result.is_null());
     result
 }
@@ -365,6 +394,9 @@ pub unsafe extern "C" fn getgrent() -> *mut libc::group {
         }
 
         if storage.iter_idx >= storage.entries.len() {
+            if let Some(err) = storage.backend_io_error() {
+                unsafe { set_abi_errno(err) };
+            }
             return ptr::null_mut();
         }
 
@@ -402,6 +434,10 @@ pub unsafe extern "C" fn getgrnam_r(
     let entry = match lookup_group_by_name(name_cstr.to_bytes()) {
         Some(e) => e,
         None => {
+            if let Some(err) = group_backend_io_error() {
+                runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
+                return err;
+            }
             runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, false);
             return 0;
         }
@@ -437,6 +473,10 @@ pub unsafe extern "C" fn getgrgid_r(
     let entry = match lookup_group_by_gid(gid) {
         Some(e) => e,
         None => {
+            if let Some(err) = group_backend_io_error() {
+                runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, true);
+                return err;
+            }
             runtime_policy::observe(ApiFamily::Resolver, decision.profile, 15, false);
             return 0;
         }
@@ -561,6 +601,9 @@ pub unsafe extern "C" fn getgrent_r(
         }
 
         if storage.iter_idx >= storage.entries.len() {
+            if let Some(err) = storage.backend_io_error() {
+                return err;
+            }
             return libc::ENOENT;
         }
 

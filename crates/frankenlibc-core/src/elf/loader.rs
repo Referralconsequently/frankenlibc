@@ -237,8 +237,9 @@ impl ElfLoader {
                 SectionType::Strtab if dynstr.is_empty() => {
                     // Assume first strtab is dynstr (simplification)
                     let start = section.sh_offset as usize;
-                    let end = start + section.sh_size as usize;
-                    if end <= data.len() {
+                    if let Some(end) = start.checked_add(section.sh_size as usize)
+                        && end <= data.len()
+                    {
                         dynstr = data[start..end].to_vec();
                     }
                 }

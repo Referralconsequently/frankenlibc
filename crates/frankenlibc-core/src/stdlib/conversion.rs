@@ -378,7 +378,11 @@ pub fn strtod_impl(s: &[u8]) -> (f64, usize) {
         }
 
         if !has_digits {
-            return (0.0, 0);
+            // No hex digits after "0x" — the "0" before "x" is a valid
+            // decimal number. Rewind past the 'x'/'X' so the consumed
+            // count covers only the leading '0' (and any sign/whitespace).
+            // i was advanced by 2 for "0x", so i-1 points at the 'x'.
+            return (0.0, i - 1);
         }
 
         // Parse binary exponent (p/P followed by optional sign and decimal digits)
@@ -752,6 +756,22 @@ mod tests {
         let (val, consumed) = strtod(b"  0x1p2\0");
         assert_eq!(val, 4.0);
         assert_eq!(consumed, 7);
+    }
+
+    #[test]
+    fn test_strtod_0x_without_hex_digits_parses_zero() {
+        // "0x" with no hex digits: the '0' is a valid decimal number.
+        // Per C standard, strtod should parse '0' and leave endptr at 'x'.
+        let (val, consumed) = strtod(b"0x\0");
+        assert_eq!(val, 0.0);
+        assert_eq!(consumed, 1, "should consume only the '0', not the 'x'");
+    }
+
+    #[test]
+    fn test_strtod_0x_trailing_non_hex() {
+        let (val, consumed) = strtod(b"0xGHI\0");
+        assert_eq!(val, 0.0);
+        assert_eq!(consumed, 1, "no hex digits after 0x → parse '0' only");
     }
 
     proptest! {

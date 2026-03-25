@@ -34,10 +34,10 @@ impl SizeClass {
 
 /// Size class table following a geometric progression.
 ///
-/// Bins 0-7: 16-byte increments (16, 32, 48, 64, 80, 96, 112, 128)
-/// Bins 8-15: 32-byte increments (160, 192, 224, 256, 288, 320, 352, 384)
-/// Bins 16-23: 64-byte increments (448, 512, 576, 640, 704, 768, 832, 896)
-/// Bins 24-31: 128+ byte increments up to 32KB
+/// Bins 0-7:   16-byte steps (16..128)
+/// Bins 8-15:  32-byte steps (160..384)
+/// Bins 16-23: wider steps (448, 512, 640, 768, 896, 1024, 1280, 1536)
+/// Bins 24-31: large small classes (2048..32768)
 const SIZE_TABLE: [usize; NUM_SIZE_CLASSES] = [
     16, 32, 48, 64, 80, 96, 112, 128, // 16-byte steps
     160, 192, 224, 256, 288, 320, 352, 384, // 32-byte steps

@@ -54,7 +54,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: c_int, tp: *mut libc::timespec)
         return -1;
     }
 
-    if !time_core::valid_clock_id(clock_id) {
+    if !time_core::valid_clock_id(clock_id) && !time_core::valid_clock_id_extended(clock_id) {
         unsafe { set_abi_errno(errno::EINVAL) };
         return -1;
     }

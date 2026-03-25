@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "bead": "bd-5fw.3",
-  "generated_at": "2026-03-24T02:03:46Z",
+  "generated_at": "2026-03-25T19:36:51Z",
   "status": "fail",
   "verdict": "FAIL",
   "summary": {
@@ -79,7 +79,7 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "40a478a8ac844cf9b2d1cf1323d128721684af14372dc4d754f9f9cae7956bbc",
+      "sha256": "e9e400c318c94fdfadc1feaab4533292b1a5ea098c352593de98ff592c5f0dc7",
       "size_bytes": 7170,
       "status": "VALID",
       "schema_valid": true,
@@ -127,7 +127,7 @@
       "kind": "report",
       "required": true,
       "critical": true,
-      "sha256": "5c360a4499f75ea2faa7fbfdb8505a7a4fb6a029d1bb4c4e33913845c8404b27",
+      "sha256": "2cfd2da48beca47cbbb692894c8c680c2b73127506cc55e1dc7855ed3d6fcfab",
       "size_bytes": 35306,
       "status": "VALID",
       "schema_valid": true,
@@ -234,7 +234,7 @@
     },
     "closure_sweep": {
       "path": "tests/conformance/closure_sweep_report.v1.json",
-      "sha256": "40a478a8ac844cf9b2d1cf1323d128721684af14372dc4d754f9f9cae7956bbc",
+      "sha256": "e9e400c318c94fdfadc1feaab4533292b1a5ea098c352593de98ff592c5f0dc7",
       "size_bytes": 7170
     },
     "replacement_levels": {
@@ -254,7 +254,7 @@
     },
     "controller_ablation": {
       "path": "tests/runtime_math/controller_ablation_report.v1.json",
-      "sha256": "5c360a4499f75ea2faa7fbfdb8505a7a4fb6a029d1bb4c4e33913845c8404b27",
+      "sha256": "2cfd2da48beca47cbbb692894c8c680c2b73127506cc55e1dc7855ed3d6fcfab",
       "size_bytes": 35306
     },
     "admission_gate": {

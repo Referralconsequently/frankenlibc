@@ -1,2 +1,2 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
      Running tests/pthread_mutex_core_test.rs (target/debug/deps/pthread_mutex_core_test-405ca73053cedb4b)

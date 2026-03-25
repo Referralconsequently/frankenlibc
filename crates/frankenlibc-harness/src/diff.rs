@@ -18,11 +18,29 @@ pub fn render_diff(expected: &str, actual: &str) -> String {
         let mut out = String::new();
         out.push_str("--- expected\n");
         out.push_str("+++ actual\n");
-        for (i, (e, a)) in expected.lines().zip(actual.lines()).enumerate() {
-            if e != a {
+
+        let exp_lines: Vec<&str> = expected.lines().collect();
+        let act_lines: Vec<&str> = actual.lines().collect();
+        let max_lines = exp_lines.len().max(act_lines.len());
+
+        for i in 0..max_lines {
+            let e = exp_lines.get(i).copied().unwrap_or("");
+            let a = act_lines.get(i).copied().unwrap_or("");
+            let e_missing = i >= exp_lines.len();
+            let a_missing = i >= act_lines.len();
+
+            if e != a || e_missing || a_missing {
                 out.push_str(&format!("@@ line {} @@\n", i + 1));
-                out.push_str(&format!("-{e}\n"));
-                out.push_str(&format!("+{a}\n"));
+                if a_missing {
+                    out.push_str(&format!("-{e}\n"));
+                    out.push_str("+[missing]\n");
+                } else if e_missing {
+                    out.push_str("-[missing]\n");
+                    out.push_str(&format!("+{a}\n"));
+                } else {
+                    out.push_str(&format!("-{e}\n"));
+                    out.push_str(&format!("+{a}\n"));
+                }
             }
         }
         out
@@ -87,5 +105,26 @@ mod tests {
         assert!(diff.contains("@@ line 1 @@"));
         assert!(diff.contains("@@ line 2 @@"));
         assert!(diff.contains("@@ line 3 @@"));
+    }
+
+    #[test]
+    fn diff_expected_longer_than_actual() {
+        let expected = "line1\nline2\nline3\nline4";
+        let actual = "line1\nline2";
+        let diff = render_diff(expected, actual);
+        // Lines 3 and 4 are missing from actual — must be reported.
+        assert!(diff.contains("@@ line 3 @@"), "missing line 3 not reported");
+        assert!(diff.contains("-line3"), "expected line3 not shown");
+        assert!(diff.contains("@@ line 4 @@"), "missing line 4 not reported");
+        assert!(diff.contains("-line4"), "expected line4 not shown");
+    }
+
+    #[test]
+    fn diff_actual_longer_than_expected() {
+        let expected = "line1";
+        let actual = "line1\nextra";
+        let diff = render_diff(expected, actual);
+        assert!(diff.contains("@@ line 2 @@"), "extra line not reported");
+        assert!(diff.contains("+extra"), "extra line not shown");
     }
 }

@@ -10,9 +10,11 @@ use std::ptr;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::pwd_abi::{
     endpwent, getpwent, getpwnam, getpwnam_r, getpwuid, getpwuid_r, setpwent,
 };
+use frankenlibc_core::errno;
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -38,6 +40,15 @@ fn with_passwd_file(content: &[u8], f: impl FnOnce()) {
     // SAFETY: Same as above.
     unsafe { std::env::remove_var("FRANKENLIBC_PASSWD_PATH") };
     let _ = std::fs::remove_file(&path);
+}
+
+fn with_passwd_path(path: &std::path::Path, f: impl FnOnce()) {
+    let _guard = PASSWD_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: Serialized by PASSWD_ENV_LOCK.
+    unsafe { std::env::set_var("FRANKENLIBC_PASSWD_PATH", path) };
+    f();
+    // SAFETY: Serialized by PASSWD_ENV_LOCK.
+    unsafe { std::env::remove_var("FRANKENLIBC_PASSWD_PATH") };
 }
 
 const FIXTURE: &[u8] =
@@ -90,6 +101,18 @@ fn getpwnam_not_found() {
 fn getpwnam_null_returns_null() {
     let pw = unsafe { getpwnam(ptr::null()) };
     assert!(pw.is_null());
+}
+
+#[test]
+fn getpwnam_missing_backend_sets_errno() {
+    let missing = temp_passwd_path();
+    with_passwd_path(&missing, || {
+        let name = CString::new("root").unwrap();
+        unsafe { *__errno_location() = 0 };
+        let pw = unsafe { getpwnam(name.as_ptr()) };
+        assert!(pw.is_null());
+        assert_eq!(unsafe { *__errno_location() }, errno::ENOENT);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +223,29 @@ fn getpwnam_r_null_args_returns_einval() {
         )
     };
     assert_eq!(rc, libc::EINVAL);
+}
+
+#[test]
+fn getpwnam_r_missing_backend_returns_errno() {
+    let missing = temp_passwd_path();
+    with_passwd_path(&missing, || {
+        let name = CString::new("root").unwrap();
+        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut buf = vec![0u8; 1024];
+        let mut result: *mut libc::passwd = ptr::null_mut();
+
+        let rc = unsafe {
+            getpwnam_r(
+                name.as_ptr(),
+                &mut pwd,
+                buf.as_mut_ptr() as *mut c_char,
+                buf.len(),
+                &mut result,
+            )
+        };
+        assert_eq!(rc, libc::ENOENT);
+        assert!(result.is_null());
+    });
 }
 
 // ---------------------------------------------------------------------------

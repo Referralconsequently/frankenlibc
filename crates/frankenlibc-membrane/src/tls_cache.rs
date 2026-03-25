@@ -1,6 +1,6 @@
 //! Thread-local validation cache.
 //!
-//! 1024-entry direct-mapped cache indexed by `ptr >> 12` (page-aligned).
+//! 1024-entry direct-mapped cache indexed by `ptr >> 4` (16-byte granularity).
 //! Avoids global lock contention on the hot path by caching recent
 //! validation results per-thread.
 

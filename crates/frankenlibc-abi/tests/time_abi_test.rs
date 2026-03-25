@@ -51,6 +51,15 @@ fn clock_gettime_monotonic() {
 }
 
 #[test]
+fn clock_gettime_boottime() {
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    let rc = unsafe { time_abi::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) };
+    assert_eq!(rc, 0, "clock_gettime(CLOCK_BOOTTIME) should succeed");
+    assert!(ts.tv_sec >= 0);
+    assert!(ts.tv_nsec >= 0 && ts.tv_nsec < 1_000_000_000);
+}
+
+#[test]
 fn clock_gettime_monotonic_is_non_decreasing() {
     let mut ts1: libc::timespec = unsafe { std::mem::zeroed() };
     let mut ts2: libc::timespec = unsafe { std::mem::zeroed() };
