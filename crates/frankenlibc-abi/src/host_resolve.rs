@@ -286,7 +286,18 @@ fn resolve_symbol_from_data(base: usize, data: &[u8], symbol: &str) -> Option<us
             && sym.st_value != 0
             && symbol_name_matches(strtab, sym.st_name, wanted)
         {
-            return Some(base.saturating_add(sym.st_value as usize));
+            let addr = base.saturating_add(sym.st_value as usize);
+            // STT_GNU_IFUNC (type 10): st_value points to a resolver function
+            // that returns the actual implementation address. Call it.
+            let sym_type = sym.st_info & 0xf;
+            if sym_type == 10 {
+                // SAFETY: resolver is a function at `addr` with signature () -> *mut ().
+                type IfuncResolver = unsafe extern "C" fn() -> usize;
+                let resolver: IfuncResolver = unsafe { core::mem::transmute(addr) };
+                let resolved = unsafe { resolver() };
+                return Some(resolved);
+            }
+            return Some(addr);
         }
         offset = offset.checked_add(sym_entsize)?;
     }

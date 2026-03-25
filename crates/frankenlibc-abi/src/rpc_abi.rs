@@ -39,44 +39,78 @@ pub struct Timeval {
 //   - c_ulong → 0
 //   - u16 → 0
 // This eliminates the last glibc call-through dependency for RPC symbols.
+/// Try to delegate an RPC symbol to the host libc. If the host symbol is
+/// found, call it; otherwise fall back to a safe default value.
 macro_rules! rpc_native {
     // Pattern 1: function returning c_int
     ($name:ident ( $($pname:ident : $pty:ty),* ) -> c_int) => {
         #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-        pub unsafe extern "C" fn $name( $(_: $pty),* ) -> c_int {
+        pub unsafe extern "C" fn $name( $($pname: $pty),* ) -> c_int {
+            type HostFn = unsafe extern "C" fn($($pty),*) -> c_int;
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw(stringify!($name)) {
+                let f: HostFn = unsafe { core::mem::transmute(addr) };
+                return unsafe { f($($pname),*) };
+            }
             0
         }
     };
     // Pattern 2: function returning *mut c_void
     ($name:ident ( $($pname:ident : $pty:ty),* ) -> *mut c_void) => {
         #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-        pub unsafe extern "C" fn $name( $(_: $pty),* ) -> *mut c_void {
+        pub unsafe extern "C" fn $name( $($pname: $pty),* ) -> *mut c_void {
+            type HostFn = unsafe extern "C" fn($($pty),*) -> *mut c_void;
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw(stringify!($name)) {
+                let f: HostFn = unsafe { core::mem::transmute(addr) };
+                return unsafe { f($($pname),*) };
+            }
             std::ptr::null_mut()
         }
     };
     // Pattern 3: function returning ()
     ($name:ident ( $($pname:ident : $pty:ty),* ) -> ()) => {
         #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-        pub unsafe extern "C" fn $name( $(_: $pty),* ) {}
+        pub unsafe extern "C" fn $name( $($pname: $pty),* ) {
+            type HostFn = unsafe extern "C" fn($($pty),*);
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw(stringify!($name)) {
+                let f: HostFn = unsafe { core::mem::transmute(addr) };
+                unsafe { f($($pname),*) };
+                return;
+            }
+        }
     };
     // Pattern 4: function returning c_ulong
     ($name:ident ( $($pname:ident : $pty:ty),* ) -> c_ulong) => {
         #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-        pub unsafe extern "C" fn $name( $(_: $pty),* ) -> c_ulong {
+        pub unsafe extern "C" fn $name( $($pname: $pty),* ) -> c_ulong {
+            type HostFn = unsafe extern "C" fn($($pty),*) -> c_ulong;
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw(stringify!($name)) {
+                let f: HostFn = unsafe { core::mem::transmute(addr) };
+                return unsafe { f($($pname),*) };
+            }
             0
         }
     };
     // Pattern 5: function returning *mut c_char
     ($name:ident ( $($pname:ident : $pty:ty),* ) -> *mut c_char) => {
         #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-        pub unsafe extern "C" fn $name( $(_: $pty),* ) -> *mut c_char {
+        pub unsafe extern "C" fn $name( $($pname: $pty),* ) -> *mut c_char {
+            type HostFn = unsafe extern "C" fn($($pty),*) -> *mut c_char;
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw(stringify!($name)) {
+                let f: HostFn = unsafe { core::mem::transmute(addr) };
+                return unsafe { f($($pname),*) };
+            }
             std::ptr::null_mut()
         }
     };
     // Pattern 6: function returning u16
     ($name:ident ( $($pname:ident : $pty:ty),* ) -> u16) => {
         #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-        pub unsafe extern "C" fn $name( $(_: $pty),* ) -> u16 {
+        pub unsafe extern "C" fn $name( $($pname: $pty),* ) -> u16 {
+            type HostFn = unsafe extern "C" fn($($pty),*) -> u16;
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw(stringify!($name)) {
+                let f: HostFn = unsafe { core::mem::transmute(addr) };
+                return unsafe { f($($pname),*) };
+            }
             0
         }
     };

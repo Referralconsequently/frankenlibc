@@ -110,12 +110,7 @@ pub unsafe extern "C" fn cfgetispeed(termios_p: *const libc::termios) -> u32 {
     if termios_p.is_null() {
         return 0;
     }
-    let speed = unsafe { (*termios_p).c_ispeed };
-    if speed != 0 {
-        speed
-    } else {
-        unsafe { cfgetospeed(termios_p) }
-    }
+    unsafe { (*termios_p).c_ispeed }
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +122,7 @@ pub unsafe extern "C" fn cfgetospeed(termios_p: *const libc::termios) -> u32 {
     if termios_p.is_null() {
         return 0;
     }
-    let speed = unsafe { (*termios_p).c_ospeed };
-    if speed != 0 {
-        speed
-    } else {
-        unsafe { (*termios_p).c_cflag & termios_core::CBAUD }
-    }
+    unsafe { (*termios_p).c_ospeed }
 }
 
 // ---------------------------------------------------------------------------

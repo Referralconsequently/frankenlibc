@@ -15,7 +15,7 @@ use frankenlibc_abi::termios_abi::{cfgetispeed, cfgetospeed, cfsetispeed, cfseto
 #[test]
 fn cfgetispeed_extracts_baud() {
     let mut t: libc::termios = unsafe { std::mem::zeroed() };
-    t.c_cflag = libc::B9600;
+    t.c_ispeed = libc::B9600;
     let speed = unsafe { cfgetispeed(&t) };
     assert_eq!(speed, libc::B9600, "cfgetispeed should extract B9600");
 }
@@ -23,7 +23,7 @@ fn cfgetispeed_extracts_baud() {
 #[test]
 fn cfgetospeed_extracts_baud() {
     let mut t: libc::termios = unsafe { std::mem::zeroed() };
-    t.c_cflag = libc::B115200;
+    t.c_ospeed = libc::B115200;
     let speed = unsafe { cfgetospeed(&t) };
     assert_eq!(speed, libc::B115200, "cfgetospeed should extract B115200");
 }
@@ -223,6 +223,18 @@ fn cfset_input_output_independent() {
     let ospeed = unsafe { cfgetospeed(&t) };
     assert_eq!(ispeed, libc::B9600, "input speed should remain B9600");
     assert_eq!(ospeed, libc::B115200, "output speed should be B115200");
+}
+
+#[test]
+fn cfgetispeed_preserves_b0_even_when_output_speed_is_set() {
+    let mut t: libc::termios = unsafe { std::mem::zeroed() };
+    unsafe { cfsetospeed(&mut t, libc::B115200) };
+    unsafe { cfsetispeed(&mut t, libc::B0) };
+
+    let ispeed = unsafe { cfgetispeed(&t) };
+    let ospeed = unsafe { cfgetospeed(&t) };
+    assert_eq!(ispeed, libc::B0, "input speed should remain B0");
+    assert_eq!(ospeed, libc::B115200, "output speed should stay unchanged");
 }
 
 // ---------------------------------------------------------------------------
