@@ -836,7 +836,27 @@ impl<'a> PikeVm<'a> {
         notbol: bool,
         noteol: bool,
     ) {
-        if t.pc >= self.nfa.len() {
+        // Depth-limited wrapper to prevent stack overflow on deeply nested
+        // alternations or pathological Jump chains.
+        self.add_thread_inner(threads, t, sp, notbol, noteol, 0);
+    }
+
+    /// Maximum epsilon-closure recursion depth. This bounds the stack usage
+    /// for patterns with deeply nested alternations or long epsilon chains.
+    /// The NFA size already limits the total work (duplicate-PC check at each
+    /// level), but this prevents stack overflow for very large NFAs.
+    const ADD_THREAD_MAX_DEPTH: usize = 256;
+
+    fn add_thread_inner(
+        &self,
+        threads: &mut Vec<Thread>,
+        t: Thread,
+        sp: usize,
+        notbol: bool,
+        noteol: bool,
+        depth: usize,
+    ) {
+        if depth > Self::ADD_THREAD_MAX_DEPTH || t.pc >= self.nfa.len() {
             return;
         }
 
@@ -855,15 +875,15 @@ impl<'a> PikeVm<'a> {
                     pc: *b,
                     slots: t.slots,
                 };
-                self.add_thread(threads, t1, sp, notbol, noteol);
-                self.add_thread(threads, t2, sp, notbol, noteol);
+                self.add_thread_inner(threads, t1, sp, notbol, noteol, depth + 1);
+                self.add_thread_inner(threads, t2, sp, notbol, noteol, depth + 1);
             }
             NfaInstr::Jump(target) => {
                 let new_t = Thread {
                     pc: *target,
                     slots: t.slots,
                 };
-                self.add_thread(threads, new_t, sp, notbol, noteol);
+                self.add_thread_inner(threads, new_t, sp, notbol, noteol, depth + 1);
             }
             NfaInstr::Save(slot) => {
                 let mut new_slots = t.slots;
@@ -872,7 +892,7 @@ impl<'a> PikeVm<'a> {
                     pc: t.pc + 1,
                     slots: new_slots,
                 };
-                self.add_thread(threads, new_t, sp, notbol, noteol);
+                self.add_thread_inner(threads, new_t, sp, notbol, noteol, depth + 1);
             }
             NfaInstr::Match(mk) => {
                 // For anchors, check inline so we don't waste a simulation step
@@ -883,7 +903,7 @@ impl<'a> PikeVm<'a> {
                                 pc: t.pc + 1,
                                 slots: t.slots,
                             };
-                            self.add_thread(threads, new_t, sp, notbol, noteol);
+                            self.add_thread_inner(threads, new_t, sp, notbol, noteol, depth + 1);
                         }
                     }
                     MatchKind::AnchorEnd { newline } => {
@@ -892,7 +912,7 @@ impl<'a> PikeVm<'a> {
                                 pc: t.pc + 1,
                                 slots: t.slots,
                             };
-                            self.add_thread(threads, new_t, sp, notbol, noteol);
+                            self.add_thread_inner(threads, new_t, sp, notbol, noteol, depth + 1);
                         }
                     }
                     _ => {

@@ -10,6 +10,17 @@ use std::ffi::{CString, c_int, c_void};
 
 use frankenlibc_abi::search_abi::*;
 
+#[repr(C)]
+struct HsearchDataView {
+    table: *mut c_void,
+    size: usize,
+    filled: usize,
+}
+
+fn htab_filled(htab: &HsearchData) -> usize {
+    unsafe { (*(htab as *const HsearchData).cast::<HsearchDataView>()).filled }
+}
+
 // ===========================================================================
 // Hash table: hcreate / hsearch / hdestroy
 // ===========================================================================
@@ -130,6 +141,11 @@ fn hash_reentrant_lifecycle() {
     let rc = unsafe { hsearch_r(item, Action::ENTER, &mut result, &mut htab) };
     assert_eq!(rc, 1);
     assert!(!result.is_null());
+    assert_eq!(
+        htab_filled(&htab),
+        1,
+        "filled should track successful inserts"
+    );
 
     let mut found: *mut Entry = std::ptr::null_mut();
     let rc = unsafe { hsearch_r(item, Action::FIND, &mut found, &mut htab) };
@@ -138,6 +154,11 @@ fn hash_reentrant_lifecycle() {
     assert_eq!(unsafe { (*found).data } as usize, 99);
 
     unsafe { hdestroy_r(&mut htab) };
+    assert_eq!(
+        htab_filled(&htab),
+        0,
+        "hdestroy_r should reset filled count"
+    );
 }
 
 #[test]
@@ -535,6 +556,45 @@ fn hash_reentrant_find_nonexistent() {
     let mut found: *mut Entry = std::ptr::null_mut();
     let rc = unsafe { hsearch_r(item, Action::FIND, &mut found, &mut htab) };
     assert_eq!(rc, 0, "FIND on empty table should fail");
+
+    unsafe { hdestroy_r(&mut htab) };
+}
+
+#[test]
+fn hash_reentrant_filled_tracks_unique_entries() {
+    let mut htab: HsearchData = unsafe { std::mem::zeroed() };
+    assert_eq!(unsafe { hcreate_r(16, &mut htab) }, 1);
+    assert_eq!(htab_filled(&htab), 0);
+
+    let key = CString::new("filled-key").unwrap();
+    let item = Entry {
+        key: key.as_ptr() as *mut _,
+        data: 123usize as *mut c_void,
+    };
+    let mut result: *mut Entry = std::ptr::null_mut();
+
+    assert_eq!(
+        unsafe { hsearch_r(item, Action::ENTER, &mut result, &mut htab) },
+        1
+    );
+    assert!(!result.is_null());
+    assert_eq!(
+        htab_filled(&htab),
+        1,
+        "first insert should increment filled"
+    );
+
+    result = std::ptr::null_mut();
+    assert_eq!(
+        unsafe { hsearch_r(item, Action::ENTER, &mut result, &mut htab) },
+        1
+    );
+    assert!(!result.is_null());
+    assert_eq!(
+        htab_filled(&htab),
+        1,
+        "duplicate ENTER should return existing entry without changing filled"
+    );
 
     unsafe { hdestroy_r(&mut htab) };
 }

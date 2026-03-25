@@ -184,8 +184,16 @@ pub unsafe extern "C" fn hsearch_r(
         return 0;
     }
     let ht = unsafe { &mut *(htab_ref.table as *mut HashTable) };
+    let had_existing = if action == Action::ENTER {
+        !ht.search(item, Action::FIND).is_null()
+    } else {
+        false
+    };
     let result = ht.search(item, action);
     unsafe { *retval = result };
+    if action == Action::ENTER && !had_existing && !result.is_null() {
+        htab_ref.filled = htab_ref.filled.saturating_add(1);
+    }
     if result.is_null() { 0 } else { 1 }
 }
 

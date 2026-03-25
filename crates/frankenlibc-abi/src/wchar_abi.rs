@@ -2903,7 +2903,7 @@ fn decode_utf8(bytes: &[u8]) -> (u32, usize) {
             | (bytes[3] as u32 & 0x3F);
         // Reject overlong: 4-byte must encode >= 0x10000
         // Reject above Unicode max: > 0x10FFFF
-        if cp < 0x10000 || cp > 0x10FFFF {
+        if !(0x10000..=0x10FFFF).contains(&cp) {
             return (0xFFFD, 4);
         }
         (cp, 4)
