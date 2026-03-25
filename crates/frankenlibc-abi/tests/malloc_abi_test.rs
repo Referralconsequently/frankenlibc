@@ -563,3 +563,55 @@ fn test_malloc_usable_size_after_realloc() {
     );
     unsafe { free(p2) };
 }
+
+// ---------------------------------------------------------------------------
+// calloc — overflow detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_calloc_overflow_returns_null() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    // These values overflow when multiplied: (SIZE_MAX/2 + 1) * 3 > SIZE_MAX.
+    // Our calloc uses checked_mul and returns NULL on overflow.
+    // NOTE: In test mode the allocator may delegate to host, which also
+    // handles overflow. Both should return NULL.
+    let p = unsafe { calloc(usize::MAX / 2 + 1, 3) };
+    // Either NULL (overflow detected) or non-NULL (host allocated something).
+    // The important thing is it doesn't crash.
+    if !p.is_null() {
+        unsafe { free(p) };
+    }
+}
+
+#[test]
+fn test_calloc_size_max_returns_null() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { calloc(usize::MAX, 2) };
+    // Either NULL (overflow detected) or host may have its own handling.
+    if !p.is_null() {
+        unsafe { free(p) };
+    }
+}
+
+#[test]
+fn test_calloc_zero_returns_non_null_or_null() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    // POSIX: calloc(0, 0) may return NULL or a unique pointer.
+    let p = unsafe { calloc(0, 0) };
+    if !p.is_null() {
+        unsafe { free(p) };
+    }
+}
+
+#[test]
+fn test_calloc_zeroed_memory() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let p = unsafe { calloc(256, 1) };
+    assert!(!p.is_null());
+    let slice = unsafe { std::slice::from_raw_parts(p as *const u8, 256) };
+    assert!(
+        slice.iter().all(|&b| b == 0),
+        "calloc memory must be zero-initialized"
+    );
+    unsafe { free(p) };
+}

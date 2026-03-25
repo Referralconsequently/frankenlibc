@@ -223,10 +223,13 @@ fn resolve_loaded_libc_symbol_direct(symbol: &'static str) -> Option<usize> {
 }
 
 unsafe fn resolve_host_symbol_nocache(name: &'static [u8]) -> *mut c_void {
-    let glibc_v225 = b"GLIBC_2.2.5\0";
-    let glibc_v232 = b"GLIBC_2.3.2\0";
     let glibc_v34 = b"GLIBC_2.34\0";
-    // SAFETY: versioned lookup in next object after this interposed library.
+    let glibc_v232 = b"GLIBC_2.3.2\0";
+    let glibc_v225 = b"GLIBC_2.2.5\0";
+    // Try versions in order: newest first, then NPTL baseline (2.3.2),
+    // then legacy (2.2.5). For pthread_cond_*, the 2.3.2 version uses
+    // the NPTL layout which is the current default; 2.2.5 is the old
+    // LinuxThreads ABI with incompatible struct layout.
     let mut ptr = unsafe {
         crate::dlfcn_abi::dlvsym_next(
             name.as_ptr().cast::<libc::c_char>(),
@@ -234,20 +237,20 @@ unsafe fn resolve_host_symbol_nocache(name: &'static [u8]) -> *mut c_void {
         )
     };
     if ptr.is_null() {
-        // SAFETY: older pthread/libc baseline.
-        ptr = unsafe {
-            crate::dlfcn_abi::dlvsym_next(
-                name.as_ptr().cast::<libc::c_char>(),
-                glibc_v225.as_ptr().cast::<libc::c_char>(),
-            )
-        };
-    }
-    if ptr.is_null() {
-        // SAFETY: common intermediary pthread baseline.
+        // SAFETY: NPTL baseline — preferred for pthread_cond_* and pthread_mutex_*.
         ptr = unsafe {
             crate::dlfcn_abi::dlvsym_next(
                 name.as_ptr().cast::<libc::c_char>(),
                 glibc_v232.as_ptr().cast::<libc::c_char>(),
+            )
+        };
+    }
+    if ptr.is_null() {
+        // SAFETY: oldest baseline — LinuxThreads era.
+        ptr = unsafe {
+            crate::dlfcn_abi::dlvsym_next(
+                name.as_ptr().cast::<libc::c_char>(),
+                glibc_v225.as_ptr().cast::<libc::c_char>(),
             )
         };
     }

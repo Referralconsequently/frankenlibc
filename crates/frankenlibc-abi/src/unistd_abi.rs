@@ -23,6 +23,38 @@ fn last_host_errno(default_errno: c_int) -> c_int {
         .unwrap_or(default_errno)
 }
 
+/// Query the system page size via AT_PAGESZ from /proc/self/auxv, cached.
+/// Falls back to 4096 (x86_64 default) if the query fails.
+fn runtime_page_size() -> usize {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static CACHED: AtomicUsize = AtomicUsize::new(0);
+    let cached = CACHED.load(Ordering::Relaxed);
+    if cached != 0 {
+        return cached;
+    }
+    // Read AT_PAGESZ (type 6) from /proc/self/auxv
+    let page_sz = (|| -> Option<usize> {
+        let data = std::fs::read("/proc/self/auxv").ok()?;
+        // auxv entries are pairs of usize (type, value)
+        let entry_size = std::mem::size_of::<usize>() * 2;
+        for chunk in data.chunks_exact(entry_size) {
+            let a_type = usize::from_ne_bytes(chunk[..8].try_into().ok()?);
+            let a_val = usize::from_ne_bytes(chunk[8..16].try_into().ok()?);
+            if a_type == 6 {
+                // AT_PAGESZ
+                return Some(a_val);
+            }
+            if a_type == 0 {
+                break; // AT_NULL
+            }
+        }
+        None
+    })()
+    .unwrap_or(4096);
+    CACHED.store(page_sz, Ordering::Relaxed);
+    page_sz
+}
+
 #[inline]
 unsafe fn syscall_ret_int(ret: libc::c_long, default_errno: c_int) -> c_int {
     if ret < 0 {
@@ -1796,7 +1828,7 @@ pub unsafe extern "C" fn mkfifo(path: *const c_char, mode: libc::mode_t) -> c_in
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn sysconf(name: c_int) -> libc::c_long {
     match name {
-        libc::_SC_PAGESIZE => 4096,
+        libc::_SC_PAGESIZE => runtime_page_size() as libc::c_long,
         libc::_SC_CLK_TCK => 100,
         libc::_SC_NPROCESSORS_ONLN | libc::_SC_NPROCESSORS_CONF => {
             // Read from /sys/devices/system/cpu/online or fallback.

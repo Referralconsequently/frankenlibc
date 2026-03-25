@@ -19,8 +19,11 @@ pub unsafe extern "C" fn __errno_location() -> *mut c_int {
 }
 
 /// Set the thread-local errno value.
+///
+/// Uses volatile write to prevent the LTO optimizer from eliminating the
+/// store when it can't see a subsequent read through the same pointer.
 #[inline]
 pub unsafe fn set_abi_errno(val: c_int) {
     let p = unsafe { __errno_location() };
-    unsafe { *p = val };
+    unsafe { std::ptr::write_volatile(p, val) };
 }

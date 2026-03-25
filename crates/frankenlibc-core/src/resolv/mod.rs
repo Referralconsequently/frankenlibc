@@ -108,7 +108,7 @@ pub fn reverse_lookup_hosts(content: &[u8], addr: &[u8]) -> Vec<Vec<u8>> {
     let mut results = Vec::new();
     for line in content.split(|&b| b == b'\n') {
         if let Some((line_addr, hostnames)) = parse_hosts_line(line)
-            && eq_ignore_ascii_case(&line_addr, addr)
+            && line_addr == addr
         {
             for hn in hostnames {
                 results.push(hn);

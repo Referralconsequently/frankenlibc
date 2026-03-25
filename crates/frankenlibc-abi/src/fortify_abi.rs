@@ -998,7 +998,7 @@ pub unsafe extern "C" fn __ppoll_chk(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __fdelt_chk(d: c_long) -> c_long {
-    if !(0..1024).contains(&d) {
+    if !(0..libc::FD_SETSIZE as c_long).contains(&d) {
         unsafe { __chk_fail() }
     }
     d / (8 * std::mem::size_of::<c_long>() as c_long)

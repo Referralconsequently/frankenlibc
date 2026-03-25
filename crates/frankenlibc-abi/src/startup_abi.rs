@@ -421,9 +421,7 @@ unsafe extern "C" fn host_delegate_main_wrapper(
     crate::stdio_abi::init_host_stdio_streams();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    // NOTE: signal_runtime_ready() intentionally omitted — keep membrane in
-    // passthrough mode to avoid validation-pipeline re-entrancy under LD_PRELOAD.
-    // The passthrough `decide()` fast-path already returns Allow for every call.
+    crate::runtime_policy::signal_runtime_ready();
 
     let main_ptr = HOST_DELEGATED_MAIN.load(Ordering::Acquire);
     if main_ptr == 0 {
@@ -860,7 +858,7 @@ pub unsafe extern "C" fn __libc_start_main(
     crate::stdio_abi::init_host_stdio_streams();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
-    // signal_runtime_ready() omitted — same reasoning as host_delegate_main_wrapper.
+    crate::runtime_policy::signal_runtime_ready();
     let rc = match main {
         Some(main_fn) => unsafe { main_fn(argc, ubp_av, envp) },
         None => 0,

@@ -313,6 +313,75 @@ fn iconv_null_handle_returns_error() {
     }
 }
 
+#[test]
+fn iconv_input_pointer_without_length_fails() {
+    unsafe {
+        let cd = iconv_open(c_str(b"UTF-16LE\0"), c_str(b"UTF-8\0"));
+        assert_ne!(cd, iconv_error_handle());
+
+        let mut input = b"A".to_vec();
+        let mut in_ptr = input.as_mut_ptr().cast::<c_char>();
+        let mut output = [0u8; 8];
+        let mut out_ptr = output.as_mut_ptr().cast::<c_char>();
+        let mut out_left = output.len();
+
+        let rc = iconv(
+            cd,
+            &mut in_ptr,
+            ptr::null_mut(),
+            &mut out_ptr,
+            &mut out_left,
+        );
+        assert_eq!(rc, ICONV_ERROR);
+
+        assert_eq!(iconv_close(cd), 0);
+    }
+}
+
+#[test]
+fn iconv_reset_with_output_pointer_but_no_length_fails() {
+    unsafe {
+        let cd = iconv_open(c_str(b"UTF-32\0"), c_str(b"UTF-8\0"));
+        assert_ne!(cd, iconv_error_handle());
+
+        let mut output = [0u8; 8];
+        let mut out_ptr = output.as_mut_ptr().cast::<c_char>();
+
+        let rc = iconv(
+            cd,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut out_ptr,
+            ptr::null_mut(),
+        );
+        assert_eq!(rc, ICONV_ERROR);
+
+        assert_eq!(iconv_close(cd), 0);
+    }
+}
+
+#[test]
+fn iconv_reset_with_length_but_null_output_pointer_fails() {
+    unsafe {
+        let cd = iconv_open(c_str(b"UTF-32\0"), c_str(b"UTF-8\0"));
+        assert_ne!(cd, iconv_error_handle());
+
+        let mut out_ptr: *mut c_char = ptr::null_mut();
+        let mut out_left = 8usize;
+
+        let rc = iconv(
+            cd,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut out_ptr,
+            &mut out_left,
+        );
+        assert_eq!(rc, ICONV_ERROR);
+
+        assert_eq!(iconv_close(cd), 0);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // iconv_close — error cases
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ use frankenlibc_abi::stdlib_abi::{
     get_avphys_pages, get_nprocs, get_nprocs_conf, get_phys_pages, getenv, getsubopt, initstate,
     jrand48, l64a, lcong48, lrand48, mkostemp, mkostemps, mkstemps, mrand48, nrand48, on_exit,
     qsort_r, random, reallocarray, seed48, setenv, setstate, srand48, srandom, strtold, strtoll,
-    strtoull,
+    strtoull, system, unsetenv,
 };
 use frankenlibc_abi::unistd_abi::{
     creat64, ctermid, ether_aton, ether_aton_r, ether_ntoa, ether_ntoa_r, fpathconf, fstat64,
@@ -218,6 +218,26 @@ fn clearenv_removes_newly_set_variable() {
 
     // SAFETY: pointer is a valid NUL-terminated C string.
     assert!(unsafe { getenv(name.as_ptr()) }.is_null());
+}
+
+#[test]
+fn system_inherits_environment() {
+    let name = c"FRANKENLIBC_SYSTEM_ENV_TEST";
+    let value = c"visible";
+    let command = c"test \"$FRANKENLIBC_SYSTEM_ENV_TEST\" = visible";
+
+    // SAFETY: pointers are valid NUL-terminated C strings.
+    assert_eq!(unsafe { setenv(name.as_ptr(), value.as_ptr(), 1) }, 0);
+
+    // SAFETY: command is a valid NUL-terminated C string.
+    let status = unsafe { system(command.as_ptr()) };
+
+    // SAFETY: cleanup uses a valid NUL-terminated name.
+    assert_eq!(unsafe { unsetenv(name.as_ptr()) }, 0);
+
+    assert_ne!(status, -1);
+    assert!(libc::WIFEXITED(status));
+    assert_eq!(libc::WEXITSTATUS(status), 0);
 }
 
 fn temp_template(prefix: &str, suffix: &str) -> Vec<u8> {
@@ -2544,4 +2564,50 @@ fn getsubopt_unknown_token_returns_minus_one() {
         let idx = getsubopt(&mut opt_ptr, tokens_raw.as_ptr(), &mut valuep);
         assert_eq!(idx, -1);
     }
+}
+
+// ===========================================================================
+// on_exit handler invocation via fork+exit
+// ===========================================================================
+
+#[test]
+fn on_exit_handler_called_during_exit_in_child() {
+    // Fork a child, register an on_exit handler that writes a byte to a pipe,
+    // call exit(0), and verify the parent reads the byte.
+    let mut fds = [0i32; 2];
+    let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+    assert_eq!(rc, 0, "pipe() failed");
+
+    let pid = unsafe { libc::fork() };
+    assert!(pid >= 0, "fork() failed");
+
+    if pid == 0 {
+        // Child: close read end, register on_exit handler, call exit.
+        unsafe { libc::close(fds[0]) };
+
+        unsafe extern "C" fn write_pipe(status: libc::c_int, arg: *mut libc::c_void) {
+            let fd = arg as usize as i32;
+            let byte = [status as u8];
+            unsafe { libc::write(fd, byte.as_ptr().cast(), 1) };
+        }
+
+        let write_fd = fds[1] as usize as *mut libc::c_void;
+        unsafe { on_exit(Some(write_pipe), write_fd) };
+        // Use _exit to avoid interference with test harness atexit handlers.
+        // Actually, we need exit() (not _exit) to trigger on_exit handlers.
+        unsafe { frankenlibc_abi::stdlib_abi::exit(42) };
+    }
+
+    // Parent: close write end, read the byte.
+    unsafe { libc::close(fds[1]) };
+    let mut buf = [0u8; 1];
+    let n = unsafe { libc::read(fds[0], buf.as_mut_ptr().cast(), 1) };
+    unsafe { libc::close(fds[0]) };
+
+    // Reap child.
+    let mut wstatus = 0i32;
+    unsafe { libc::waitpid(pid, &mut wstatus, 0) };
+
+    assert_eq!(n, 1, "on_exit handler should write 1 byte to pipe");
+    assert_eq!(buf[0], 42, "on_exit handler should receive exit status 42");
 }

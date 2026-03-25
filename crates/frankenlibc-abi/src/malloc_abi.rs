@@ -155,6 +155,10 @@ unsafe fn bump_alloc_aligned(size: usize, alignment: usize) -> *mut c_void {
 /// heap is exhausted.  No symbol resolution or libc calls — pure syscall.
 #[cold]
 unsafe fn mmap_alloc(size: usize) -> *mut c_void {
+    // Hard-coded 4096: this runs during early bootstrap before sysconf is
+    // available.  4096 is the minimum page size on all Linux architectures,
+    // so rounding up to it is always safe (just potentially wastes alignment
+    // headroom on 16K/64K page systems).
     let page_size = 4096usize;
     let alloc_size = (size + page_size - 1) & !(page_size - 1);
     let ptr = unsafe {
@@ -179,7 +183,14 @@ unsafe fn mmap_alloc(size: usize) -> *mut c_void {
 fn is_bump_ptr(ptr: *mut c_void) -> bool {
     let addr = ptr as usize;
     let base = BUMP_HEAP.0.get() as usize;
-    addr >= base + BUMP_HEADER_SIZE && addr < base + BUMP_SIZE
+    if addr < base + BUMP_HEADER_SIZE || addr >= base + BUMP_SIZE {
+        return false;
+    }
+    // Verify magic sentinel to prevent false positives if a host pointer
+    // happens to fall in the bump heap address range.
+    let header = unsafe { (ptr as *mut u8).sub(BUMP_HEADER_SIZE).cast::<usize>() };
+    let magic = unsafe { header.read() };
+    magic == BUMP_MAGIC
 }
 
 #[inline]
@@ -297,7 +308,9 @@ unsafe fn native_libc_calloc(nmemb: usize, size: usize) -> *mut c_void {
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        let total = nmemb.saturating_mul(size);
+        let Some(total) = nmemb.checked_mul(size) else {
+            return std::ptr::null_mut();
+        };
         let ptr = unsafe { bump_alloc(total) };
         // bump_alloc returns zeroed memory (static initializer).
         return ptr;
@@ -315,7 +328,13 @@ unsafe fn native_libc_calloc(nmemb: usize, size: usize) -> *mut c_void {
         let host_calloc: HostCallocFn = unsafe { std::mem::transmute(ptr) };
         unsafe { host_calloc(nmemb, size) }
     } else {
-        unsafe { bump_alloc(nmemb.saturating_mul(size)) }
+        let total = nmemb.checked_mul(size).unwrap_or(0);
+        if total == 0 && nmemb != 0 && size != 0 {
+            // Overflow: return null
+            std::ptr::null_mut()
+        } else {
+            unsafe { bump_alloc(total) }
+        }
     };
     NATIVE_CALLOC_REENTRY.store(false, Ordering::Release);
     result

@@ -914,7 +914,7 @@ unsafe fn apply_spawn_attrs(attr: &SpawnAttrs) -> c_int {
                 libc::SIG_SETMASK,
                 &sigset as *const libc::sigset_t,
                 std::ptr::null_mut::<libc::sigset_t>(),
-                8, // _NSIG / 8
+                8, // kernel _NSIG / 8 (NOT sizeof(sigset_t))
             )
         };
         if rc < 0 {
@@ -935,7 +935,7 @@ unsafe fn apply_spawn_attrs(attr: &SpawnAttrs) -> c_int {
                         sig,
                         &act as *const libc::sigaction,
                         std::ptr::null_mut::<libc::sigaction>(),
-                        8, // _NSIG / 8
+                        8, // kernel _NSIG / 8 (NOT sizeof(sigset_t))
                     )
                 };
                 if rc < 0 {

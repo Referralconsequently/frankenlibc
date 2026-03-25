@@ -208,11 +208,32 @@ fn textdomain_empty_resets_to_default() {
 
 #[test]
 fn bindtextdomain_null_dirname_returns_default() {
-    let domain = CString::new("myapp").unwrap();
+    let domain = CString::new("myapp-default-query").unwrap();
     let result = unsafe { bindtextdomain(domain.as_ptr(), ptr::null()) };
     assert!(!result.is_null());
     let dir = unsafe { CStr::from_ptr(result) };
     assert_eq!(dir.to_bytes(), b"/usr/share/locale");
+}
+
+#[test]
+fn bindtextdomain_null_domain_returns_null() {
+    let dirname = CString::new("/tmp/frankenlibc-locale").unwrap();
+    let result = unsafe { bindtextdomain(ptr::null(), dirname.as_ptr()) };
+    assert!(
+        result.is_null(),
+        "bindtextdomain(NULL, ...) should reject a missing domain name"
+    );
+}
+
+#[test]
+fn bindtextdomain_empty_domain_returns_null() {
+    let domain = CString::new("").unwrap();
+    let dirname = CString::new("/tmp/frankenlibc-locale").unwrap();
+    let result = unsafe { bindtextdomain(domain.as_ptr(), dirname.as_ptr()) };
+    assert!(
+        result.is_null(),
+        "bindtextdomain(\"\", ...) should reject an empty domain name"
+    );
 }
 
 #[test]

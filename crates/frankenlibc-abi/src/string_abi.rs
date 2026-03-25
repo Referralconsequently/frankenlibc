@@ -4682,8 +4682,18 @@ unsafe fn fnmatch_impl(
 /// Native implementation using frankenlibc-core's glob engine.
 /// glob_t layout on x86_64:
 ///   offset 0: gl_pathc (size_t) — count of matched paths
-///   offset 8: gl_pathv (char**) — null-terminated array of path strings
-///   offset 16: gl_offs (size_t) — slots to reserve at start of gl_pathv
+///   gl_pathv (char**) — null-terminated array of path strings
+///   gl_offs (size_t) — slots to reserve at start of gl_pathv
+///
+/// We define a minimal `#[repr(C)]` struct for the first three fields
+/// instead of using raw byte offsets.
+#[repr(C)]
+struct GlobT {
+    gl_pathc: usize,
+    gl_pathv: *mut *mut c_char,
+    gl_offs: usize,
+}
+
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn glob(
     pattern: *const c_char,
@@ -4701,10 +4711,12 @@ pub unsafe extern "C" fn glob(
 
     let append = flags & glob_core::GLOB_APPEND != 0;
 
+    let gt = pglob as *mut GlobT;
+
     // Read current state for GLOB_APPEND.
     let (existing_paths, existing_count) = if append {
-        let pathc = unsafe { *(pglob as *const usize) };
-        let pathv = unsafe { *((pglob as *const u8).add(8) as *const *mut *mut c_char) };
+        let pathc = unsafe { (*gt).gl_pathc };
+        let pathv = unsafe { (*gt).gl_pathv };
         let mut paths: Vec<*mut c_char> = Vec::new();
         if !pathv.is_null() && pathc > 0 {
             for i in 0..pathc {
@@ -4725,11 +4737,7 @@ pub unsafe extern "C" fn glob(
     match result {
         Ok(res) => {
             let dooffs = flags & glob_core::GLOB_DOOFFS != 0;
-            let offs = if dooffs {
-                unsafe { *((pglob as *const u8).add(16) as *const usize) }
-            } else {
-                0
-            };
+            let offs = if dooffs { unsafe { (*gt).gl_offs } } else { 0 };
 
             let new_count = res.paths.len();
             let total = existing_count + new_count;
@@ -4781,16 +4789,16 @@ pub unsafe extern "C" fn glob(
 
             // Free old pathv array (not the strings — those were moved).
             if append {
-                let old_pathv = unsafe { *((pglob as *const u8).add(8) as *const *mut c_void) };
+                let old_pathv = unsafe { (*gt).gl_pathv };
                 if !old_pathv.is_null() {
-                    unsafe { crate::malloc_abi::raw_free(old_pathv) };
+                    unsafe { crate::malloc_abi::raw_free(old_pathv.cast()) };
                 }
             }
 
             // Write glob_t fields.
             unsafe {
-                *(pglob as *mut usize) = total; // gl_pathc
-                *((pglob as *mut u8).add(8) as *mut *mut *mut c_char) = pathv; // gl_pathv
+                (*gt).gl_pathc = total;
+                (*gt).gl_pathv = pathv;
             }
 
             0
@@ -4809,15 +4817,16 @@ pub unsafe extern "C" fn globfree(pglob: *mut c_void) {
         return;
     }
 
-    let pathc = unsafe { *(pglob as *const usize) };
-    let pathv = unsafe { *((pglob as *const u8).add(8) as *const *mut *mut c_char) };
+    let gt = pglob as *mut GlobT;
+    let pathc = unsafe { (*gt).gl_pathc };
+    let pathv = unsafe { (*gt).gl_pathv };
 
     if pathv.is_null() {
         return;
     }
 
     // gl_offs: number of reserved null slots at start
-    let offs = unsafe { *((pglob as *const u8).add(16) as *const usize) };
+    let offs = unsafe { (*gt).gl_offs };
 
     // Free each path string (skip null offset slots).
     for i in offs..offs + pathc {
@@ -4832,8 +4841,8 @@ pub unsafe extern "C" fn globfree(pglob: *mut c_void) {
 
     // Zero out the glob_t.
     unsafe {
-        *(pglob as *mut usize) = 0;
-        *((pglob as *mut u8).add(8) as *mut *mut *mut c_char) = std::ptr::null_mut();
+        (*gt).gl_pathc = 0;
+        (*gt).gl_pathv = std::ptr::null_mut();
     }
 }
 

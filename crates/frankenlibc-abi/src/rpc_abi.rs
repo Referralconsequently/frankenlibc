@@ -2279,12 +2279,17 @@ pub unsafe extern "C" fn _rpc_dtablesize() -> c_int {
     // SAFETY: zero-init rlimit struct, then getrlimit fills it.
     let mut rl: libc::rlimit = unsafe { std::mem::zeroed() };
     let rc = unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut rl) };
+    const FD_SETSIZE: c_int = libc::FD_SETSIZE as c_int;
     if rc == 0 && rl.rlim_cur > 0 {
-        // Clamp to FD_SETSIZE (1024) to match glibc _rpc_dtablesize behavior.
+        // Clamp to FD_SETSIZE to match glibc _rpc_dtablesize behavior.
         let limit = rl.rlim_cur as c_int;
-        if limit > 1024 { 1024 } else { limit }
+        if limit > FD_SETSIZE {
+            FD_SETSIZE
+        } else {
+            limit
+        }
     } else {
-        1024 // FD_SETSIZE default
+        FD_SETSIZE
     }
 }
 
@@ -2312,10 +2317,11 @@ pub unsafe extern "C" fn __rpc_thread_createerr() -> *mut c_void {
     RPC_CREATEERR_TLS.with(|cell| cell.get().cast())
 }
 
-// fd_set is 128 bytes on Linux (FD_SETSIZE=1024, 1024/8=128).
+// fd_set size derived from FD_SETSIZE (1024 on Linux → 128 bytes).
+const RPC_FD_SET_BYTES: usize = libc::FD_SETSIZE / 8;
 std::thread_local! {
-    static RPC_SVC_FDSET_TLS: std::cell::UnsafeCell<[u8; 128]> =
-        const { std::cell::UnsafeCell::new([0u8; 128]) };
+    static RPC_SVC_FDSET_TLS: std::cell::UnsafeCell<[u8; RPC_FD_SET_BYTES]> =
+        const { std::cell::UnsafeCell::new([0u8; RPC_FD_SET_BYTES]) };
 }
 
 /// Returns pointer to thread-local svc_fdset (fd_set).

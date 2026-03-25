@@ -317,13 +317,17 @@ pub unsafe extern "C" fn seekdir(dirp: *mut DIR, loc: c_long) {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn telldir(dirp: *mut DIR) -> c_long {
     if dirp.is_null() {
+        unsafe { set_abi_errno(errno::EBADF) };
         return -1;
     }
     let handle = dirp as usize;
     let registry = DIR_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     match registry.as_ref().and_then(|m| m.get(&handle)) {
         Some(state) => state.last_d_off,
-        None => -1,
+        None => {
+            unsafe { set_abi_errno(errno::EBADF) };
+            -1
+        }
     }
 }
 

@@ -3071,7 +3071,7 @@ pub unsafe extern "C" fn __fcntl(fd: c_int, cmd: c_int) -> c_int {
 // __fdelt_warn: FD_SET overflow check — return d if valid, abort otherwise
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn __fdelt_warn(d: c_long) -> c_long {
-    if !(0..1024).contains(&d) {
+    if !(0..libc::FD_SETSIZE as c_long).contains(&d) {
         // FD_SETSIZE overflow — abort like glibc
         unsafe {
             crate::stdlib_abi::abort();
@@ -4589,12 +4589,19 @@ pub unsafe extern "C" fn group_member(gid: c_uint) -> c_int {
     if unsafe { libc::syscall(libc::SYS_getegid) as libc::gid_t } == gid {
         return 1;
     }
-    let mut groups = [0u32; 64];
-    let n = unsafe { libc::getgroups(64, groups.as_mut_ptr()) };
-    if n < 0 {
+    // Query actual group count first, then allocate dynamically.
+    // This avoids the old hard-coded 64-group limit which silently
+    // truncated membership for users in many groups.
+    let n = unsafe { libc::syscall(libc::SYS_getgroups, 0, std::ptr::null_mut::<u32>()) as c_int };
+    if n <= 0 {
         return 0;
     }
-    for g in groups.iter().take(n as usize) {
+    let mut groups = vec![0u32; n as usize];
+    let actual = unsafe { libc::syscall(libc::SYS_getgroups, n, groups.as_mut_ptr()) as c_int };
+    if actual < 0 {
+        return 0;
+    }
+    for g in groups.iter().take(actual as usize) {
         if *g == gid {
             return 1;
         }
@@ -6406,6 +6413,7 @@ pub unsafe extern "C" fn __sigtimedwait(
     info: *mut c_void,
     timeout: *const c_void,
 ) -> c_int {
+    // Kernel expects _NSIG/8 = 8 (NOT sizeof(sigset_t) which is 128 in glibc).
     unsafe { libc::syscall(libc::SYS_rt_sigtimedwait, set, info, timeout, 8usize) as c_int }
 }
 

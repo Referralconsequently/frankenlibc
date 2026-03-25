@@ -1281,7 +1281,7 @@ pub unsafe extern "C" fn system(command: *const c_char) -> c_int {
                 libc::SYS_execve as c_long,
                 sh,
                 argv.as_ptr(),
-                std::ptr::null::<*const c_char>(),
+                HOST_ENVIRON as *const *const c_char,
             );
             // If execve returns, exit with 127.
             libc::syscall(libc::SYS_exit_group as c_long, 127 as c_long);

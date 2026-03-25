@@ -159,6 +159,7 @@ fn align_up(offset: usize, align: usize) -> usize {
 
 #[inline]
 unsafe fn set_h_errnop(h_errnop: *mut c_int, value: c_int) {
+    H_ERRNO_TLS.with(|cell| cell.set(value));
     if !h_errnop.is_null() {
         // SAFETY: caller-provided out-parameter pointer.
         unsafe { *h_errnop = value };
@@ -506,6 +507,20 @@ pub unsafe extern "C" fn getaddrinfo(
             }
 
             if nodes.is_empty() {
+                // Hostname not found in /etc/hosts and not a numeric address.
+                // Delegate to host libc's getaddrinfo for real DNS resolution.
+                type HostGetaddrinfoFn = unsafe extern "C" fn(
+                    *const c_char,
+                    *const c_char,
+                    *const libc::addrinfo,
+                    *mut *mut libc::addrinfo,
+                ) -> c_int;
+                if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getaddrinfo") {
+                    let host_fn: HostGetaddrinfoFn = unsafe { core::mem::transmute(addr) };
+                    let rc = unsafe { host_fn(node, service, hints, res) };
+                    runtime_policy::observe(ApiFamily::Resolver, decision.profile, 25, rc != 0);
+                    return rc;
+                }
                 if repair {
                     global_healing_policy().record(&HealingAction::ReturnSafeDefault);
                     nodes.push(unsafe { build_addrinfo_v4(Ipv4Addr::LOCALHOST, port, hints_ref) });
@@ -548,8 +563,26 @@ pub unsafe extern "C" fn getaddrinfo(
 }
 
 /// POSIX `freeaddrinfo`.
+///
+/// Delegates to the host libc's freeaddrinfo when available, since
+/// getaddrinfo may return results allocated by the host (for DNS queries).
+/// Our Box-allocated addrinfos are also freeable by the host since Box
+/// uses the process allocator (which under LD_PRELOAD routes through
+/// our malloc → host malloc).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn freeaddrinfo(mut res: *mut libc::addrinfo) {
+pub unsafe extern "C" fn freeaddrinfo(res: *mut libc::addrinfo) {
+    if res.is_null() {
+        return;
+    }
+    // Delegate to host freeaddrinfo to handle both host-allocated and
+    // our Box-allocated addrinfos correctly.
+    type HostFreeaddrinfoFn = unsafe extern "C" fn(*mut libc::addrinfo);
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("freeaddrinfo") {
+        let host_fn: HostFreeaddrinfoFn = unsafe { core::mem::transmute(addr) };
+        unsafe { host_fn(res) };
+        return;
+    }
+    // Fallback: manual free for our Box-allocated addrinfos only.
     let (aligned, recent_page, ordering) = resolver_stage_context(res as usize, 0);
     let (_, decision) =
         runtime_policy::decide(ApiFamily::Resolver, res as usize, 0, true, false, 0);
@@ -563,7 +596,8 @@ pub unsafe extern "C" fn freeaddrinfo(mut res: *mut libc::addrinfo) {
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 12, true);
         return;
     }
-    if res.is_null() {
+    let mut cur = res;
+    if cur.is_null() {
         record_resolver_stage_outcome(
             &ordering,
             aligned,
@@ -573,13 +607,11 @@ pub unsafe extern "C" fn freeaddrinfo(mut res: *mut libc::addrinfo) {
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 12, false);
         return;
     }
-    while !res.is_null() {
+    while !cur.is_null() {
         // SAFETY: traversing list allocated by getaddrinfo-compatible producer.
-        let next = unsafe { (*res).ai_next };
-        // SAFETY: res is valid for read.
-        let family = unsafe { (*res).ai_family };
-        // SAFETY: res is valid for read.
-        let addr_ptr = unsafe { (*res).ai_addr };
+        let next = unsafe { (*cur).ai_next };
+        let family = unsafe { (*cur).ai_family };
+        let addr_ptr = unsafe { (*cur).ai_addr };
         if !addr_ptr.is_null() {
             // SAFETY: ai_addr was allocated as sockaddr_in/sockaddr_in6 by this module.
             unsafe {
@@ -594,15 +626,14 @@ pub unsafe extern "C" fn freeaddrinfo(mut res: *mut libc::addrinfo) {
                 }
             }
         }
-        // SAFETY: ai_canonname allocation (if present) is owned by this node.
-        let canon = unsafe { (*res).ai_canonname };
+        let canon = unsafe { (*cur).ai_canonname };
         if !canon.is_null() {
             // SAFETY: canonname pointers are owned allocations.
             unsafe { drop(std::ffi::CString::from_raw(canon)) };
         }
         // SAFETY: node ownership belongs to caller of freeaddrinfo.
-        unsafe { drop(Box::from_raw(res)) };
-        res = next;
+        unsafe { drop(Box::from_raw(cur)) };
+        cur = next;
     }
     record_resolver_stage_outcome(&ordering, aligned, recent_page, None);
     runtime_policy::observe(ApiFamily::Resolver, decision.profile, 12, false);
@@ -862,6 +893,7 @@ pub unsafe extern "C" fn gethostbyname(name: *const c_char) -> *mut c_void {
         0,
     );
     if matches!(decision.action, MembraneAction::Deny) {
+        unsafe { set_h_errnop(ptr::null_mut(), NO_RECOVERY_ERRNO) };
         unsafe { set_abi_errno(frankenlibc_core::errno::EACCES) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 18, true);
         return ptr::null_mut();
@@ -871,12 +903,14 @@ pub unsafe extern "C" fn gethostbyname(name: *const c_char) -> *mut c_void {
     // SAFETY: optional C string pointer follows gethostbyname contract.
     let name_cstr = unsafe { opt_cstr(name) };
     let Some((resolved_name, addr)) = resolve_gethostbyname_target(name_cstr, repair) else {
+        unsafe { set_h_errnop(ptr::null_mut(), HOST_NOT_FOUND_ERRNO) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 18, true);
         return ptr::null_mut();
     };
 
     // SAFETY: pointer returned references thread-local hostent storage.
     let hostent_ptr = unsafe { populate_tls_hostent(&resolved_name, addr) };
+    unsafe { set_h_errnop(ptr::null_mut(), 0) };
     runtime_policy::observe(ApiFamily::Resolver, decision.profile, 18, false);
     hostent_ptr
 }
@@ -1011,12 +1045,14 @@ pub unsafe extern "C" fn gethostbyaddr(
     }
 
     if addr.is_null() {
+        unsafe { set_h_errnop(ptr::null_mut(), NO_RECOVERY_ERRNO) };
         runtime_policy::observe(ApiFamily::Resolver, decision.profile, 5, true);
         return ptr::null_mut();
     }
 
     // Only support AF_INET for reverse lookup
     if af != libc::AF_INET || (len as usize) < 4 {
+        unsafe { set_h_errnop(ptr::null_mut(), HOST_NOT_FOUND_ERRNO) };
         return ptr::null_mut();
     }
 
@@ -1028,16 +1064,22 @@ pub unsafe extern "C" fn gethostbyaddr(
     // Look up in /etc/hosts
     let content = match std::fs::read("/etc/hosts") {
         Ok(c) => c,
-        Err(_) => return ptr::null_mut(),
+        Err(_) => {
+            unsafe { set_h_errnop(ptr::null_mut(), HOST_NOT_FOUND_ERRNO) };
+            return ptr::null_mut();
+        }
     };
 
     let hostnames = frankenlibc_core::resolv::reverse_lookup_hosts(&content, ip_str.as_bytes());
     if hostnames.is_empty() {
+        unsafe { set_h_errnop(ptr::null_mut(), HOST_NOT_FOUND_ERRNO) };
         return ptr::null_mut();
     }
 
     // Populate thread-local hostent storage with the first matching hostname
-    unsafe { populate_tls_hostent(&hostnames[0], ip) }
+    let hostent_ptr = unsafe { populate_tls_hostent(&hostnames[0], ip) };
+    unsafe { set_h_errnop(ptr::null_mut(), 0) };
+    hostent_ptr
 }
 
 /// POSIX `getservbyname` — look up a service by name in /etc/services.

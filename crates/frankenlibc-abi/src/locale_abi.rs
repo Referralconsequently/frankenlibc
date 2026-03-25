@@ -351,10 +351,13 @@ pub unsafe extern "C" fn bindtextdomain(
     dirname: *const c_char,
 ) -> *mut c_char {
     if domainname.is_null() {
-        return DEFAULT_LOCALE_DIR.as_ptr() as *mut c_char;
+        return std::ptr::null_mut();
     }
 
     let domain = unsafe { CStr::from_ptr(domainname) }.to_bytes();
+    if domain.is_empty() {
+        return std::ptr::null_mut();
+    }
     let storage = locale_dir_bindings();
     let mut bindings = storage.lock().unwrap_or_else(|e| e.into_inner());
 

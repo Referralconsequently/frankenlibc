@@ -183,6 +183,22 @@ pub unsafe extern "C" fn iconv(
 
     let descriptor = unsafe { &mut *cd.cast::<IconvDescriptor>() };
 
+    if !inbuf.is_null() {
+        // SAFETY: guarded by the null check above.
+        let in_ptr = unsafe { *inbuf };
+        if !in_ptr.is_null() && inbytesleft.is_null() {
+            // SAFETY: sets thread-local errno.
+            unsafe { set_abi_errno(errno::EFAULT) };
+            runtime_policy::observe(
+                ApiFamily::Locale,
+                decision.profile,
+                runtime_policy::scaled_cost(8, requested),
+                true,
+            );
+            return iconv_error_return();
+        }
+    }
+
     let input_opt = if inbuf.is_null() {
         None
     } else {
@@ -201,8 +217,27 @@ pub unsafe extern "C" fn iconv(
         }
     };
 
+    // Reset mode permits omitting both output arguments entirely, but partially
+    // specified output state is still a caller bug and must not be treated as a
+    // successful no-op.
+    if input_opt.is_none() {
+        let output_args_mixed = outbuf.is_null() != outbytesleft.is_null();
+        let output_ptr_missing = !outbuf.is_null() && unsafe { (*outbuf).is_null() };
+        if output_args_mixed || output_ptr_missing {
+            // SAFETY: sets thread-local errno.
+            unsafe { set_abi_errno(errno::EFAULT) };
+            runtime_policy::observe(
+                ApiFamily::Locale,
+                decision.profile,
+                runtime_policy::scaled_cost(8, requested),
+                true,
+            );
+            return iconv_error_return();
+        }
+    }
+
     // outbuf and outbytesleft can only be null if inbuf or *inbuf is null (reset path).
-    // If they are null, we pass an empty slice to the core, which will skip BOM emission.
+    // If both are null, we pass an empty slice to the core, which will skip BOM emission.
     let mut out_dummy = [0u8; 0];
     let output = if outbuf.is_null() || outbytesleft.is_null() {
         if input_opt.is_some() {

@@ -307,14 +307,23 @@ pub unsafe extern "C" fn log1p(x: f64) -> f64 {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pow(x: f64, y: f64) -> f64 {
     let out = binary_entry(x, y, 8, frankenlibc_core::math::pow);
-    if x.is_finite() && y.is_finite() {
+    // Determine errno to set (if any) BEFORE returning, to ensure no
+    // subsequent operation clobbers it.
+    let errno_val = if x.is_finite() && y.is_finite() {
         if x == 0.0 && y < 0.0 {
-            set_range_errno();
+            Some(libc::ERANGE)
         } else if x < 0.0 && !is_integral_f64(y) {
-            set_domain_errno();
+            Some(libc::EDOM)
         } else if out.is_infinite() || (out == 0.0 && x != 0.0) {
-            set_range_errno();
+            Some(libc::ERANGE)
+        } else {
+            None
         }
+    } else {
+        None
+    };
+    if let Some(e) = errno_val {
+        unsafe { set_abi_errno(e) };
     }
     out
 }
@@ -6954,12 +6963,14 @@ mod tests {
 
     fn abi_errno() -> i32 {
         // SAFETY: `__errno_location` returns valid thread-local storage for this thread.
-        unsafe { *crate::errno_abi::__errno_location() }
+        // Use volatile read to match the volatile write in set_abi_errno,
+        // preventing the LTO optimizer from reordering or eliminating accesses.
+        unsafe { std::ptr::read_volatile(crate::errno_abi::__errno_location()) }
     }
 
     fn set_errno_for_test(val: i32) {
         // SAFETY: test helper writes this thread's errno slot directly.
-        unsafe { *crate::errno_abi::__errno_location() = val };
+        unsafe { std::ptr::write_volatile(crate::errno_abi::__errno_location(), val) };
     }
 
     #[test]
@@ -7261,8 +7272,11 @@ mod tests {
     #[test]
     fn pow_zero_negative_sets_range_errno() {
         set_errno_for_test(0);
+        let x = std::hint::black_box(0.0_f64);
+        let y = std::hint::black_box(-1.0_f64);
         // SAFETY: ABI entrypoint accepts plain f64 input.
-        let out = unsafe { pow(0.0, -1.0) };
+        let out = unsafe { pow(x, y) };
+        std::hint::black_box(out);
         assert!(out.is_infinite());
         assert_eq!(abi_errno(), libc::ERANGE);
     }
@@ -7270,8 +7284,13 @@ mod tests {
     #[test]
     fn pow_overflow_sets_range_errno() {
         set_errno_for_test(0);
+        // Use black_box to prevent the optimizer from constant-folding the
+        // pow call or eliminating the errno side effect.
+        let x = std::hint::black_box(1.0e308_f64);
+        let y = std::hint::black_box(2.0_f64);
         // SAFETY: ABI entrypoint accepts plain f64 input.
-        let out = unsafe { pow(1.0e308, 2.0) };
+        let out = unsafe { pow(x, y) };
+        std::hint::black_box(out);
         assert!(out.is_infinite());
         assert_eq!(abi_errno(), libc::ERANGE);
     }
@@ -7279,8 +7298,11 @@ mod tests {
     #[test]
     fn pow_underflow_sets_range_errno() {
         set_errno_for_test(0);
+        let x = std::hint::black_box(1.0e-308_f64);
+        let y = std::hint::black_box(2.0_f64);
         // SAFETY: ABI entrypoint accepts plain f64 input.
-        let out = unsafe { pow(1.0e-308, 2.0) };
+        let out = unsafe { pow(x, y) };
+        std::hint::black_box(out);
         assert_eq!(out, 0.0);
         assert_eq!(abi_errno(), libc::ERANGE);
     }
