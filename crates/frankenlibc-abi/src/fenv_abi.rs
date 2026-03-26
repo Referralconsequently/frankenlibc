@@ -343,7 +343,10 @@ pub unsafe extern "C" fn feupdateenv(envp: *const c_void) -> c_int {
     unsafe {
         // Capture currently pending exceptions before restoring environment
         let pending = fetestexcept(HW_ALL_EXCEPT as c_int);
-        fesetenv(envp);
+        let rc = fesetenv(envp);
+        if rc != 0 {
+            return rc;
+        }
         feraiseexcept(pending);
     }
     0

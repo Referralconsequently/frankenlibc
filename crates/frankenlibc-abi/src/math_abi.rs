@@ -424,6 +424,14 @@ pub unsafe extern "C" fn tgamma(x: f64) -> f64 {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn lgamma(x: f64) -> f64 {
+    // Compute via reentrant version to get sign, then update global signgam.
+    let (_, sign) = frankenlibc_core::math::lgamma_r(x);
+    unsafe {
+        signgam = sign;
+        __signgam = sign;
+    }
+    // Run through unary_entry for membrane accounting. lgamma computes
+    // the same value as lgamma_r; the sign is a side-channel.
     let out = unary_entry(x, 10, frankenlibc_core::math::lgamma);
     if x.is_finite() && (x == 0.0 || (x < 0.0 && is_integral_f64(x)) || out.is_infinite()) {
         set_range_errno();
@@ -612,6 +620,9 @@ pub unsafe extern "C" fn ilogb(x: f64) -> c_int {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn logb(x: f64) -> f64 {
+    if x == 0.0 {
+        set_range_errno(); // pole error: logb(0) = -Infinity
+    }
     frankenlibc_core::math::logb(x)
 }
 
@@ -1140,10 +1151,10 @@ pub unsafe extern "C" fn erfcf(x: f32) -> f32 {
 pub unsafe extern "C" fn tgammaf(x: f32) -> f32 {
     let out = unary_entry_f32(x, 10, frankenlibc_core::math::tgammaf);
     if x.is_finite() {
-        if x <= 0.0 && x == x.floor() {
-            set_domain_errno();
-        } else if out.is_infinite() || out == 0.0 {
-            set_range_errno();
+        if x < 0.0 && x == x.floor() {
+            set_domain_errno(); // negative integer: domain error
+        } else if x == 0.0 || out.is_infinite() || out == 0.0 {
+            set_range_errno(); // zero or overflow/underflow: range error
         }
     }
     out
@@ -1151,6 +1162,12 @@ pub unsafe extern "C" fn tgammaf(x: f32) -> f32 {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn lgammaf(x: f32) -> f32 {
+    // Compute via reentrant version to get sign, then update global signgam.
+    let (_, sign) = frankenlibc_core::math::lgammaf_r(x);
+    unsafe {
+        signgam = sign;
+        __signgam = sign;
+    }
     let out = unary_entry_f32(x, 10, frankenlibc_core::math::lgammaf);
     if x.is_finite() && ((x <= 0.0 && x == x.floor()) || out.is_infinite()) {
         set_range_errno();

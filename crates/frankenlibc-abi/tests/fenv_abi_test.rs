@@ -428,6 +428,13 @@ fn fesetenv_null_is_rejected() {
 }
 
 #[test]
+fn feupdateenv_null_is_rejected() {
+    unsafe {
+        assert_eq!(feupdateenv(std::ptr::null()), -1);
+    }
+}
+
+#[test]
 fn fetestexcept_zero_returns_zero() {
     unsafe {
         // Testing for no flags should always return 0.
