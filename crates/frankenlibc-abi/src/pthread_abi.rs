@@ -678,6 +678,15 @@ fn mark_managed_mutex(mutex: *mut libc::pthread_mutex_t) -> bool {
     true
 }
 
+fn is_managed_mutex(mutex: *mut libc::pthread_mutex_t) -> bool {
+    let Some(magic_ptr) = mutex_magic_ptr(mutex) else {
+        return false;
+    };
+    // SAFETY: alignment and non-null checked in `mutex_magic_ptr`.
+    let magic = unsafe { &*magic_ptr };
+    magic.load(Ordering::Acquire) == MANAGED_MUTEX_MAGIC
+}
+
 /// Returns a pointer to the mutex type field at byte offset 8 within the
 /// `pthread_mutex_t` opaque storage. Layout: [lock_word(4)][magic(4)][type(4)]...
 fn mutex_type_ptr(mutex: *mut libc::pthread_mutex_t) -> Option<*mut AtomicI32> {
@@ -809,16 +818,6 @@ fn condvar_data_ptr(cond: *mut libc::pthread_cond_t) -> Option<*mut CondvarData>
 
 #[inline]
 fn native_pthread_self() -> libc::pthread_t {
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        if let Some(host_self) = crate::host_resolve::host_pthread_self_raw() {
-            return unsafe { host_self() };
-        }
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_self) = unsafe { host_pthread_self_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_self() };
-        }
-    }
     let tid = core_self_tid();
     if tid > 0 {
         // Use the TLS table to resolve our own ThreadHandle in O(1) time
@@ -834,16 +833,6 @@ fn native_pthread_self() -> libc::pthread_t {
 
 #[inline]
 fn native_pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_int {
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        if let Some(host_equal) = crate::host_resolve::host_pthread_equal_raw() {
-            return unsafe { host_equal(a, b) };
-        }
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_equal) = unsafe { host_pthread_equal_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_equal(a, b) };
-        }
-    }
     if a == b { 1 } else { 0 }
 }
 
@@ -929,19 +918,6 @@ unsafe fn native_pthread_create(
     start_routine: StartRoutine,
     arg: *mut c_void,
 ) -> c_int {
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        if let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
-            return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
-        }
-
-        if let Some(host_create) = unsafe { host_pthread_create_fn() } {
-            return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
-        }
-        prewarm_host_thread_lifecycle_symbols();
-        if let Some(host_create) = unsafe { host_pthread_create_fn() } {
-            return unsafe { host_create(thread_out, attr, Some(start_routine), arg) };
-        }
-    }
     if thread_out.is_null() {
         return libc::EINVAL;
     }
@@ -1014,23 +990,6 @@ unsafe fn native_pthread_create(
 
 #[allow(unsafe_code)]
 unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void) -> c_int {
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        if let Some(host_join) = crate::host_resolve::host_pthread_join_raw() {
-            return unsafe { host_join(thread, retval) };
-        }
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_join) = unsafe { host_pthread_join_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_join(thread, retval) };
-        }
-        prewarm_host_thread_lifecycle_symbols();
-        // SAFETY: retry after an explicit prewarm in case startup missed the host surface.
-        if let Some(host_join) = unsafe { host_pthread_join_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_join(thread, retval) };
-        }
-    }
-
     let thread_key = thread as usize;
     let handle_ptr = thread as *mut ThreadHandle;
 
@@ -1075,23 +1034,6 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
 
 #[allow(unsafe_code)]
 unsafe fn native_pthread_detach(thread: libc::pthread_t) -> c_int {
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        if let Some(host_detach) = crate::host_resolve::host_pthread_detach_raw() {
-            return unsafe { host_detach(thread) };
-        }
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_detach) = unsafe { host_pthread_detach_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_detach(thread) };
-        }
-        prewarm_host_thread_lifecycle_symbols();
-        // SAFETY: retry after an explicit prewarm in case startup missed the host surface.
-        if let Some(host_detach) = unsafe { host_pthread_detach_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_detach(thread) };
-        }
-    }
-
     let thread_key = thread as usize;
     let handle_ptr = thread as *mut ThreadHandle;
 
@@ -1537,7 +1479,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut libc::pthread_mutex_t,
     attr: *const libc::pthread_mutexattr_t,
 ) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if attr.is_null() && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_init) = unsafe { host_pthread_mutex_init_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1553,13 +1495,17 @@ pub unsafe extern "C" fn pthread_mutex_init(
     let mutex_type = if attr.is_null() {
         PTHREAD_MUTEX_NORMAL_TYPE
     } else {
-        // SAFETY: attr is non-null; the first 4 bytes store the type as an i32
-        // (written by our pthread_mutexattr_settype).
-        let kind = unsafe { *(attr.cast::<c_int>()) };
-        if !(0..=2).contains(&kind) {
+        let word = unsafe { *(attr.cast::<c_int>()) };
+        if !mutexattr_word_valid(word) {
             return libc::EINVAL;
         }
-        kind
+        if decode_mutexattr_protocol(word) != libc::PTHREAD_PRIO_NONE
+            || decode_mutexattr_pshared(word) != libc::PTHREAD_PROCESS_PRIVATE
+            || decode_mutexattr_robust(word) != libc::PTHREAD_MUTEX_STALLED
+        {
+            return libc::EINVAL;
+        }
+        decode_mutexattr_type(word)
     };
 
     if let Some(word_ptr) = mutex_word_ptr(mutex) {
@@ -1599,7 +1545,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
 /// POSIX `pthread_mutex_destroy`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut libc::pthread_mutex_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_mutex(mutex) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_destroy) = unsafe { host_pthread_mutex_destroy_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1645,7 +1591,7 @@ pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut libc::pthread_mutex_t
 /// POSIX `pthread_mutex_lock`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut libc::pthread_mutex_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_mutex(mutex) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_lock) = unsafe { host_pthread_mutex_lock_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1735,7 +1681,7 @@ pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut libc::pthread_mutex_t) -
 /// POSIX `pthread_mutex_trylock`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut libc::pthread_mutex_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_mutex(mutex) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_trylock) = unsafe { host_pthread_mutex_trylock_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1824,7 +1770,7 @@ pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut libc::pthread_mutex_t
 /// POSIX `pthread_mutex_unlock`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut libc::pthread_mutex_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_mutex(mutex) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_unlock) = unsafe { host_pthread_mutex_unlock_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1904,7 +1850,7 @@ pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut libc::pthread_cond_t,
     attr: *const libc::pthread_condattr_t,
 ) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if attr.is_null() && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_init) = unsafe { host_pthread_cond_init_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1919,8 +1865,7 @@ pub unsafe extern "C" fn pthread_cond_init(
         PTHREAD_COND_CLOCK_REALTIME
     } else {
         let mut clock_id: c_int = PTHREAD_COND_CLOCK_REALTIME;
-        // SAFETY: attr pointer is caller-provided; host libc validates structure content.
-        let rc = unsafe { libc::pthread_condattr_getclock(attr, &mut clock_id as *mut c_int) };
+        let rc = unsafe { pthread_condattr_getclock(attr, &mut clock_id as *mut c_int) };
         if rc == 0 {
             clock_id
         } else {
@@ -2284,13 +2229,6 @@ pub unsafe extern "C" fn pthread_key_create(
     let sensitive_context = runtime_policy::bootstrap_passthrough_active()
         || crate::malloc_abi::in_allocator_reentry_context()
         || frankenlibc_membrane::ptr_validator::in_validation_context();
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_key_create) = unsafe { host_pthread_key_create_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_key_create(key, destructor) };
-        }
-    }
     with_threading_policy_guard(
         || {
             if sensitive_context {
@@ -2323,13 +2261,6 @@ pub unsafe extern "C" fn pthread_key_delete(key: libc::pthread_key_t) -> c_int {
     let sensitive_context = runtime_policy::bootstrap_passthrough_active()
         || crate::malloc_abi::in_allocator_reentry_context()
         || frankenlibc_membrane::ptr_validator::in_validation_context();
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_key_delete) = unsafe { host_pthread_key_delete_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_key_delete(key) };
-        }
-    }
     with_threading_policy_guard(
         || {
             if sensitive_context {
@@ -2349,13 +2280,6 @@ pub unsafe extern "C" fn pthread_getspecific(key: libc::pthread_key_t) -> *mut c
     let sensitive_context = runtime_policy::bootstrap_passthrough_active()
         || crate::malloc_abi::in_allocator_reentry_context()
         || frankenlibc_membrane::ptr_validator::in_validation_context();
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_getspecific) = unsafe { host_pthread_getspecific_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_getspecific(key) };
-        }
-    }
     with_threading_policy_guard(
         || {
             if sensitive_context {
@@ -2378,13 +2302,6 @@ pub unsafe extern "C" fn pthread_setspecific(
     let sensitive_context = runtime_policy::bootstrap_passthrough_active()
         || crate::malloc_abi::in_allocator_reentry_context()
         || frankenlibc_membrane::ptr_validator::in_validation_context();
-    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire) {
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
-        if let Some(host_setspecific) = unsafe { host_pthread_setspecific_fn() } {
-            // SAFETY: direct call through resolved host symbol.
-            return unsafe { host_setspecific(key, value) };
-        }
-    }
     with_threading_policy_guard(
         || {
             if sensitive_context {
@@ -2706,16 +2623,118 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 
 // --- Mutex attributes --- native implementation
 //
-// pthread_mutexattr_t is 4 bytes. We store the mutex type in the first c_int.
+// pthread_mutexattr_t is treated as one managed c_int word.
+// Low bits store type plus compact protocol/pshared/robust flags.
+
+const MUTEXATTR_TYPE_MASK: c_int = 0b0000_0011;
+const MUTEXATTR_PROTOCOL_MASK: c_int = 0b0000_1100;
+const MUTEXATTR_PROTOCOL_SHIFT: u32 = 2;
+const MUTEXATTR_PSHARED_BIT: c_int = 1 << 4;
+const MUTEXATTR_ROBUST_BIT: c_int = 1 << 5;
+const MUTEXATTR_VALID_BIT: c_int = 1 << 6;
+const MUTEXATTR_ALLOWED_MASK: c_int = MUTEXATTR_TYPE_MASK
+    | MUTEXATTR_PROTOCOL_MASK
+    | MUTEXATTR_PSHARED_BIT
+    | MUTEXATTR_ROBUST_BIT
+    | MUTEXATTR_VALID_BIT;
+
+#[inline]
+fn encode_mutexattr(
+    type_kind: c_int,
+    protocol: c_int,
+    pshared: c_int,
+    robust: c_int,
+) -> Option<c_int> {
+    if !(0..=2).contains(&type_kind) {
+        return None;
+    }
+    let protocol_bits = match protocol {
+        libc::PTHREAD_PRIO_NONE => 0,
+        libc::PTHREAD_PRIO_INHERIT => 1,
+        libc::PTHREAD_PRIO_PROTECT => 2,
+        _ => return None,
+    };
+    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+        return None;
+    }
+    if robust != libc::PTHREAD_MUTEX_STALLED && robust != libc::PTHREAD_MUTEX_ROBUST {
+        return None;
+    }
+
+    let mut word = type_kind & MUTEXATTR_TYPE_MASK;
+    word |= protocol_bits << MUTEXATTR_PROTOCOL_SHIFT;
+    if pshared == libc::PTHREAD_PROCESS_SHARED {
+        word |= MUTEXATTR_PSHARED_BIT;
+    }
+    if robust == libc::PTHREAD_MUTEX_ROBUST {
+        word |= MUTEXATTR_ROBUST_BIT;
+    }
+    word |= MUTEXATTR_VALID_BIT;
+    Some(word)
+}
+
+#[inline]
+fn mutexattr_word_valid(word: c_int) -> bool {
+    if word & MUTEXATTR_VALID_BIT == 0 {
+        return false;
+    }
+    if word & !MUTEXATTR_ALLOWED_MASK != 0 {
+        return false;
+    }
+    let type_kind = word & MUTEXATTR_TYPE_MASK;
+    let protocol_bits = (word & MUTEXATTR_PROTOCOL_MASK) >> MUTEXATTR_PROTOCOL_SHIFT;
+    (0..=2).contains(&type_kind) && (0..=2).contains(&protocol_bits)
+}
+
+#[inline]
+fn decode_mutexattr_type(word: c_int) -> c_int {
+    word & MUTEXATTR_TYPE_MASK
+}
+
+#[inline]
+fn decode_mutexattr_protocol(word: c_int) -> c_int {
+    match (word & MUTEXATTR_PROTOCOL_MASK) >> MUTEXATTR_PROTOCOL_SHIFT {
+        0 => libc::PTHREAD_PRIO_NONE,
+        1 => libc::PTHREAD_PRIO_INHERIT,
+        2 => libc::PTHREAD_PRIO_PROTECT,
+        _ => libc::PTHREAD_PRIO_NONE,
+    }
+}
+
+#[inline]
+fn decode_mutexattr_pshared(word: c_int) -> c_int {
+    if word & MUTEXATTR_PSHARED_BIT != 0 {
+        libc::PTHREAD_PROCESS_SHARED
+    } else {
+        libc::PTHREAD_PROCESS_PRIVATE
+    }
+}
+
+#[inline]
+fn decode_mutexattr_robust(word: c_int) -> c_int {
+    if word & MUTEXATTR_ROBUST_BIT != 0 {
+        libc::PTHREAD_MUTEX_ROBUST
+    } else {
+        libc::PTHREAD_MUTEX_STALLED
+    }
+}
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut libc::pthread_mutexattr_t) -> c_int {
     if attr.is_null() {
         return libc::EINVAL;
     }
-    // SAFETY: attr is non-null; caller owns the memory. Store default type.
+    let Some(default_word) = encode_mutexattr(
+        libc::PTHREAD_MUTEX_DEFAULT,
+        libc::PTHREAD_PRIO_NONE,
+        libc::PTHREAD_PROCESS_PRIVATE,
+        libc::PTHREAD_MUTEX_STALLED,
+    ) else {
+        return libc::EINVAL;
+    };
+    // SAFETY: attr is non-null; caller owns the memory.
     let word = unsafe { &mut *(attr.cast::<c_int>()) };
-    *word = libc::PTHREAD_MUTEX_DEFAULT;
+    *word = default_word;
     0
 }
 
@@ -2738,13 +2757,19 @@ pub unsafe extern "C" fn pthread_mutexattr_settype(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    // Validate type: NORMAL=0, RECURSIVE=1, ERRORCHECK=2, DEFAULT=0
-    if !(0..=2).contains(&kind) {
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(*word) {
         return libc::EINVAL;
     }
-    // SAFETY: attr is non-null; caller owns the memory.
-    let word = unsafe { &mut *(attr.cast::<c_int>()) };
-    *word = kind;
+    let Some(next_word) = encode_mutexattr(
+        kind,
+        decode_mutexattr_protocol(*word),
+        decode_mutexattr_pshared(*word),
+        decode_mutexattr_robust(*word),
+    ) else {
+        return libc::EINVAL;
+    };
+    *word = next_word;
     0
 }
 
@@ -2756,24 +2781,83 @@ pub unsafe extern "C" fn pthread_mutexattr_gettype(
     if attr.is_null() || kind.is_null() {
         return libc::EINVAL;
     }
-    // SAFETY: both pointers are non-null; caller owns the memory.
     let word = unsafe { *(attr.cast::<c_int>()) };
-    unsafe { *kind = word };
+    if !mutexattr_word_valid(word) {
+        return libc::EINVAL;
+    }
+    unsafe { *kind = decode_mutexattr_type(word) };
     0
 }
 
 // --- Condvar attributes --- native implementation
 //
-// pthread_condattr_t is 4 bytes. We store the clock_id in the first c_int.
+// pthread_condattr_t is treated as one managed c_int word.
+// Bit 0 stores CLOCK_MONOTONIC vs CLOCK_REALTIME, bit 1 stores pshared.
+
+const CONDATTR_CLOCK_MONOTONIC_BIT: c_int = 1 << 0;
+const CONDATTR_PSHARED_BIT: c_int = 1 << 1;
+const CONDATTR_VALID_BIT: c_int = 1 << 2;
+const CONDATTR_ALLOWED_MASK: c_int =
+    CONDATTR_CLOCK_MONOTONIC_BIT | CONDATTR_PSHARED_BIT | CONDATTR_VALID_BIT;
+
+#[inline]
+fn encode_condattr(clock_id: libc::clockid_t, pshared: c_int) -> Option<c_int> {
+    if clock_id != libc::CLOCK_REALTIME && clock_id != libc::CLOCK_MONOTONIC {
+        return None;
+    }
+    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+        return None;
+    }
+
+    let mut word = 0;
+    if clock_id == libc::CLOCK_MONOTONIC {
+        word |= CONDATTR_CLOCK_MONOTONIC_BIT;
+    }
+    if pshared == libc::PTHREAD_PROCESS_SHARED {
+        word |= CONDATTR_PSHARED_BIT;
+    }
+    word |= CONDATTR_VALID_BIT;
+    Some(word)
+}
+
+#[inline]
+fn condattr_word_valid(word: c_int) -> bool {
+    if word & CONDATTR_VALID_BIT == 0 {
+        return false;
+    }
+    word & !CONDATTR_ALLOWED_MASK == 0
+}
+
+#[inline]
+fn decode_condattr_clock(word: c_int) -> libc::clockid_t {
+    if word & CONDATTR_CLOCK_MONOTONIC_BIT != 0 {
+        libc::CLOCK_MONOTONIC
+    } else {
+        libc::CLOCK_REALTIME
+    }
+}
+
+#[inline]
+fn decode_condattr_pshared(word: c_int) -> c_int {
+    if word & CONDATTR_PSHARED_BIT != 0 {
+        libc::PTHREAD_PROCESS_SHARED
+    } else {
+        libc::PTHREAD_PROCESS_PRIVATE
+    }
+}
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_condattr_init(attr: *mut libc::pthread_condattr_t) -> c_int {
     if attr.is_null() {
         return libc::EINVAL;
     }
-    // SAFETY: attr is non-null; caller owns the memory. Default clock is REALTIME (0).
+    let Some(default_word) = encode_condattr(libc::CLOCK_REALTIME, libc::PTHREAD_PROCESS_PRIVATE)
+    else {
+        return libc::EINVAL;
+    };
+    // SAFETY: attr is non-null; caller owns the memory.
     let word = unsafe { &mut *(attr.cast::<c_int>()) };
-    *word = libc::CLOCK_REALTIME;
+    *word = default_word;
     0
 }
 
@@ -2796,13 +2880,15 @@ pub unsafe extern "C" fn pthread_condattr_setclock(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    // Only CLOCK_REALTIME and CLOCK_MONOTONIC are valid for condvar.
-    if clock_id != libc::CLOCK_REALTIME && clock_id != libc::CLOCK_MONOTONIC {
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    if !condattr_word_valid(*word) {
         return libc::EINVAL;
     }
-    // SAFETY: attr is non-null; caller owns the memory.
-    let word = unsafe { &mut *(attr.cast::<c_int>()) };
-    *word = clock_id;
+    let pshared = decode_condattr_pshared(*word);
+    let Some(next_word) = encode_condattr(clock_id, pshared) else {
+        return libc::EINVAL;
+    };
+    *word = next_word;
     0
 }
 
@@ -2814,9 +2900,11 @@ pub unsafe extern "C" fn pthread_condattr_getclock(
     if attr.is_null() || clock_id.is_null() {
         return libc::EINVAL;
     }
-    // SAFETY: both pointers are non-null; caller owns the memory.
     let word = unsafe { *(attr.cast::<c_int>()) };
-    unsafe { *clock_id = word };
+    if !condattr_word_valid(word) {
+        return libc::EINVAL;
+    }
+    unsafe { *clock_id = decode_condattr_clock(word) };
     0
 }
 
@@ -3907,12 +3995,11 @@ pub unsafe extern "C" fn pthread_condattr_getpshared(
     if attr.is_null() || pshared.is_null() {
         return libc::EINVAL;
     }
-    // Condattr layout: first int is clock, second is pshared
-    // SAFETY: attr is non-null, caller owns memory.
-    unsafe {
-        let words = attr.cast::<c_int>();
-        *pshared = *words.add(1);
+    let word = unsafe { *(attr.cast::<c_int>()) };
+    if !condattr_word_valid(word) {
+        return libc::EINVAL;
     }
+    unsafe { *pshared = decode_condattr_pshared(word) };
     0
 }
 
@@ -3925,14 +4012,15 @@ pub unsafe extern "C" fn pthread_condattr_setpshared(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    if !condattr_word_valid(*word) {
         return libc::EINVAL;
     }
-    // SAFETY: attr is non-null, caller owns memory.
-    unsafe {
-        let words = attr.cast::<c_int>();
-        *words.add(1) = pshared;
-    }
+    let clock_id = decode_condattr_clock(*word);
+    let Some(next_word) = encode_condattr(clock_id, pshared) else {
+        return libc::EINVAL;
+    };
+    *word = next_word;
     0
 }
 
@@ -3949,10 +4037,11 @@ pub unsafe extern "C" fn pthread_mutexattr_getprotocol(
     if attr.is_null() || protocol.is_null() {
         return libc::EINVAL;
     }
-    // We only support PTHREAD_PRIO_NONE currently.
-    unsafe {
-        *protocol = libc::PTHREAD_PRIO_NONE;
+    let word = unsafe { *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(word) {
+        return libc::EINVAL;
     }
+    unsafe { *protocol = decode_mutexattr_protocol(word) };
     0
 }
 
@@ -3965,19 +4054,19 @@ pub unsafe extern "C" fn pthread_mutexattr_setprotocol(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    // Accept PTHREAD_PRIO_NONE; reject others for now.
-    if protocol != libc::PTHREAD_PRIO_NONE
-        && protocol != libc::PTHREAD_PRIO_INHERIT
-        && protocol != libc::PTHREAD_PRIO_PROTECT
-    {
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(*word) {
         return libc::EINVAL;
     }
-    // Store protocol at offset 1 in the mutexattr (first int is type).
-    // SAFETY: attr is non-null, caller owns memory.
-    unsafe {
-        let words = attr.cast::<c_int>();
-        *words.add(1) = protocol;
-    }
+    let Some(next_word) = encode_mutexattr(
+        decode_mutexattr_type(*word),
+        protocol,
+        decode_mutexattr_pshared(*word),
+        decode_mutexattr_robust(*word),
+    ) else {
+        return libc::EINVAL;
+    };
+    *word = next_word;
     0
 }
 
@@ -3990,10 +4079,11 @@ pub unsafe extern "C" fn pthread_mutexattr_getpshared(
     if attr.is_null() || pshared.is_null() {
         return libc::EINVAL;
     }
-    // Default: PTHREAD_PROCESS_PRIVATE.
-    unsafe {
-        *pshared = libc::PTHREAD_PROCESS_PRIVATE;
+    let word = unsafe { *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(word) {
+        return libc::EINVAL;
     }
+    unsafe { *pshared = decode_mutexattr_pshared(word) };
     0
 }
 
@@ -4006,9 +4096,19 @@ pub unsafe extern "C" fn pthread_mutexattr_setpshared(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    if pshared != libc::PTHREAD_PROCESS_PRIVATE && pshared != libc::PTHREAD_PROCESS_SHARED {
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(*word) {
         return libc::EINVAL;
     }
+    let Some(next_word) = encode_mutexattr(
+        decode_mutexattr_type(*word),
+        decode_mutexattr_protocol(*word),
+        pshared,
+        decode_mutexattr_robust(*word),
+    ) else {
+        return libc::EINVAL;
+    };
+    *word = next_word;
     0
 }
 
@@ -4021,10 +4121,11 @@ pub unsafe extern "C" fn pthread_mutexattr_getrobust(
     if attr.is_null() || robust.is_null() {
         return libc::EINVAL;
     }
-    // Default: PTHREAD_MUTEX_STALLED.
-    unsafe {
-        *robust = libc::PTHREAD_MUTEX_STALLED;
+    let word = unsafe { *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(word) {
+        return libc::EINVAL;
     }
+    unsafe { *robust = decode_mutexattr_robust(word) };
     0
 }
 
@@ -4037,9 +4138,19 @@ pub unsafe extern "C" fn pthread_mutexattr_setrobust(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    if robust != libc::PTHREAD_MUTEX_STALLED && robust != libc::PTHREAD_MUTEX_ROBUST {
+    let word = unsafe { &mut *(attr.cast::<c_int>()) };
+    if !mutexattr_word_valid(*word) {
         return libc::EINVAL;
     }
+    let Some(next_word) = encode_mutexattr(
+        decode_mutexattr_type(*word),
+        decode_mutexattr_protocol(*word),
+        decode_mutexattr_pshared(*word),
+        robust,
+    ) else {
+        return libc::EINVAL;
+    };
+    *word = next_word;
     0
 }
 

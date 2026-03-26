@@ -355,9 +355,7 @@ fn condattr_getpshared() {
         let mut pshared: c_int = -1;
         let rc = pthread_condattr_getpshared(&attr, &mut pshared);
         assert_eq!(rc, 0);
-        // Our condattr_init only initializes the clock field; pshared may
-        // remain at the zeroed value (0 = PRIVATE) or be layout-dependent.
-        // Just verify the function doesn't crash and returns 0.
+        assert_eq!(pshared, libc::PTHREAD_PROCESS_PRIVATE);
 
         pthread_condattr_destroy(&mut attr);
     }
@@ -1383,6 +1381,54 @@ fn mutexattr_setrobust_roundtrip() {
     }
 }
 
+#[test]
+fn mutexattr_protocol_pshared_and_robust_roundtrip_independent() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_mutexattr_setprotocol(&mut attr, libc::PTHREAD_PRIO_INHERIT),
+            0
+        );
+        assert_eq!(
+            pthread_mutexattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_SHARED),
+            0
+        );
+        assert_eq!(
+            pthread_mutexattr_setrobust(&mut attr, libc::PTHREAD_MUTEX_ROBUST),
+            0
+        );
+
+        let mut kind: c_int = -1;
+        let mut protocol: c_int = -1;
+        let mut pshared: c_int = -1;
+        let mut robust: c_int = -1;
+        assert_eq!(pthread_mutexattr_gettype(&attr, &mut kind), 0);
+        assert_eq!(pthread_mutexattr_getprotocol(&attr, &mut protocol), 0);
+        assert_eq!(pthread_mutexattr_getpshared(&attr, &mut pshared), 0);
+        assert_eq!(pthread_mutexattr_getrobust(&attr, &mut robust), 0);
+        assert_eq!(kind, libc::PTHREAD_MUTEX_DEFAULT);
+        assert_eq!(protocol, libc::PTHREAD_PRIO_INHERIT);
+        assert_eq!(pshared, libc::PTHREAD_PROCESS_SHARED);
+        assert_eq!(robust, libc::PTHREAD_MUTEX_ROBUST);
+
+        pthread_mutexattr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn mutexattr_gettype_after_destroy_is_rejected() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+        assert_eq!(pthread_mutexattr_destroy(&mut attr), 0);
+
+        let mut kind: c_int = -1;
+        assert_eq!(pthread_mutexattr_gettype(&attr, &mut kind), libc::EINVAL);
+    }
+}
+
 // ===========================================================================
 // Condattr setpshared
 // ===========================================================================
@@ -1402,6 +1448,47 @@ fn condattr_setpshared_roundtrip() {
         assert_eq!(val, libc::PTHREAD_PROCESS_PRIVATE);
 
         pthread_condattr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn condattr_clock_and_pshared_roundtrip_independent() {
+    unsafe {
+        let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
+        pthread_condattr_init(&mut attr);
+
+        assert_eq!(
+            pthread_condattr_setclock(&mut attr, libc::CLOCK_MONOTONIC),
+            0
+        );
+        assert_eq!(
+            pthread_condattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_SHARED),
+            0
+        );
+
+        let mut clock_id: libc::clockid_t = 0;
+        let mut pshared: c_int = -1;
+        assert_eq!(pthread_condattr_getclock(&attr, &mut clock_id), 0);
+        assert_eq!(pthread_condattr_getpshared(&attr, &mut pshared), 0);
+        assert_eq!(clock_id, libc::CLOCK_MONOTONIC);
+        assert_eq!(pshared, libc::PTHREAD_PROCESS_SHARED);
+
+        pthread_condattr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn condattr_getclock_after_destroy_is_rejected() {
+    unsafe {
+        let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
+        pthread_condattr_init(&mut attr);
+        assert_eq!(pthread_condattr_destroy(&mut attr), 0);
+
+        let mut clock_id: libc::clockid_t = 0;
+        assert_eq!(
+            pthread_condattr_getclock(&attr, &mut clock_id),
+            libc::EINVAL
+        );
     }
 }
 
@@ -1776,5 +1863,23 @@ fn mutex_consistent_does_not_crash() {
         );
 
         pthread_mutex_destroy(&mut mutex);
+    }
+}
+
+#[test]
+fn mutex_init_rejects_unsupported_extension_attributes() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        pthread_mutexattr_init(&mut attr);
+        assert_eq!(
+            pthread_mutexattr_setrobust(&mut attr, libc::PTHREAD_MUTEX_ROBUST),
+            0
+        );
+
+        let rc = pthread_mutex_init(&mut mutex, &attr);
+        assert_eq!(rc, libc::EINVAL);
+
+        pthread_mutexattr_destroy(&mut attr);
     }
 }

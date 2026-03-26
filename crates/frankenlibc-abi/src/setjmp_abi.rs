@@ -200,8 +200,7 @@ fn restore_entrypoint(env: *mut c_void, val: c_int, is_signal_variant: bool) -> 
 
 /// C ABI `setjmp` entrypoint.
 ///
-/// Delegates to the host libc's `setjmp` for correct CPU context capture.
-/// Our metadata capture is informational only.
+/// Delegates to host libc's setjmp for correct CPU context capture.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn setjmp(env: *mut c_void) -> c_int {
     type SetjmpFn = unsafe extern "C" fn(*mut c_void) -> c_int;
@@ -236,7 +235,7 @@ pub unsafe extern "C" fn sigsetjmp(env: *mut c_void, savemask: c_int) -> c_int {
 
 /// C ABI `longjmp` entrypoint.
 ///
-/// Delegates to the host libc's `longjmp` for correct stack unwinding.
+/// Delegates to host libc's longjmp for correct stack unwinding.
 /// Our capture-side metadata is informational; the actual jmp_buf context
 /// is managed by the host.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -253,11 +252,6 @@ pub unsafe extern "C" fn longjmp(env: *mut c_void, val: c_int) -> ! {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn _longjmp(env: *mut c_void, val: c_int) -> ! {
     type LongjmpFn = unsafe extern "C" fn(*mut c_void, c_int) -> !;
-    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("_longjmp") {
-        let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
-        unsafe { host_fn(env, val) }
-    }
-    // Fall back to longjmp if _longjmp not found
     if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("longjmp") {
         let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
         unsafe { host_fn(env, val) }
@@ -273,7 +267,6 @@ pub unsafe extern "C" fn siglongjmp(env: *mut c_void, val: c_int) -> ! {
         let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
         unsafe { host_fn(env, val) }
     }
-    // Fall back to longjmp
     if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("longjmp") {
         let host_fn: LongjmpFn = unsafe { core::mem::transmute(addr) };
         unsafe { host_fn(env, val) }

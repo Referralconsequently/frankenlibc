@@ -12,6 +12,16 @@ use std::ptr;
 
 use frankenlibc_abi::setjmp_abi::{_setjmp, setjmp, sigsetjmp};
 
+const PHASE1_MAGIC: u64 = 0x4652_414e_4b45_4e31;
+
+fn assert_phase1_metadata_written(env: &[u64; 32]) {
+    assert_eq!(env[0], PHASE1_MAGIC, "phase-1 magic should be written");
+    assert_ne!(env[1], 0, "context id should be initialized");
+    assert_ne!(env[2], 0, "generation should be initialized");
+    assert_ne!(env[3], 0, "owner thread should be initialized");
+    assert_ne!(env[5], 0, "guard should be initialized");
+}
+
 // ---------------------------------------------------------------------------
 // setjmp — capture returns 0
 // ---------------------------------------------------------------------------
@@ -22,6 +32,7 @@ fn setjmp_returns_zero_on_capture() {
     let env_ptr = env.as_mut_ptr().cast::<c_void>();
     let rc = unsafe { setjmp(env_ptr) };
     assert_eq!(rc, 0, "setjmp should return 0 on first (capture) call");
+    assert_phase1_metadata_written(&env);
 }
 
 #[test]
@@ -40,6 +51,7 @@ fn _setjmp_returns_zero_on_capture() {
     let env_ptr = env.as_mut_ptr().cast::<c_void>();
     let rc = unsafe { _setjmp(env_ptr) };
     assert_eq!(rc, 0, "_setjmp should return 0 on first (capture) call");
+    assert_phase1_metadata_written(&env);
 }
 
 #[test]
@@ -58,6 +70,7 @@ fn sigsetjmp_no_mask_returns_zero() {
     let env_ptr = env.as_mut_ptr().cast::<c_void>();
     let rc = unsafe { sigsetjmp(env_ptr, 0) };
     assert_eq!(rc, 0, "sigsetjmp(env, 0) should return 0 on capture");
+    assert_phase1_metadata_written(&env);
 }
 
 #[test]
@@ -66,6 +79,7 @@ fn sigsetjmp_with_mask_returns_zero() {
     let env_ptr = env.as_mut_ptr().cast::<c_void>();
     let rc = unsafe { sigsetjmp(env_ptr, 1) };
     assert_eq!(rc, 0, "sigsetjmp(env, 1) should return 0 on capture");
+    assert_phase1_metadata_written(&env);
 }
 
 #[test]

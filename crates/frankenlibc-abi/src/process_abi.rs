@@ -122,6 +122,11 @@ unsafe fn execvp_via_execve(file: *const c_char, argv: *const *const c_char) -> 
 // ---------------------------------------------------------------------------
 
 /// POSIX `fork` — create a child process.
+///
+/// Calls registered `pthread_atfork` handlers and prepares the membrane
+/// pipeline before the clone syscall, then runs child/parent cleanup
+/// handlers afterward. This prevents mutex corruption and stale state
+/// in the child process.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn fork() -> libc::pid_t {
     let (_, decision) = runtime_policy::decide(ApiFamily::Process, 0, 0, true, false, 0);
@@ -131,8 +136,24 @@ pub unsafe extern "C" fn fork() -> libc::pid_t {
         return -1;
     }
 
+    // Run atfork prepare handlers (acquire locks in parent before fork).
+    crate::pthread_abi::run_atfork_prepare();
+    let _pipeline_guard =
+        crate::membrane_state::try_global_pipeline().map(|pipeline| pipeline.atfork_prepare());
+
     let rc = unsafe { libc::syscall(libc::SYS_clone as c_long, libc::SIGCHLD, 0, 0, 0, 0) };
     let pid = rc as libc::pid_t;
+
+    drop(_pipeline_guard);
+
+    if pid == 0 {
+        // Child: run child handlers to reinitialize state.
+        crate::pthread_abi::run_atfork_child();
+    } else if pid > 0 {
+        // Parent: run parent handlers to release locks.
+        crate::pthread_abi::run_atfork_parent();
+    }
+
     let adverse = pid < 0;
     if adverse {
         unsafe { set_abi_errno(last_host_errno(libc::EAGAIN)) };

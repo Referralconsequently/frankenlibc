@@ -16,6 +16,10 @@ use frankenlibc_abi::pthread_abi::{pthread_getspecific, pthread_setspecific};
 static TEST_GUARD: Mutex<()> = Mutex::new(());
 static FORCE_NATIVE_ONCE: Once = Once::new();
 
+fn lock_only() -> std::sync::MutexGuard<'static, ()> {
+    TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn lock_and_force_native() -> std::sync::MutexGuard<'static, ()> {
     let guard = TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
     FORCE_NATIVE_ONCE.call_once(pthread_threading_force_native_for_tests);
@@ -64,6 +68,26 @@ fn key_create_null_is_einval() {
     let _guard = lock_and_force_native();
     let rc = unsafe { pthread_key_create(std::ptr::null_mut(), None) };
     assert_eq!(rc, libc::EINVAL);
+}
+
+#[test]
+fn key_create_delete_roundtrip_uses_default_native_routing() {
+    let _guard = lock_only();
+    let mut key: libc::pthread_key_t = 0;
+    let create_rc = unsafe { pthread_key_create(&mut key, None) };
+    assert_eq!(create_rc, 0, "pthread_key_create failed rc={create_rc}");
+
+    let sentinel: usize = 0xA11CE;
+    #[cfg(target_arch = "x86_64")]
+    {
+        let set_rc = unsafe { pthread_setspecific(key, sentinel as *const c_void) };
+        assert_eq!(set_rc, 0, "pthread_setspecific failed rc={set_rc}");
+        let value = unsafe { pthread_getspecific(key) };
+        assert_eq!(value as usize, sentinel);
+    }
+
+    let delete_rc = unsafe { pthread_key_delete(key) };
+    assert_eq!(delete_rc, 0, "pthread_key_delete failed rc={delete_rc}");
 }
 
 #[test]

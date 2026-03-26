@@ -11,6 +11,10 @@ use frankenlibc_abi::pthread_abi::{
 
 static TEST_GUARD: Mutex<()> = Mutex::new(());
 
+fn lock_only() -> std::sync::MutexGuard<'static, ()> {
+    TEST_GUARD.lock().unwrap()
+}
+
 fn lock_and_force_native() -> std::sync::MutexGuard<'static, ()> {
     let guard = TEST_GUARD.lock().unwrap();
     pthread_threading_force_native_for_tests();
@@ -152,6 +156,28 @@ fn pthread_create_argument_validation() {
         )
     };
     assert_eq!(rc, libc::EINVAL);
+}
+
+#[test]
+fn pthread_create_join_roundtrip_uses_default_native_routing() {
+    let _guard = lock_only();
+
+    let arg = 0x4444usize as *mut c_void;
+    let mut tid: libc::pthread_t = 0;
+    let create_rc = unsafe {
+        pthread_create(
+            &mut tid as *mut libc::pthread_t,
+            std::ptr::null(),
+            Some(start_return_arg),
+            arg,
+        )
+    };
+    assert_eq!(create_rc, 0, "pthread_create failed rc={create_rc}");
+
+    let mut retval: *mut c_void = std::ptr::null_mut();
+    let join_rc = unsafe { pthread_join(tid, &mut retval as *mut *mut c_void) };
+    assert_eq!(join_rc, 0, "pthread_join failed rc={join_rc}");
+    assert_eq!(retval, arg, "default routing lost thread return value");
 }
 
 #[test]
