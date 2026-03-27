@@ -1000,6 +1000,139 @@ unsafe fn native_pthread_create(
     0
 }
 
+fn managed_attr_data_for_host_translation(
+    attr: *const libc::pthread_attr_t,
+) -> Option<*const PthreadAttrData> {
+    let data = attr_data_ptr_const(attr)?;
+    // SAFETY: `data` came from `attr_data_ptr_const`, which validates alignment and non-null.
+    let attr_ref = unsafe { &*data };
+    if attr_ref.magic == MANAGED_ATTR_MAGIC {
+        return Some(data);
+    }
+    // A fully zeroed overlay is our destroyed/uninitialized managed attr shape, not a
+    // valid host pthread attr object. Reject rather than passing malformed bytes to glibc.
+    if attr_ref.magic == 0
+        && attr_ref.detach_state == 0
+        && attr_ref.stack_size == 0
+        && attr_ref.guard_size == 0
+        && attr_ref.stack_addr == 0
+        && attr_ref.inherit_sched == 0
+        && attr_ref.sched_policy == 0
+        && attr_ref.sched_priority == 0
+        && attr_ref.flags == 0
+    {
+        return Some(std::ptr::null());
+    }
+    None
+}
+
+unsafe fn host_pthread_create_with_managed_attr(
+    host_create: unsafe extern "C" fn(
+        *mut libc::pthread_t,
+        *const libc::pthread_attr_t,
+        Option<StartRoutine>,
+        *mut c_void,
+    ) -> c_int,
+    thread_out: *mut libc::pthread_t,
+    attr: *const libc::pthread_attr_t,
+    start_routine: Option<StartRoutine>,
+    arg: *mut c_void,
+) -> c_int {
+    let Some(data_ptr) = managed_attr_data_for_host_translation(attr) else {
+        return unsafe { host_create(thread_out, attr, start_routine, arg) };
+    };
+    if data_ptr.is_null() {
+        return libc::EINVAL;
+    }
+
+    // SAFETY: `data_ptr` came from `managed_attr_data_for_host_translation`.
+    let data = unsafe { &*data_ptr };
+    let mut host_attr: libc::pthread_attr_t = unsafe { std::mem::zeroed() };
+    let init_rc = unsafe { libc::pthread_attr_init(&mut host_attr) };
+    if init_rc != 0 {
+        return init_rc;
+    }
+
+    let mut rc = unsafe { libc::pthread_attr_setdetachstate(&mut host_attr, data.detach_state) };
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_setguardsize(&mut host_attr, data.guard_size) };
+    }
+    if rc == 0 {
+        if data.stack_addr != 0 {
+            rc = unsafe {
+                libc::pthread_attr_setstack(
+                    &mut host_attr,
+                    data.stack_addr as *mut c_void,
+                    data.stack_size,
+                )
+            };
+        } else {
+            rc = unsafe { libc::pthread_attr_setstacksize(&mut host_attr, data.stack_size) };
+        }
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_setinheritsched(&mut host_attr, data.inherit_sched) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_setschedpolicy(&mut host_attr, data.sched_policy) };
+    }
+    if rc == 0 {
+        let mut param: libc::sched_param = unsafe { std::mem::zeroed() };
+        param.sched_priority = data.sched_priority;
+        rc = unsafe { libc::pthread_attr_setschedparam(&mut host_attr, &param) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_setscope(&mut host_attr, PTHREAD_SCOPE_SYSTEM) };
+    }
+    if rc == 0 && data.flags & 0b01 != 0 {
+        let key = attr as usize;
+        let reg = EXTENDED_ATTR_REGISTRY
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ext) = reg.get(&key)
+            && let Some((cpusetsize, mask_bytes)) = &ext.affinity
+        {
+            rc = unsafe {
+                libc::pthread_attr_setaffinity_np(
+                    &mut host_attr,
+                    *cpusetsize,
+                    mask_bytes.as_ptr().cast::<libc::cpu_set_t>(),
+                )
+            };
+        }
+    }
+    if rc == 0 && data.flags & 0b10 != 0 {
+        unsafe extern "C" {
+            fn pthread_attr_setsigmask_np(
+                attr: *mut libc::pthread_attr_t,
+                sigmask: *const libc::sigset_t,
+            ) -> c_int;
+        }
+        let key = attr as usize;
+        let reg = EXTENDED_ATTR_REGISTRY
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ext) = reg.get(&key)
+            && let Some(mask_bytes) = &ext.sigmask
+        {
+            rc = unsafe {
+                pthread_attr_setsigmask_np(
+                    &mut host_attr,
+                    mask_bytes.as_ptr().cast::<libc::sigset_t>(),
+                )
+            };
+        }
+    }
+
+    let result = if rc == 0 {
+        unsafe { host_create(thread_out, &host_attr, start_routine, arg) }
+    } else {
+        rc
+    };
+    let _ = unsafe { libc::pthread_attr_destroy(&mut host_attr) };
+    result
+}
+
 #[allow(unsafe_code)]
 unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void) -> c_int {
     let thread_key = thread as usize;
@@ -1469,7 +1602,9 @@ pub unsafe extern "C" fn pthread_create(
     // and compatibility with programs that depend on glibc thread internals
     // (Python, Node.js, etc.).
     if let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
-        return unsafe { host_create(thread_out, attr, start_routine, arg) };
+        return unsafe {
+            host_pthread_create_with_managed_attr(host_create, thread_out, attr, start_routine, arg)
+        };
     }
     let start = start_routine.unwrap_or_else(|| unreachable!("start routine checked above"));
     // SAFETY: pointers and start routine are validated by this wrapper.
@@ -3325,11 +3460,20 @@ fn futex_wake_u32(addr: &AtomicU32, count: i32) -> c_int {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_barrier_init(
     barrier: *mut c_void,
-    _attr: *const c_void,
+    attr: *const c_void,
     count: libc::c_uint,
 ) -> c_int {
     if count == 0 {
         return libc::EINVAL;
+    }
+    if !attr.is_null() {
+        let word = unsafe { *(attr.cast::<c_int>()) };
+        if word & BARRIERATTR_VALID_BIT == 0 {
+            return libc::EINVAL;
+        }
+        if (word & !BARRIERATTR_VALID_BIT) != libc::PTHREAD_PROCESS_PRIVATE {
+            return libc::EINVAL;
+        }
     }
     let Some(data) = barrier_data_ptr(barrier) else {
         return libc::EINVAL;

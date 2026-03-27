@@ -1659,6 +1659,46 @@ fn barrierattr_getpshared_after_destroy_is_rejected() {
     }
 }
 
+#[test]
+fn barrier_init_rejects_destroyed_attr() {
+    unsafe {
+        let mut attr: libc::pthread_barrierattr_t = std::mem::zeroed();
+        let mut barrier = [0u8; 64];
+        assert_eq!(pthread_barrierattr_init(&mut attr), 0);
+        assert_eq!(pthread_barrierattr_destroy(&mut attr), 0);
+        assert_eq!(
+            pthread_barrier_init(
+                barrier.as_mut_ptr() as *mut c_void,
+                &attr as *const _ as *mut _,
+                1
+            ),
+            libc::EINVAL
+        );
+    }
+}
+
+#[test]
+fn barrier_init_rejects_process_shared_attr() {
+    unsafe {
+        let mut attr: libc::pthread_barrierattr_t = std::mem::zeroed();
+        let mut barrier = [0u8; 64];
+        assert_eq!(pthread_barrierattr_init(&mut attr), 0);
+        assert_eq!(
+            pthread_barrierattr_setpshared(&mut attr, libc::PTHREAD_PROCESS_SHARED),
+            0
+        );
+        assert_eq!(
+            pthread_barrier_init(
+                barrier.as_mut_ptr() as *mut c_void,
+                &attr as *const _ as *mut _,
+                1
+            ),
+            libc::EINVAL
+        );
+        assert_eq!(pthread_barrierattr_destroy(&mut attr), 0);
+    }
+}
+
 // ===========================================================================
 // pthread_mutex_timedlock
 // ===========================================================================
@@ -1965,6 +2005,37 @@ fn setattr_default_np_roundtrip() {
 
         pthread_attr_destroy(&mut got);
         pthread_attr_destroy(&mut attr);
+    }
+}
+
+#[test]
+fn thread_create_with_managed_attr_succeeds() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        assert_eq!(pthread_attr_init(&mut attr), 0);
+        assert_eq!(pthread_attr_setstacksize(&mut attr, 4 * 1024 * 1024), 0);
+
+        let mut thr: libc::pthread_t = 0;
+        let rc = pthread_create(&mut thr, &attr, Some(add_ten), 7usize as *mut c_void);
+        assert_eq!(rc, 0);
+
+        let mut retval: *mut c_void = ptr::null_mut();
+        assert_eq!(pthread_join(thr, &mut retval), 0);
+        assert_eq!(retval as usize, 17);
+        assert_eq!(pthread_attr_destroy(&mut attr), 0);
+    }
+}
+
+#[test]
+fn thread_create_rejects_destroyed_managed_attr() {
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        assert_eq!(pthread_attr_init(&mut attr), 0);
+        assert_eq!(pthread_attr_destroy(&mut attr), 0);
+
+        let mut thr: libc::pthread_t = 0;
+        let rc = pthread_create(&mut thr, &attr, Some(add_ten), 1usize as *mut c_void);
+        assert_eq!(rc, libc::EINVAL);
     }
 }
 
