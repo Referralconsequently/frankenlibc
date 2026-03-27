@@ -1864,11 +1864,12 @@ pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut libc::pthread_mutex_t,
     attr: *const libc::pthread_mutexattr_t,
 ) -> c_int {
-    if attr.is_null()
-        && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
-        && let Some(host_init) = unsafe { host_pthread_mutex_init_fn() }
-    {
-        return unsafe { host_init(mutex, attr) };
+    // Always prefer host delegation — see CRITICAL comment in pthread_cond_init.
+    // Mutex and condvar init must use the same implementation (host or native).
+    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+        if let Some(host_init) = unsafe { host_pthread_mutex_init_fn() } {
+            return unsafe { host_init(mutex, attr) };
+        }
     }
 
     if mutex.is_null() {
@@ -2234,11 +2235,21 @@ pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut libc::pthread_cond_t,
     attr: *const libc::pthread_condattr_t,
 ) -> c_int {
-    if attr.is_null()
-        && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
-        && let Some(host_init) = unsafe { host_pthread_cond_init_fn() }
-    {
-        return unsafe { host_init(cond, attr) };
+    // ╔══════════════════════════════════════════════════════════════════╗
+    // ║ CRITICAL: Always delegate to host regardless of attr.          ║
+    // ║                                                                ║
+    // ║ DO NOT add an `attr.is_null()` guard here. Python 3.13 passes ║
+    // ║ non-null attrs with CLOCK_MONOTONIC. If we use our native      ║
+    // ║ condvar init with a host-initialized mutex, pthread_cond_wait  ║
+    // ║ will fail because the native condvar manipulates the mutex     ║
+    // ║ futex word directly, which is incompatible with glibc's        ║
+    // ║ internal mutex layout. Both mutex and condvar MUST be          ║
+    // ║ initialized by the same implementation (host or native).       ║
+    // ╚══════════════════════════════════════════════════════════════════╝
+    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+        if let Some(host_init) = unsafe { host_pthread_cond_init_fn() } {
+            return unsafe { host_init(cond, attr) };
+        }
     }
 
     let Some(cond_ptr) = condvar_data_ptr(cond) else {

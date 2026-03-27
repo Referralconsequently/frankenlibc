@@ -34,6 +34,14 @@ unsafe extern "C" {
     #[link_name = "getservent"]
     fn host_getservent() -> *mut libc::servent;
 
+    #[link_name = "getservent_r"]
+    fn host_getservent_r(
+        result_buf: *mut libc::servent,
+        buf: *mut c_char,
+        buflen: usize,
+        result: *mut *mut libc::servent,
+    ) -> c_int;
+
     #[link_name = "sethostent"]
     fn host_sethostent(stayopen: c_int);
 
@@ -14926,15 +14934,21 @@ pub unsafe extern "C" fn getprotoent_r(
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getservent_r(
-    _result_buf: *mut c_void,
-    _buf: *mut c_char,
-    _buflen: usize,
-    _result: *mut *mut c_void,
+    result_buf: *mut c_void,
+    buf: *mut c_char,
+    buflen: usize,
+    result: *mut *mut c_void,
 ) -> c_int {
-    if !_result.is_null() {
-        unsafe { *_result = std::ptr::null_mut() };
+    if !result.is_null() {
+        unsafe { *result = std::ptr::null_mut() };
     }
-    libc::ENOENT
+
+    let mut host_result: *mut libc::servent = std::ptr::null_mut();
+    let rc = unsafe { host_getservent_r(result_buf.cast(), buf, buflen, &mut host_result) };
+    if !result.is_null() {
+        unsafe { *result = host_result.cast() };
+    }
+    rc
 }
 
 // ===========================================================================

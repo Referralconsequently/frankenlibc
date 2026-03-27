@@ -20,9 +20,9 @@ use frankenlibc_abi::unistd_abi::{
     fchown, fdatasync, flock, fstat, fsync, ftruncate, gai_cancel, gai_error, gai_suspend,
     getaddrinfo_a, getcwd, getegid, geteuid, getgid, gethostent_r, gethostname, getnetbyaddr_r,
     getnetbyname_r, getnetent_r, getpid, getppid, getprotobyname_r, getprotobynumber_r,
-    getprotoent, getprotoent_r, getservent, getuid, getutent_r, getutid, getutid_r, getutline,
-    getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd, open,
-    pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
+    getprotoent, getprotoent_r, getservent, getservent_r, getuid, getutent_r, getutid, getutid_r,
+    getutline, getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd,
+    open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
     readlink, rename, rmdir, semctl, semop, sethostent, setnetent, setprotoent, setservent,
     setutent, shmdt, ssignal, stat, strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname,
     unlink, usleep, utmpname, write,
@@ -1413,6 +1413,29 @@ fn getservent_and_getprotoent_surface_first_entries() {
     assert!(
         !proto_name.to_bytes().is_empty(),
         "enumerated protocol entry should populate p_name"
+    );
+}
+
+#[test]
+fn getservent_r_surfaces_first_service_entry() {
+    let mut service: libc::servent = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 1024];
+    let mut result = std::ptr::dangling_mut::<c_void>();
+
+    unsafe { setservent(1) };
+    let rc = unsafe {
+        getservent_r(
+            (&mut service as *mut libc::servent).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(result, (&mut service as *mut libc::servent).cast());
+    assert!(
+        !service.s_name.is_null(),
+        "reentrant service lookup should populate s_name"
     );
 }
 
