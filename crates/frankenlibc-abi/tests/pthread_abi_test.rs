@@ -1503,6 +1503,17 @@ fn mutexattr_gettype_after_destroy_is_rejected() {
     }
 }
 
+#[test]
+fn mutex_init_rejects_destroyed_attr() {
+    unsafe {
+        let mut attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        assert_eq!(pthread_mutexattr_init(&mut attr), 0);
+        assert_eq!(pthread_mutexattr_destroy(&mut attr), 0);
+        assert_eq!(pthread_mutex_init(&mut mutex, &attr), libc::EINVAL);
+    }
+}
+
 // ===========================================================================
 // Condattr setpshared
 // ===========================================================================
@@ -1563,6 +1574,17 @@ fn condattr_getclock_after_destroy_is_rejected() {
             pthread_condattr_getclock(&attr, &mut clock_id),
             libc::EINVAL
         );
+    }
+}
+
+#[test]
+fn cond_init_rejects_destroyed_attr() {
+    unsafe {
+        let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
+        let mut cond: libc::pthread_cond_t = std::mem::zeroed();
+        assert_eq!(pthread_condattr_init(&mut attr), 0);
+        assert_eq!(pthread_condattr_destroy(&mut attr), 0);
+        assert_eq!(pthread_cond_init(&mut cond, &attr), libc::EINVAL);
     }
 }
 

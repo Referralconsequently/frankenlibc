@@ -1504,12 +1504,11 @@ pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut libc::pthread_mutex_t,
     attr: *const libc::pthread_mutexattr_t,
 ) -> c_int {
-    // Always prefer host for mutex init — programs may pass non-null attrs
-    // with specific type/protocol settings.
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
-        if let Some(host_init) = unsafe { host_pthread_mutex_init_fn() } {
-            return unsafe { host_init(mutex, attr) };
-        }
+    if attr.is_null()
+        && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
+        && let Some(host_init) = unsafe { host_pthread_mutex_init_fn() }
+    {
+        return unsafe { host_init(mutex, attr) };
     }
 
     if mutex.is_null() {
@@ -1875,12 +1874,11 @@ pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut libc::pthread_cond_t,
     attr: *const libc::pthread_condattr_t,
 ) -> c_int {
-    // Always prefer host for condvar init — programs like Python 3.13 pass
-    // non-null attrs with CLOCK_MONOTONIC that our native impl may not support.
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
-        if let Some(host_init) = unsafe { host_pthread_cond_init_fn() } {
-            return unsafe { host_init(cond, attr) };
-        }
+    if attr.is_null()
+        && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
+        && let Some(host_init) = unsafe { host_pthread_cond_init_fn() }
+    {
+        return unsafe { host_init(cond, attr) };
     }
 
     let Some(cond_ptr) = condvar_data_ptr(cond) else {
@@ -1894,7 +1892,7 @@ pub unsafe extern "C" fn pthread_cond_init(
         if rc == 0 {
             clock_id
         } else {
-            PTHREAD_COND_CLOCK_REALTIME
+            return libc::EINVAL;
         }
     };
     // SAFETY: pointer validated/aligned above and points into caller-owned pthread_cond_t.
