@@ -18,14 +18,14 @@ use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::unistd_abi::{
     access, alarm, chdir, chmod, chown, close, creat, eaccess, euidaccess, faccessat, fchmod,
     fchown, fdatasync, flock, fstat, fsync, ftruncate, gai_cancel, gai_error, gai_suspend,
-    getaddrinfo_a, getcwd, getegid, geteuid, getgid, gethostent_r, gethostname, getnetbyaddr_r,
-    getnetbyname_r, getnetent_r, getpid, getppid, getprotobyname_r, getprotobynumber_r,
-    getprotoent, getprotoent_r, getservent, getservent_r, getuid, getutent_r, getutid, getutid_r,
-    getutline, getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd,
-    open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
-    readlink, rename, rmdir, semctl, semop, sethostent, setnetent, setprotoent, setservent,
-    setutent, shmdt, ssignal, stat, strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname,
-    unlink, usleep, utmpname, write,
+    getaddrinfo_a, getcwd, getegid, geteuid, getfsent, getfsfile, getfsspec, getgid, gethostent_r,
+    gethostname, getnetbyaddr_r, getnetbyname_r, getnetent_r, getpid, getppid, getprotobyname_r,
+    getprotobynumber_r, getprotoent, getprotoent_r, getservent, getservent_r, getttyent, getttynam,
+    getuid, getutent_r, getutid, getutid_r, getutline, getutline_r, gsignal, isatty, link, lseek,
+    lstat, mkdir, mkfifo, msgrcv, msgsnd, open, pathconf, process_madvise, process_mrelease,
+    process_vm_readv, process_vm_writev, read, readlink, rename, rmdir, semctl, semop, setfsent,
+    sethostent, setnetent, setprotoent, setservent, setttyent, setutent, shmdt, ssignal, stat,
+    strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname, unlink, usleep, utmpname, write,
 };
 
 static SIGNAL_HIT: AtomicI32 = AtomicI32::new(0);
@@ -36,6 +36,59 @@ struct NetEnt {
     n_aliases: *mut *mut c_char,
     n_addrtype: c_int,
     n_net: u32,
+}
+
+#[repr(C)]
+struct Fstab {
+    fs_spec: *mut c_char,
+    fs_file: *mut c_char,
+    fs_vfstype: *mut c_char,
+    fs_mntops: *mut c_char,
+    fs_type: *const c_char,
+    fs_freq: c_int,
+    fs_passno: c_int,
+}
+
+#[repr(C)]
+struct RpcEnt {
+    r_name: *mut c_char,
+    r_aliases: *mut *mut c_char,
+    r_number: c_int,
+}
+
+#[repr(C)]
+struct TtyEnt {
+    ty_name: *mut c_char,
+    ty_getty: *mut c_char,
+    ty_type: *mut c_char,
+    ty_status: c_int,
+    ty_window: *mut c_char,
+    ty_comment: *mut c_char,
+}
+
+unsafe extern "C" {
+    fn setrpcent(stayopen: c_int);
+    fn getrpcent_r(
+        result_buf: *mut RpcEnt,
+        buffer: *mut c_char,
+        buflen: usize,
+        result: *mut *mut RpcEnt,
+    ) -> c_int;
+    fn getrpcbyname_r(
+        name: *const c_char,
+        result_buf: *mut RpcEnt,
+        buffer: *mut c_char,
+        buflen: usize,
+        result: *mut *mut RpcEnt,
+    ) -> c_int;
+    fn getrpcbynumber_r(
+        number: c_int,
+        result_buf: *mut RpcEnt,
+        buffer: *mut c_char,
+        buflen: usize,
+        result: *mut *mut RpcEnt,
+    ) -> c_int;
+    fn endttyent() -> c_int;
 }
 
 unsafe extern "C" fn record_sigusr1(sig: c_int) {
@@ -1436,6 +1489,121 @@ fn getservent_r_surfaces_first_service_entry() {
     assert!(
         !service.s_name.is_null(),
         "reentrant service lookup should populate s_name"
+    );
+}
+
+#[test]
+fn fstab_wrappers_surface_host_entries() {
+    let rc = unsafe { setfsent() };
+    assert_eq!(rc, 1, "setfsent should succeed on this host");
+
+    let entry = unsafe { getfsent() as *mut Fstab };
+    assert!(
+        !entry.is_null(),
+        "getfsent should return the first fstab entry"
+    );
+    assert!(
+        unsafe { !(*entry).fs_spec.is_null() && !(*entry).fs_file.is_null() },
+        "fstab entry should populate fs_spec and fs_file"
+    );
+
+    let spec = unsafe { CString::new(std::ffi::CStr::from_ptr((*entry).fs_spec).to_bytes()) }
+        .expect("fstab spec should be valid C string bytes");
+    let file = unsafe { CString::new(std::ffi::CStr::from_ptr((*entry).fs_file).to_bytes()) }
+        .expect("fstab file should be valid C string bytes");
+
+    let by_file = unsafe { getfsfile(file.as_ptr()) as *mut Fstab };
+    assert!(
+        !by_file.is_null(),
+        "getfsfile should find the same entry by mount point"
+    );
+    let by_spec = unsafe { getfsspec(spec.as_ptr()) as *mut Fstab };
+    assert!(
+        !by_spec.is_null(),
+        "getfsspec should find the same entry by device spec"
+    );
+}
+
+#[test]
+fn ttyent_wrappers_match_host_miss_shape() {
+    let tty_name = CString::new("frankenlibc-no-such-tty").unwrap();
+    let missing = unsafe { getttynam(tty_name.as_ptr()) as *mut TtyEnt };
+    assert!(
+        missing.is_null(),
+        "getttynam should return NULL for a missing tty entry"
+    );
+
+    let rc = unsafe { setttyent() };
+    assert_eq!(
+        rc, 0,
+        "setttyent should mirror host failure when /etc/ttys is absent"
+    );
+    assert_eq!(unsafe { *__errno_location() }, libc::ENOENT);
+
+    let entry = unsafe { getttyent() as *mut TtyEnt };
+    assert!(
+        entry.is_null(),
+        "getttyent should return NULL when tty database is unavailable"
+    );
+
+    let end_rc = unsafe { endttyent() };
+    assert_eq!(end_rc, 1, "endttyent should mirror host success shape");
+}
+
+#[test]
+fn rpc_reentrant_wrappers_match_host_shapes() {
+    let mut rpc: RpcEnt = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 1024];
+    let mut result = std::ptr::dangling_mut::<RpcEnt>();
+
+    let name = CString::new("portmapper").unwrap();
+    let rc = unsafe {
+        getrpcbyname_r(
+            name.as_ptr(),
+            &mut rpc,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(std::ptr::eq(result, &rpc));
+    let rpc_name = unsafe { std::ffi::CStr::from_ptr(rpc.r_name) };
+    assert_eq!(rpc_name.to_bytes(), b"portmapper");
+    assert_eq!(rpc.r_number, 100000);
+
+    result = std::ptr::dangling_mut::<RpcEnt>();
+    let missing = CString::new("frankenlibc-no-rpc").unwrap();
+    let rc = unsafe {
+        getrpcbyname_r(
+            missing.as_ptr(),
+            &mut rpc,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(
+        result.is_null(),
+        "missing RPC name should return rc=0 with NULL result"
+    );
+
+    result = std::ptr::dangling_mut::<RpcEnt>();
+    let rc =
+        unsafe { getrpcbynumber_r(100000, &mut rpc, buf.as_mut_ptr(), buf.len(), &mut result) };
+    assert_eq!(rc, 0);
+    assert!(std::ptr::eq(result, &rpc));
+    assert_eq!(rpc.r_number, 100000);
+
+    unsafe { setrpcent(1) };
+    result = std::ptr::dangling_mut::<RpcEnt>();
+    let rc = unsafe { getrpcent_r(&mut rpc, buf.as_mut_ptr(), buf.len(), &mut result) };
+    assert_eq!(rc, 0);
+    assert!(std::ptr::eq(result, &rpc));
+    assert!(
+        !rpc.r_name.is_null(),
+        "reentrant RPC iteration should populate r_name"
     );
 }
 

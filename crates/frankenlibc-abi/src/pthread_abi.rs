@@ -1866,10 +1866,10 @@ pub unsafe extern "C" fn pthread_mutex_init(
 ) -> c_int {
     // Always prefer host delegation — see CRITICAL comment in pthread_cond_init.
     // Mutex and condvar init must use the same implementation (host or native).
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
-        if let Some(host_init) = unsafe { host_pthread_mutex_init_fn() } {
-            return unsafe { host_init(mutex, attr) };
-        }
+    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
+        && let Some(host_init) = unsafe { host_pthread_mutex_init_fn() }
+    {
+        return unsafe { host_init(mutex, attr) };
     }
 
     if mutex.is_null() {
@@ -2246,10 +2246,10 @@ pub unsafe extern "C" fn pthread_cond_init(
     // ║ internal mutex layout. Both mutex and condvar MUST be          ║
     // ║ initialized by the same implementation (host or native).       ║
     // ╚══════════════════════════════════════════════════════════════════╝
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
-        if let Some(host_init) = unsafe { host_pthread_cond_init_fn() } {
-            return unsafe { host_init(cond, attr) };
-        }
+    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
+        && let Some(host_init) = unsafe { host_pthread_cond_init_fn() }
+    {
+        return unsafe { host_init(cond, attr) };
     }
 
     let Some(cond_ptr) = condvar_data_ptr(cond) else {

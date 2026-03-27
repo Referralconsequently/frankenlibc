@@ -24,7 +24,50 @@ struct NetEnt {
     n_net: u32,
 }
 
+#[repr(C)]
+struct Fstab {
+    fs_spec: *mut c_char,
+    fs_file: *mut c_char,
+    fs_vfstype: *mut c_char,
+    fs_mntops: *mut c_char,
+    fs_type: *const c_char,
+    fs_freq: c_int,
+    fs_passno: c_int,
+}
+
+#[repr(C)]
+struct RpcEnt {
+    r_name: *mut c_char,
+    r_aliases: *mut *mut c_char,
+    r_number: c_int,
+}
+
+#[repr(C)]
+struct TtyEnt {
+    ty_name: *mut c_char,
+    ty_getty: *mut c_char,
+    ty_type: *mut c_char,
+    ty_status: c_int,
+    ty_window: *mut c_char,
+    ty_comment: *mut c_char,
+}
+
 unsafe extern "C" {
+    #[link_name = "setfsent"]
+    fn host_setfsent() -> c_int;
+
+    #[link_name = "endfsent"]
+    fn host_endfsent();
+
+    #[link_name = "getfsent"]
+    fn host_getfsent() -> *mut Fstab;
+
+    #[link_name = "getfsfile"]
+    fn host_getfsfile(file: *const c_char) -> *mut Fstab;
+
+    #[link_name = "getfsspec"]
+    fn host_getfsspec(spec: *const c_char) -> *mut Fstab;
+
     #[link_name = "setservent"]
     fn host_setservent(stayopen: c_int);
 
@@ -139,6 +182,18 @@ unsafe extern "C" {
         buflen: usize,
         result: *mut *mut libc::protoent,
     ) -> c_int;
+
+    #[link_name = "setttyent"]
+    fn host_setttyent() -> c_int;
+
+    #[link_name = "getttyent"]
+    fn host_getttyent() -> *mut TtyEnt;
+
+    #[link_name = "getttynam"]
+    fn host_getttynam(name: *const c_char) -> *mut TtyEnt;
+
+    #[link_name = "endttyent"]
+    fn host_endttyent() -> c_int;
 }
 
 #[inline]
@@ -12748,10 +12803,15 @@ pub unsafe extern "C" fn getaliasent_r(
 
 /// `endfsent` — close filesystem table iteration.
 ///
-/// Native implementation: no-op (fstab iteration state is process-local, safe to ignore).
+/// Delegates to host libc via ELF resolver (not link_name, which recurses
+/// under LD_PRELOAD since we export this symbol).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endfsent() {
-    // No-op: we don't maintain persistent fstab iteration state.
+    type EndfsentFn = unsafe extern "C" fn();
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("endfsent") {
+        let f: EndfsentFn = unsafe { core::mem::transmute(addr) };
+        unsafe { f() };
+    }
 }
 
 /// `endnetgrent` — end netgroup iteration.
@@ -12946,6 +13006,83 @@ fn parse_rpc_line_to_static(line: &str) -> *mut c_void {
     })
 }
 
+unsafe fn fill_rpcent_result(
+    src: *const RpcEnt,
+    result_buf: *mut c_void,
+    buffer: *mut c_char,
+    buflen: usize,
+    result: *mut *mut c_void,
+) -> c_int {
+    if !result.is_null() {
+        unsafe { *result = std::ptr::null_mut() };
+    }
+    if src.is_null() {
+        return 0;
+    }
+    if result_buf.is_null() || buffer.is_null() {
+        return libc::EINVAL;
+    }
+
+    let src = unsafe { &*src };
+    let dst = result_buf as *mut RpcEnt;
+    let buf = buffer as *mut u8;
+    let mut off = 0usize;
+
+    let name = unsafe { CStr::from_ptr(src.r_name) }.to_bytes_with_nul();
+    let alias_count = if src.r_aliases.is_null() {
+        0
+    } else {
+        let mut count = 0usize;
+        loop {
+            let alias_ptr = unsafe { *src.r_aliases.add(count) };
+            if alias_ptr.is_null() {
+                break;
+            }
+            count += 1;
+        }
+        count
+    };
+    let alias_table_bytes = (alias_count + 1) * std::mem::size_of::<*mut c_char>();
+    let aliases_region = buf;
+    off += alias_table_bytes;
+    if off > buflen {
+        return libc::ERANGE;
+    }
+
+    let name_ptr = unsafe { buf.add(off) as *mut c_char };
+    if off + name.len() > buflen {
+        return libc::ERANGE;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(name.as_ptr(), buf.add(off), name.len());
+    }
+    off += name.len();
+
+    for i in 0..alias_count {
+        let alias = unsafe { CStr::from_ptr(*src.r_aliases.add(i)) }.to_bytes_with_nul();
+        if off + alias.len() > buflen {
+            return libc::ERANGE;
+        }
+        let alias_ptr = unsafe { buf.add(off) as *mut c_char };
+        unsafe {
+            std::ptr::copy_nonoverlapping(alias.as_ptr(), buf.add(off), alias.len());
+            *(aliases_region as *mut *mut c_char).add(i) = alias_ptr;
+        }
+        off += alias.len();
+    }
+    unsafe {
+        *(aliases_region as *mut *mut c_char).add(alias_count) = std::ptr::null_mut();
+        (*dst).r_name = name_ptr;
+        (*dst).r_aliases = aliases_region as *mut *mut c_char;
+        (*dst).r_number = src.r_number;
+    }
+
+    if !result.is_null() {
+        unsafe { *result = dst.cast() };
+    }
+    0
+}
+
 /// `endrpcent` — close RPC database.
 ///
 /// Native implementation: resets /etc/rpc iteration state.
@@ -13013,22 +13150,13 @@ pub unsafe extern "C" fn getrpcbyname(name: *const c_char) -> *mut c_void {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getrpcbyname_r(
     name: *const c_char,
-    _result_buf: *mut c_void,
-    _buffer: *mut c_char,
-    _buflen: usize,
+    result_buf: *mut c_void,
+    buffer: *mut c_char,
+    buflen: usize,
     result: *mut *mut c_void,
 ) -> c_int {
-    if !result.is_null() {
-        unsafe { *result = std::ptr::null_mut() };
-    }
     let ptr = unsafe { getrpcbyname(name) };
-    if ptr.is_null() {
-        return libc::ENOENT;
-    }
-    if !result.is_null() {
-        unsafe { *result = ptr };
-    }
-    0
+    unsafe { fill_rpcent_result(ptr.cast(), result_buf, buffer, buflen, result) }
 }
 
 /// `getrpcbynumber` — find RPC entry by number.
@@ -13068,22 +13196,13 @@ pub unsafe extern "C" fn getrpcbynumber(number: c_int) -> *mut c_void {
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getrpcbynumber_r(
     number: c_int,
-    _result_buf: *mut c_void,
-    _buffer: *mut c_char,
-    _buflen: usize,
+    result_buf: *mut c_void,
+    buffer: *mut c_char,
+    buflen: usize,
     result: *mut *mut c_void,
 ) -> c_int {
-    if !result.is_null() {
-        unsafe { *result = std::ptr::null_mut() };
-    }
     let ptr = unsafe { getrpcbynumber(number) };
-    if ptr.is_null() {
-        return libc::ENOENT;
-    }
-    if !result.is_null() {
-        unsafe { *result = ptr };
-    }
-    0
+    unsafe { fill_rpcent_result(ptr.cast(), result_buf, buffer, buflen, result) }
 }
 
 /// `getrpcent` — get next RPC entry.
@@ -13103,30 +13222,26 @@ pub unsafe extern "C" fn getrpcent() -> *mut c_void {
 /// Native implementation: iterates /etc/rpc, fills caller buffer.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getrpcent_r(
-    _result_buf: *mut c_void,
-    _buffer: *mut c_char,
-    _buflen: usize,
+    result_buf: *mut c_void,
+    buffer: *mut c_char,
+    buflen: usize,
     result: *mut *mut c_void,
 ) -> c_int {
-    if !result.is_null() {
-        unsafe { *result = std::ptr::null_mut() };
-    }
     let ptr = unsafe { getrpcent() };
-    if ptr.is_null() {
-        return libc::ENOENT;
-    }
-    if !result.is_null() {
-        unsafe { *result = ptr };
-    }
-    0
+    unsafe { fill_rpcent_result(ptr.cast(), result_buf, buffer, buflen, result) }
 }
 
 /// `endttyent` — close tty database iteration.
 ///
-/// Native implementation: no-op, returns 1 (success). TTY database is rarely used on modern Linux.
+/// Delegates to host libc `endttyent`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endttyent() -> c_int {
-    1 // Success (glibc returns 1 on success)
+    type EndttyentFn = unsafe extern "C" fn() -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("endttyent") {
+        let f: EndttyentFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { f() };
+    }
+    0
 }
 
 /// `fgetspent` — read shadow entry from stream.
@@ -14602,21 +14717,45 @@ pub unsafe extern "C" fn ntp_gettimex(ntv: *mut c_void) -> c_int {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn setfsent() -> c_int {
-    1 // success
+    type SetfsentFn = unsafe extern "C" fn() -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setfsent") {
+        let f: SetfsentFn = unsafe { core::mem::transmute(addr) };
+        let rc = unsafe { f() };
+        if rc == 0 {
+            unsafe { set_abi_errno(last_host_errno(libc::ENOENT)) };
+        }
+        return rc;
+    }
+    0
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getfsent() -> *mut c_void {
-    std::ptr::null_mut() // no more entries
-}
-
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getfsfile(_file: *const c_char) -> *mut c_void {
+    type GetfsentFn = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getfsent") {
+        let f: GetfsentFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { f() };
+    }
     std::ptr::null_mut()
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getfsspec(_spec: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn getfsfile(file: *const c_char) -> *mut c_void {
+    type GetfsfileFn = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getfsfile") {
+        let f: GetfsfileFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { f(file) };
+    }
+    std::ptr::null_mut()
+}
+
+#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+pub unsafe extern "C" fn getfsspec(spec: *const c_char) -> *mut c_void {
+    type GetfsspecFn = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getfsspec") {
+        let f: GetfsspecFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { f(spec) };
+    }
     std::ptr::null_mut()
 }
 
@@ -14626,16 +14765,35 @@ pub unsafe extern "C" fn getfsspec(_spec: *const c_char) -> *mut c_void {
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn setttyent() -> c_int {
-    1
+    type SetttyentFn = unsafe extern "C" fn() -> c_int;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setttyent") {
+        let f: SetttyentFn = unsafe { core::mem::transmute(addr) };
+        let rc = unsafe { f() };
+        if rc == 0 {
+            unsafe { set_abi_errno(last_host_errno(libc::ENOENT)) };
+        }
+        return rc;
+    }
+    0
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getttyent() -> *mut c_void {
+    type GetttyentFn = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getttyent") {
+        let f: GetttyentFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { f() };
+    }
     std::ptr::null_mut()
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getttynam(_name: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn getttynam(name: *const c_char) -> *mut c_void {
+    type GettynamFn = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+    if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getttynam") {
+        let f: GettynamFn = unsafe { core::mem::transmute(addr) };
+        return unsafe { f(name) };
+    }
     std::ptr::null_mut()
 }
 
