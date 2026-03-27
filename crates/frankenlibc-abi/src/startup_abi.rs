@@ -419,6 +419,7 @@ unsafe extern "C" fn host_delegate_main_wrapper(
     crate::host_resolve::bootstrap_host_symbols();
     unsafe { crate::io_internal_abi::bootstrap_host_libio_exports() };
     crate::stdio_abi::init_host_stdio_streams();
+    crate::unistd_abi::init_stack_canary();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
     crate::runtime_policy::signal_runtime_ready();
@@ -856,6 +857,7 @@ pub unsafe extern "C" fn __libc_start_main(
     crate::host_resolve::bootstrap_host_symbols();
     unsafe { crate::io_internal_abi::bootstrap_host_libio_exports() };
     crate::stdio_abi::init_host_stdio_streams();
+    crate::unistd_abi::init_stack_canary();
     crate::pthread_abi::prewarm_host_thread_symbols();
     crate::malloc_abi::prewarm_host_allocator_symbols();
     crate::runtime_policy::signal_runtime_ready();

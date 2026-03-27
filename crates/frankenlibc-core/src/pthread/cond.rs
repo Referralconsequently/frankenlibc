@@ -28,6 +28,7 @@ const FUTEX_PRIVATE_FLAG: i32 = 0x80;
 const FUTEX_WAIT_BITSET: i32 = 9;
 const FUTEX_CLOCK_REALTIME: i32 = 256;
 const FUTEX_BITSET_MATCH_ANY: u32 = 0xFFFF_FFFF;
+pub const MANAGED_CONDVAR_MAGIC: u32 = 0x4743_5658; // "GCVX"
 
 // ---------------------------------------------------------------------------
 // Condvar internal data structure (bd-gcy)
@@ -35,17 +36,19 @@ const FUTEX_BITSET_MATCH_ANY: u32 = 0xFFFF_FFFF;
 
 /// Internal condvar representation overlaid on `pthread_cond_t` memory.
 ///
-/// Layout (20 bytes, fits within 48-byte `pthread_cond_t` on Linux x86_64):
+/// Layout (24 bytes, fits within 48-byte `pthread_cond_t` on Linux x86_64):
 /// - `seq`: sequence counter, incremented on signal/broadcast
 /// - `nwaiters`: count of threads blocked in wait/timedwait
 /// - `assoc_mutex`: address of the associated mutex (0 if unset)
 /// - `clock_id`: clock for timedwait (0=REALTIME, 1=MONOTONIC)
+/// - `magic`: native-managed sentinel for ABI routing/validation
 #[repr(C)]
 pub struct CondvarData {
     pub seq: AtomicU32,
     pub nwaiters: AtomicU32,
     pub assoc_mutex: AtomicUsize,
     pub clock_id: AtomicU32,
+    pub magic: AtomicU32,
 }
 
 impl CondvarData {
@@ -56,11 +59,17 @@ impl CondvarData {
         self.assoc_mutex.store(0, Ordering::Relaxed);
         self.clock_id
             .store(sanitize_cond_clock(clock_id) as u32, Ordering::Relaxed);
+        self.magic.store(MANAGED_CONDVAR_MAGIC, Ordering::Release);
     }
 
     /// Check if any threads are currently waiting.
     pub fn has_waiters(&self) -> bool {
         self.nwaiters.load(Ordering::Acquire) > 0
+    }
+
+    /// Returns true when the condvar was initialized by the native core.
+    pub fn is_initialized(&self) -> bool {
+        self.magic.load(Ordering::Acquire) == MANAGED_CONDVAR_MAGIC
     }
 }
 
@@ -96,13 +105,18 @@ pub unsafe fn condvar_destroy(condvar_ptr: *mut CondvarData) -> i32 {
         return errno::EINVAL;
     }
     let cv = unsafe { &*condvar_ptr };
+    if !cv.is_initialized() {
+        return errno::EINVAL;
+    }
     if cv.has_waiters() {
         return errno::EBUSY;
     }
     // Reset to uninit state.
     cv.seq.store(0, Ordering::Relaxed);
+    cv.nwaiters.store(0, Ordering::Relaxed);
     cv.assoc_mutex.store(0, Ordering::Relaxed);
     cv.clock_id.store(0, Ordering::Relaxed);
+    cv.magic.store(0, Ordering::Release);
     0
 }
 
@@ -117,6 +131,9 @@ pub unsafe fn condvar_signal(condvar_ptr: *mut CondvarData) -> i32 {
         return errno::EINVAL;
     }
     let cv = unsafe { &*condvar_ptr };
+    if !cv.is_initialized() {
+        return errno::EINVAL;
+    }
     // Increment sequence counter to unblock a waiter.
     cv.seq.fetch_add(1, Ordering::Release);
     if cv.has_waiters() {
@@ -138,6 +155,9 @@ pub unsafe fn condvar_broadcast(condvar_ptr: *mut CondvarData) -> i32 {
         return errno::EINVAL;
     }
     let cv = unsafe { &*condvar_ptr };
+    if !cv.is_initialized() {
+        return errno::EINVAL;
+    }
     cv.seq.fetch_add(1, Ordering::Release);
     if cv.has_waiters() {
         let seq_ptr = &cv.seq as *const AtomicU32 as *const u32;
@@ -178,6 +198,9 @@ pub unsafe fn condvar_wait(condvar_ptr: *mut CondvarData, mutex_futex_word: *con
         return errno::EINVAL;
     }
     let cv = unsafe { &*condvar_ptr };
+    if !cv.is_initialized() {
+        return errno::EINVAL;
+    }
     let mutex_word = unsafe { &*(mutex_futex_word as *const AtomicU32) };
 
     // Validate mutex association invariant.
@@ -269,6 +292,9 @@ pub unsafe fn condvar_timedwait(
     }
 
     let cv = unsafe { &*condvar_ptr };
+    if !cv.is_initialized() {
+        return errno::EINVAL;
+    }
     let mutex_word = unsafe { &*(mutex_futex_word as *const AtomicU32) };
 
     // Validate mutex association invariant.
@@ -1102,12 +1128,14 @@ mod tests {
             nwaiters: AtomicU32::new(0xFF),
             assoc_mutex: AtomicUsize::new(0xDEAD),
             clock_id: AtomicU32::new(0xFF),
+            magic: AtomicU32::new(0),
         };
         cv.init(PTHREAD_COND_CLOCK_MONOTONIC);
         assert_eq!(cv.seq.load(Ordering::Relaxed), 0);
         assert_eq!(cv.nwaiters.load(Ordering::Relaxed), 0);
         assert_eq!(cv.assoc_mutex.load(Ordering::Relaxed), 0);
         assert_eq!(cv.clock_id.load(Ordering::Relaxed), 1);
+        assert_eq!(cv.magic.load(Ordering::Acquire), MANAGED_CONDVAR_MAGIC);
     }
 
     #[test]
@@ -1117,6 +1145,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0xFF),
+            magic: AtomicU32::new(0),
         };
         cv.init(PTHREAD_COND_CLOCK_REALTIME);
         assert_eq!(cv.clock_id.load(Ordering::Relaxed), 0);
@@ -1129,6 +1158,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0xFF),
+            magic: AtomicU32::new(0),
         };
         cv.init(99);
         assert_eq!(cv.clock_id.load(Ordering::Relaxed), 0);
@@ -1141,6 +1171,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(0),
         };
         assert!(!cv.has_waiters());
     }
@@ -1152,6 +1183,7 @@ mod tests {
             nwaiters: AtomicU32::new(3),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         };
         assert!(cv.has_waiters());
     }
@@ -1199,6 +1231,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(0),
         };
         let ret = unsafe {
             condvar_wait(
@@ -1222,6 +1255,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(0),
         };
         let mutex_word = AtomicU32::new(1);
         let ret = unsafe {
@@ -1242,6 +1276,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(0),
         };
         let mutex_word = AtomicU32::new(1);
         let ret = unsafe {
@@ -1262,6 +1297,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0xFF),
+            magic: AtomicU32::new(0),
         };
         let cv_ptr = &cv as *const CondvarData as *mut CondvarData;
         assert_eq!(unsafe { condvar_init(cv_ptr, 0) }, 0);
@@ -1276,6 +1312,7 @@ mod tests {
             nwaiters: AtomicU32::new(2),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         };
         let cv_ptr = &cv as *const CondvarData as *mut CondvarData;
         assert_eq!(unsafe { condvar_destroy(cv_ptr) }, errno::EBUSY);
@@ -1288,6 +1325,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         };
         let cv_ptr = &cv as *const CondvarData as *mut CondvarData;
         assert_eq!(unsafe { condvar_signal(cv_ptr) }, 0);
@@ -1302,6 +1340,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         };
         let cv_ptr = &cv as *const CondvarData as *mut CondvarData;
         assert_eq!(unsafe { condvar_broadcast(cv_ptr) }, 0);
@@ -1315,6 +1354,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         };
         let cv_ptr = &cv as *const CondvarData as *mut CondvarData;
         unsafe { condvar_signal(cv_ptr) };
@@ -1335,6 +1375,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         });
         // Mutex simulated as AtomicU32: 0=unlocked, 1=locked, 2=contended.
         let mutex = Arc::new(AtomicU32::new(0));
@@ -1395,6 +1436,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         });
         let mutex = Arc::new(AtomicU32::new(0));
         let woke_count = Arc::new(AtomicU32::new(0));
@@ -1461,6 +1503,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(PTHREAD_COND_CLOCK_MONOTONIC as u32),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         });
         let mutex = Arc::new(AtomicU32::new(0));
 
@@ -1508,6 +1551,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         };
         let mutex_a = AtomicU32::new(1);
         let mutex_b = AtomicU32::new(1);
@@ -1549,12 +1593,14 @@ mod tests {
                 nwaiters: AtomicU32::new(0),
                 assoc_mutex: AtomicUsize::new(0),
                 clock_id: AtomicU32::new(0),
+                magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
             },
             cv_not_full: CondvarData {
                 seq: AtomicU32::new(0),
                 nwaiters: AtomicU32::new(0),
                 assoc_mutex: AtomicUsize::new(0),
                 clock_id: AtomicU32::new(0),
+                magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
             },
             mutex: AtomicU32::new(0),
             items: std::cell::UnsafeCell::new(Vec::new()),
@@ -1647,6 +1693,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         });
         let mutex = Arc::new(AtomicU32::new(0));
         let counter = Arc::new(AtomicU32::new(0));
@@ -1719,6 +1766,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(PTHREAD_COND_CLOCK_MONOTONIC as u32),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         });
         let mutex = Arc::new(AtomicU32::new(0));
 
@@ -1760,6 +1808,7 @@ mod tests {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: AtomicUsize::new(0),
             clock_id: AtomicU32::new(PTHREAD_COND_CLOCK_MONOTONIC as u32),
+            magic: AtomicU32::new(MANAGED_CONDVAR_MAGIC),
         });
         let mutex = Arc::new(AtomicU32::new(0));
 

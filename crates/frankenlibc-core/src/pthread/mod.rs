@@ -12,8 +12,9 @@ pub mod thread;
 pub mod tls;
 
 pub use cond::{
-    CondvarData, PTHREAD_COND_CLOCK_MONOTONIC, PTHREAD_COND_CLOCK_REALTIME, condvar_broadcast,
-    condvar_destroy, condvar_init, condvar_signal, condvar_timedwait, condvar_wait,
+    CondvarData, MANAGED_CONDVAR_MAGIC, PTHREAD_COND_CLOCK_MONOTONIC, PTHREAD_COND_CLOCK_REALTIME,
+    condvar_broadcast, condvar_destroy, condvar_init, condvar_signal, condvar_timedwait,
+    condvar_wait,
 };
 pub use mutex::{
     PTHREAD_MUTEX_DEFAULT, PTHREAD_MUTEX_ERRORCHECK, PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE,

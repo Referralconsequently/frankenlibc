@@ -1291,10 +1291,10 @@ GLIBC_2.2.5 {
         sigwait;
         sigpending;
 
-        /* setjmp / longjmp */
-        setjmp;
-        _setjmp;
-        sigsetjmp;
+        /* setjmp/_setjmp/sigsetjmp NOT exported — they save the caller's
+           CPU context and cannot work through a function-pointer trampoline.
+           Programs call the host's setjmp directly.
+           longjmp/siglongjmp CAN be delegated (they don't return). */
         longjmp;
         _longjmp;
         siglongjmp;
@@ -2954,7 +2954,7 @@ GLIBC_2.2.5 {
         __sigismember;
         __signbitl;
         __sigpause;
-        __sigsetjmp;
+        /* __sigsetjmp NOT exported — see setjmp comment above */
         __sigsuspend;
         __statfs;
         __stpcpy;

@@ -26,8 +26,8 @@ use frankenlibc_core::pthread::tls::{
     pthread_setspecific as core_pthread_setspecific,
 };
 use frankenlibc_core::pthread::{
-    CondvarData, PTHREAD_COND_CLOCK_REALTIME, THREAD_DETACHED, THREAD_FINISHED, THREAD_JOINED,
-    ThreadHandle, condvar_broadcast as core_condvar_broadcast,
+    CondvarData, MANAGED_CONDVAR_MAGIC, PTHREAD_COND_CLOCK_REALTIME, THREAD_DETACHED,
+    THREAD_FINISHED, THREAD_JOINED, ThreadHandle, condvar_broadcast as core_condvar_broadcast,
     condvar_destroy as core_condvar_destroy, condvar_init as core_condvar_init,
     condvar_signal as core_condvar_signal, condvar_timedwait as core_condvar_timedwait,
     condvar_wait as core_condvar_wait, create_thread as core_create_thread,
@@ -91,6 +91,9 @@ static MUTEX_WAKE_BRANCHES: AtomicU64 = AtomicU64::new(0);
 /// When true, mutex operations skip host delegation and use the native futex
 /// implementation directly. Set by [`pthread_mutex_reset_state_for_tests`] so
 /// that tests can exercise the futex state machine without glibc intercepting.
+// NOTE: Kept false to prefer host delegation for mutex/condvar operations.
+// Host delegation is essential for compatibility with programs that depend
+// on glibc's pthread internals (Python GIL, Node.js libuv, etc.).
 static FORCE_NATIVE_MUTEX: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -816,6 +819,15 @@ fn condvar_data_ptr(cond: *mut libc::pthread_cond_t) -> Option<*mut CondvarData>
     Some(ptr)
 }
 
+fn is_managed_condvar(cond: *mut libc::pthread_cond_t) -> bool {
+    let Some(cond_ptr) = condvar_data_ptr(cond) else {
+        return false;
+    };
+    // SAFETY: alignment and non-null checked in `condvar_data_ptr`.
+    let condvar = unsafe { &*cond_ptr };
+    condvar.magic.load(Ordering::Acquire) == MANAGED_CONDVAR_MAGIC
+}
+
 #[inline]
 fn native_pthread_self() -> libc::pthread_t {
     let tid = core_self_tid();
@@ -1443,29 +1455,42 @@ pub unsafe extern "C" fn pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_create(
     thread_out: *mut libc::pthread_t,
-    _attr: *const libc::pthread_attr_t,
+    attr: *const libc::pthread_attr_t,
     start_routine: Option<StartRoutine>,
     arg: *mut c_void,
 ) -> c_int {
     if thread_out.is_null() || start_routine.is_none() {
         return libc::EINVAL;
     }
+    // Clear __libc_single_threaded on first thread creation.
+    crate::glibc_internal_abi::__libc_single_threaded
+        .store(0, std::sync::atomic::Ordering::Release);
+    // Prefer host pthread_create for correct TLS setup, stack guard pages,
+    // and compatibility with programs that depend on glibc thread internals
+    // (Python, Node.js, etc.).
+    if let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
+        return unsafe { host_create(thread_out, attr, start_routine, arg) };
+    }
     let start = start_routine.unwrap_or_else(|| unreachable!("start routine checked above"));
     // SAFETY: pointers and start routine are validated by this wrapper.
-    unsafe { native_pthread_create(thread_out, _attr, start, arg) }
+    unsafe { native_pthread_create(thread_out, attr, start, arg) }
 }
 
 /// POSIX `pthread_join`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void) -> c_int {
-    // SAFETY: native helper enforces thread-handle validity and pointer checks.
+    if let Some(host_join) = crate::host_resolve::host_pthread_join_raw() {
+        return unsafe { host_join(thread, retval) };
+    }
     unsafe { native_pthread_join(thread, retval) }
 }
 
 /// POSIX `pthread_detach`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_detach(thread: libc::pthread_t) -> c_int {
-    // SAFETY: native helper enforces thread-handle validity.
+    if let Some(host_detach) = crate::host_resolve::host_pthread_detach_raw() {
+        return unsafe { host_detach(thread) };
+    }
     unsafe { native_pthread_detach(thread) }
 }
 
@@ -1479,10 +1504,10 @@ pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut libc::pthread_mutex_t,
     attr: *const libc::pthread_mutexattr_t,
 ) -> c_int {
-    if attr.is_null() && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
+    // Always prefer host for mutex init — programs may pass non-null attrs
+    // with specific type/protocol settings.
+    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         if let Some(host_init) = unsafe { host_pthread_mutex_init_fn() } {
-            // SAFETY: direct call through resolved host symbol.
             return unsafe { host_init(mutex, attr) };
         }
     }
@@ -1850,10 +1875,10 @@ pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut libc::pthread_cond_t,
     attr: *const libc::pthread_condattr_t,
 ) -> c_int {
-    if attr.is_null() && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
-        // SAFETY: host symbol lookup/transmute guarantees ABI if present.
+    // Always prefer host for condvar init — programs like Python 3.13 pass
+    // non-null attrs with CLOCK_MONOTONIC that our native impl may not support.
+    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         if let Some(host_init) = unsafe { host_pthread_cond_init_fn() } {
-            // SAFETY: direct call through resolved host symbol.
             return unsafe { host_init(cond, attr) };
         }
     }
@@ -1879,7 +1904,7 @@ pub unsafe extern "C" fn pthread_cond_init(
 /// POSIX `pthread_cond_destroy`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut libc::pthread_cond_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_condvar(cond) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_destroy) = unsafe { host_pthread_cond_destroy_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1900,7 +1925,8 @@ pub unsafe extern "C" fn pthread_cond_wait(
     cond: *mut libc::pthread_cond_t,
     mutex: *mut libc::pthread_mutex_t,
 ) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    let managed_condvar = is_managed_condvar(cond);
+    if !managed_condvar && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_wait) = unsafe { host_pthread_cond_wait_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1917,6 +1943,9 @@ pub unsafe extern "C" fn pthread_cond_wait(
     let Some(word_ptr) = mutex_word_ptr(mutex) else {
         return libc::EINVAL;
     };
+    if managed_condvar && !is_managed_mutex(mutex) {
+        return libc::EINVAL;
+    }
     // Require caller-held mutex semantics while allowing foreign/default mutex layouts.
     // For both managed and host-default mutexes on Linux, a held lock is non-zero.
     // SAFETY: `word_ptr` is alignment-checked by `mutex_word_ptr`.
@@ -1964,7 +1993,7 @@ pub unsafe extern "C" fn pthread_cond_wait(
 /// POSIX `pthread_cond_signal`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_cond_signal(cond: *mut libc::pthread_cond_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_condvar(cond) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_signal) = unsafe { host_pthread_cond_signal_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -1982,7 +2011,7 @@ pub unsafe extern "C" fn pthread_cond_signal(cond: *mut libc::pthread_cond_t) ->
 /// POSIX `pthread_cond_broadcast`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_cond_broadcast(cond: *mut libc::pthread_cond_t) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    if !is_managed_condvar(cond) && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_broadcast) = unsafe { host_pthread_cond_broadcast_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -2146,7 +2175,8 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
     mutex: *mut libc::pthread_mutex_t,
     abstime: *const libc::timespec,
 ) -> c_int {
-    if !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+    let managed_condvar = is_managed_condvar(cond);
+    if !managed_condvar && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
         if let Some(host_timedwait) = unsafe { host_pthread_cond_timedwait_fn() } {
             // SAFETY: direct call through resolved host symbol.
@@ -2163,6 +2193,9 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
     let Some(word_ptr) = mutex_word_ptr(mutex) else {
         return libc::EINVAL;
     };
+    if managed_condvar && !is_managed_mutex(mutex) {
+        return libc::EINVAL;
+    }
     // Require caller-held mutex semantics while allowing foreign/default mutex layouts.
     // SAFETY: `word_ptr` is alignment-checked by `mutex_word_ptr`.
     let word = unsafe { &*word_ptr };

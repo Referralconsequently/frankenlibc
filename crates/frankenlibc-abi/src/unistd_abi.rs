@@ -10835,12 +10835,48 @@ pub unsafe extern "C" fn __cxa_finalize(dso_handle: *mut c_void) {
     }
 }
 
-/// Stack canary value.
-/// NOTE: Static canary — should be initialized from AT_RANDOM or getrandom()
-/// at startup for production security. Embeds \n, \r, \0 to terminate strings.
+/// Stack canary value, initialized from AT_RANDOM for proper randomization.
+///
+/// The low byte is forced to 0x00 (NUL terminator) to prevent string-based
+/// buffer overflow attacks from leaking or overwriting the canary.
 #[allow(non_upper_case_globals)]
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub static __stack_chk_guard: c_ulong = 0x00000aff0a0d0000;
+pub static __stack_chk_guard: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Initialize __stack_chk_guard from AT_RANDOM in /proc/self/auxv.
+/// Called during startup before main().
+pub(crate) fn init_stack_canary() {
+    use std::sync::atomic::Ordering;
+    // Read AT_RANDOM (type 25) from auxv — it points to 16 random bytes
+    // provided by the kernel.
+    let canary = (|| -> Option<usize> {
+        let data = std::fs::read("/proc/self/auxv").ok()?;
+        let word = std::mem::size_of::<usize>();
+        let entry_size = word * 2;
+        for chunk in data.chunks_exact(entry_size) {
+            let a_type = usize::from_ne_bytes(chunk[..word].try_into().ok()?);
+            let a_val = usize::from_ne_bytes(chunk[word..word * 2].try_into().ok()?);
+            if a_type == 25 {
+                // AT_RANDOM: a_val is a pointer to 16 random bytes in memory.
+                // Read 8 bytes from that address as our canary.
+                let ptr = a_val as *const u8;
+                let mut bytes = [0u8; 8];
+                unsafe { std::ptr::copy_nonoverlapping(ptr, bytes.as_mut_ptr(), 8) };
+                let mut val = usize::from_ne_bytes(bytes);
+                // Force low byte to 0x00 (NUL) per glibc convention.
+                val &= !0xFF;
+                return Some(val);
+            }
+            if a_type == 0 {
+                break;
+            }
+        }
+        None
+    })()
+    .unwrap_or(0x00000aff0a0d0000); // Fallback: static canary with sentinel bytes
+    __stack_chk_guard.store(canary, Ordering::Release);
+}
 // ===========================================================================
 // Batch: Network database iterators — Implemented (parse /etc/ files)
 // ===========================================================================

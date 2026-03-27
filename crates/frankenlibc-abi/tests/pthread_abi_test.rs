@@ -415,6 +415,80 @@ fn condvar_wait_signal_wakeup() {
     }
 }
 
+#[test]
+fn condvar_native_attr_stays_on_native_path_for_lifecycle_and_waits() {
+    unsafe {
+        let mut mutex_attr: libc::pthread_mutexattr_t = std::mem::zeroed();
+        assert_eq!(pthread_mutexattr_init(&mut mutex_attr), 0);
+        let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
+        assert_eq!(pthread_condattr_init(&mut attr), 0);
+        assert_eq!(
+            pthread_condattr_setclock(&mut attr, libc::CLOCK_MONOTONIC),
+            0
+        );
+
+        let state = Box::new(SharedCondState {
+            mutex: std::mem::zeroed(),
+            cond: std::mem::zeroed(),
+            ready: AtomicI32::new(0),
+        });
+        assert_eq!(
+            pthread_mutex_init(&state.mutex as *const _ as *mut _, &mutex_attr),
+            0
+        );
+        assert_eq!(
+            pthread_cond_init(&state.cond as *const _ as *mut _, &attr),
+            0
+        );
+        assert_eq!(pthread_mutexattr_destroy(&mut mutex_attr), 0);
+        assert_eq!(pthread_condattr_destroy(&mut attr), 0);
+
+        let state_ptr = &*state as *const SharedCondState as *mut c_void;
+        let mut thr: libc::pthread_t = 0;
+        assert_eq!(
+            pthread_create(&mut thr, ptr::null(), Some(condvar_waiter), state_ptr),
+            0
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        assert_eq!(pthread_mutex_lock(&state.mutex as *const _ as *mut _), 0);
+        state.ready.store(1, Ordering::Release);
+        assert_eq!(pthread_cond_signal(&state.cond as *const _ as *mut _), 0);
+        assert_eq!(pthread_mutex_unlock(&state.mutex as *const _ as *mut _), 0);
+
+        assert_eq!(pthread_join(thr, ptr::null_mut()), 0);
+        assert_eq!(pthread_cond_broadcast(&state.cond as *const _ as *mut _), 0);
+        assert_eq!(pthread_cond_destroy(&state.cond as *const _ as *mut _), 0);
+        assert_eq!(pthread_mutex_destroy(&state.mutex as *const _ as *mut _), 0);
+    }
+}
+
+#[test]
+fn native_condvar_wait_rejects_host_mutex_mismatch() {
+    unsafe {
+        let mut attr: libc::pthread_condattr_t = std::mem::zeroed();
+        assert_eq!(pthread_condattr_init(&mut attr), 0);
+        assert_eq!(
+            pthread_condattr_setclock(&mut attr, libc::CLOCK_MONOTONIC),
+            0
+        );
+
+        let mut cond: libc::pthread_cond_t = std::mem::zeroed();
+        let mut mutex: libc::pthread_mutex_t = std::mem::zeroed();
+        assert_eq!(pthread_cond_init(&mut cond, &attr), 0);
+        assert_eq!(pthread_condattr_destroy(&mut attr), 0);
+        assert_eq!(pthread_mutex_init(&mut mutex, ptr::null()), 0);
+        assert_eq!(pthread_mutex_lock(&mut mutex), 0);
+
+        assert_eq!(pthread_cond_wait(&mut cond, &mut mutex), libc::EINVAL);
+
+        assert_eq!(pthread_mutex_unlock(&mut mutex), 0);
+        assert_eq!(pthread_mutex_destroy(&mut mutex), 0);
+        assert_eq!(pthread_cond_destroy(&mut cond), 0);
+    }
+}
+
 // ===========================================================================
 // RWLock: init, rdlock, wrlock, unlock, tryrdlock, trywrlock, destroy
 // ===========================================================================

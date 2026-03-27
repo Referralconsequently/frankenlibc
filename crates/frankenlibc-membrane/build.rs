@@ -747,7 +747,7 @@ const MEMORY_MODEL_SOURCES: &[MemoryModelSource] = &[
     MemoryModelSource {
         relative_path: "../frankenlibc-core/src/pthread/cond.rs",
         domain: "futex",
-        expected_sites: 29,
+        expected_sites: 33,
         stop_at_cfg_test: true,
         optional: true, // Cross-crate: skip gracefully for standalone builds
     },

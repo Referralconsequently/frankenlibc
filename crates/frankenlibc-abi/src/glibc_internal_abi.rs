@@ -326,10 +326,11 @@ pub unsafe extern "C" fn __libc_sa_len(af: u16) -> c_int {
     }
 }
 
-// __libc_single_threaded is a global variable — export as a static
+// __libc_single_threaded: 1 at startup (single-threaded), cleared to 0
+// when the first thread is created via pthread_create.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub static __libc_single_threaded: std::sync::atomic::AtomicU8 =
-    std::sync::atomic::AtomicU8::new(0);
+    std::sync::atomic::AtomicU8::new(1);
 
 // ==========================================================================
 // __ctype_* internal table accessors (4 symbols)
@@ -3467,8 +3468,8 @@ pub unsafe extern "C" fn __sigismember(set: *const c_void, signum: c_int) -> c_i
 pub unsafe extern "C" fn __sigpause(sig_or_mask: c_int) -> c_int {
     unsafe { super::unistd_abi::sigpause(sig_or_mask) }
 }
-// __sigsetjmp: native — forward to our sigsetjmp
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+// __sigsetjmp: NOT exported — setjmp-family functions must save the
+// caller's CPU context and cannot work through a trampoline.
 pub unsafe extern "C" fn __sigsetjmp(env: *mut c_void, savesigs: c_int) -> c_int {
     unsafe { super::setjmp_abi::sigsetjmp(env, savesigs) }
 }

@@ -99,6 +99,7 @@ fn bench_condvar_init_destroy(c: &mut Criterion) {
         nwaiters: AtomicU32::new(0),
         assoc_mutex: std::sync::atomic::AtomicUsize::new(0),
         clock_id: AtomicU32::new(0),
+        magic: AtomicU32::new(0),
     };
     for _ in 0..1_000 {
         unsafe {
@@ -139,6 +140,7 @@ fn bench_condvar_signal_no_waiters(c: &mut Criterion) {
         nwaiters: AtomicU32::new(0),
         assoc_mutex: std::sync::atomic::AtomicUsize::new(0),
         clock_id: AtomicU32::new(0),
+        magic: AtomicU32::new(0),
     };
     unsafe {
         frankenlibc_core::pthread::condvar_init(&mut cv as *mut CondvarData, 0);
@@ -176,6 +178,7 @@ fn bench_condvar_broadcast_no_waiters(c: &mut Criterion) {
         nwaiters: AtomicU32::new(0),
         assoc_mutex: std::sync::atomic::AtomicUsize::new(0),
         clock_id: AtomicU32::new(0),
+        magic: AtomicU32::new(0),
     };
     unsafe {
         frankenlibc_core::pthread::condvar_init(&mut cv as *mut CondvarData, 0);
@@ -214,6 +217,7 @@ fn bench_condvar_timedwait_past_deadline(c: &mut Criterion) {
         nwaiters: AtomicU32::new(0),
         assoc_mutex: std::sync::atomic::AtomicUsize::new(0),
         clock_id: AtomicU32::new(0),
+        magic: AtomicU32::new(0),
     };
     unsafe {
         frankenlibc_core::pthread::condvar_init(&mut cv as *mut CondvarData, 0);
@@ -267,6 +271,7 @@ fn bench_condvar_wait_signal_roundtrip(_c: &mut Criterion) {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: std::sync::atomic::AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(0),
         });
         unsafe {
             frankenlibc_core::pthread::condvar_init(Arc::as_ptr(&cv) as *mut CondvarData, 0);
@@ -326,6 +331,7 @@ fn bench_condvar_broadcast_4_waiters(_c: &mut Criterion) {
             nwaiters: AtomicU32::new(0),
             assoc_mutex: std::sync::atomic::AtomicUsize::new(0),
             clock_id: AtomicU32::new(0),
+            magic: AtomicU32::new(0),
         });
         unsafe {
             frankenlibc_core::pthread::condvar_init(Arc::as_ptr(&cv) as *mut CondvarData, 0);

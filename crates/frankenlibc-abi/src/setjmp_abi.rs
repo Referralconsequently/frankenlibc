@@ -200,8 +200,9 @@ fn restore_entrypoint(env: *mut c_void, val: c_int, is_signal_variant: bool) -> 
 
 /// C ABI `setjmp` entrypoint.
 ///
-/// Delegates to host libc's setjmp for correct CPU context capture.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+/// NOT exported via `no_mangle` — setjmp must save the CALLER's CPU context,
+/// which cannot work through a function-pointer trampoline. Programs call
+/// the host libc's setjmp directly.
 pub unsafe extern "C" fn setjmp(env: *mut c_void) -> c_int {
     type SetjmpFn = unsafe extern "C" fn(*mut c_void) -> c_int;
     if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("setjmp") {
@@ -211,8 +212,7 @@ pub unsafe extern "C" fn setjmp(env: *mut c_void) -> c_int {
     capture_entrypoint(env, false)
 }
 
-/// C ABI `_setjmp` entrypoint.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+/// C ABI `_setjmp` entrypoint — not exported (see setjmp comment).
 pub unsafe extern "C" fn _setjmp(env: *mut c_void) -> c_int {
     type SetjmpFn = unsafe extern "C" fn(*mut c_void) -> c_int;
     if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("_setjmp") {
@@ -222,8 +222,7 @@ pub unsafe extern "C" fn _setjmp(env: *mut c_void) -> c_int {
     capture_entrypoint(env, false)
 }
 
-/// C ABI `sigsetjmp` entrypoint.
-#[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
+/// C ABI `sigsetjmp` entrypoint — not exported (see setjmp comment).
 pub unsafe extern "C" fn sigsetjmp(env: *mut c_void, savemask: c_int) -> c_int {
     type SigsetjmpFn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
     if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("__sigsetjmp") {
