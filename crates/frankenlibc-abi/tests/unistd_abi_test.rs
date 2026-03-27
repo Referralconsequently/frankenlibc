@@ -11,17 +11,36 @@ use std::ffi::{CString, c_char, c_int, c_void};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::AsRawFd;
+use std::sync::atomic::AtomicI32;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::unistd_abi::{
     access, alarm, chdir, chmod, chown, close, creat, eaccess, euidaccess, faccessat, fchmod,
-    fchown, fdatasync, flock, fstat, fsync, ftruncate, getcwd, getegid, geteuid, getgid,
-    gethostname, getpid, getppid, getuid, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv,
-    msgsnd, open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev,
-    read, readlink, rename, rmdir, semctl, semop, shmdt, stat, symlink, sysconf, truncate, umask,
-    uname, unlink, usleep, write,
+    fchown, fdatasync, flock, fstat, fsync, ftruncate, gai_cancel, gai_error, gai_suspend,
+    getaddrinfo_a, getcwd, getegid, geteuid, getgid, gethostent_r, gethostname, getnetbyaddr_r,
+    getnetbyname_r, getnetent_r, getpid, getppid, getprotobyname_r, getprotobynumber_r,
+    getprotoent, getprotoent_r, getservent, getuid, getutent_r, getutid, getutid_r, getutline,
+    getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd, open,
+    pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
+    readlink, rename, rmdir, semctl, semop, sethostent, setnetent, setprotoent, setservent,
+    setutent, shmdt, ssignal, stat, strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname,
+    unlink, usleep, utmpname, write,
 };
+
+static SIGNAL_HIT: AtomicI32 = AtomicI32::new(0);
+
+#[repr(C)]
+struct NetEnt {
+    n_name: *mut c_char,
+    n_aliases: *mut *mut c_char,
+    n_addrtype: c_int,
+    n_net: u32,
+}
+
+unsafe extern "C" fn record_sigusr1(sig: c_int) {
+    SIGNAL_HIT.store(sig, Ordering::SeqCst);
+}
 
 #[test]
 fn isatty_invalid_fd_sets_ebadf() {
@@ -824,6 +843,99 @@ fn process_mrelease_invalid_pidfd_fails_cleanly() {
     );
 }
 
+#[test]
+fn getaddrinfo_a_stub_sets_errno_for_eai_system() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { getaddrinfo_a(0, std::ptr::null_mut(), 0, std::ptr::null_mut()) };
+    assert_eq!(rc, libc::EAI_SYSTEM);
+    assert_eq!(errno_value(), libc::ENOSYS);
+}
+
+#[test]
+fn gai_stub_family_sets_errno_for_eai_system() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    assert_eq!(
+        unsafe { gai_cancel(std::ptr::null_mut()) },
+        libc::EAI_SYSTEM
+    );
+    assert_eq!(errno_value(), libc::ENOSYS);
+
+    unsafe {
+        *__errno_location() = 0;
+    }
+    assert_eq!(unsafe { gai_error(std::ptr::null_mut()) }, libc::EAI_SYSTEM);
+    assert_eq!(errno_value(), libc::ENOSYS);
+
+    unsafe {
+        *__errno_location() = 0;
+    }
+    assert_eq!(
+        unsafe { gai_suspend(std::ptr::null(), 0, std::ptr::null()) },
+        libc::EAI_SYSTEM
+    );
+    assert_eq!(errno_value(), libc::ENOSYS);
+}
+
+#[test]
+fn strfmon_small_buffer_sets_e2big() {
+    let mut buf = [0_i8; 4];
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { strfmon(buf.as_mut_ptr(), buf.len(), c"%n".as_ptr(), 1234.56_f64) };
+    assert_eq!(rc, -1);
+    assert_eq!(errno_value(), libc::E2BIG);
+}
+
+#[test]
+fn strfmon_invalid_inputs_set_einval() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    assert_eq!(
+        unsafe { strfmon(std::ptr::null_mut(), 8, c"%n".as_ptr(), 1.0_f64) },
+        -1
+    );
+    assert_eq!(errno_value(), libc::EINVAL);
+
+    let mut buf = [0_i8; 8];
+    unsafe {
+        *__errno_location() = 0;
+    }
+    assert_eq!(
+        unsafe {
+            strfmon_l(
+                buf.as_mut_ptr(),
+                0,
+                std::ptr::null_mut(),
+                c"%n".as_ptr(),
+                1.0_f64,
+            )
+        },
+        -1
+    );
+    assert_eq!(errno_value(), libc::EINVAL);
+}
+
+#[test]
+fn ssignal_and_gsignal_deliver_signal() {
+    SIGNAL_HIT.store(0, Ordering::SeqCst);
+    let _previous = unsafe { ssignal(libc::SIGUSR1, Some(record_sigusr1)) };
+    let rc = unsafe { gsignal(libc::SIGUSR1) };
+    assert_eq!(rc, 0, "gsignal should report successful signal delivery");
+    assert_eq!(
+        SIGNAL_HIT.load(Ordering::SeqCst),
+        libc::SIGUSR1,
+        "handler installed by ssignal should observe SIGUSR1"
+    );
+
+    let _ = unsafe { libc::signal(libc::SIGUSR1, libc::SIG_DFL) };
+}
+
 // ---------------------------------------------------------------------------
 // Core POSIX: process identity
 // ---------------------------------------------------------------------------
@@ -926,6 +1038,55 @@ fn temp_path(tag: &str) -> CString {
     .unwrap()
 }
 
+fn copy_c_char_bytes(dst: &mut [c_char], src: &[u8]) {
+    let copy_len = src.len().min(dst.len().saturating_sub(1));
+    for (slot, byte) in dst.iter_mut().zip(src.iter()).take(copy_len) {
+        *slot = *byte as c_char;
+    }
+}
+
+fn utmp_entry(ut_type: i16, ut_id: &[u8], ut_line: &[u8], ut_user: &[u8]) -> libc::utmpx {
+    let mut entry: libc::utmpx = unsafe { std::mem::zeroed() };
+    entry.ut_type = ut_type;
+    entry.ut_pid = 4242;
+    copy_c_char_bytes(&mut entry.ut_id, ut_id);
+    copy_c_char_bytes(&mut entry.ut_line, ut_line);
+    copy_c_char_bytes(&mut entry.ut_user, ut_user);
+    entry
+}
+
+fn write_utmp_fixture(path: &CString, entries: &[libc::utmpx]) {
+    assert_eq!(std::mem::size_of::<libc::utmpx>(), 384);
+    let mut bytes = Vec::with_capacity(std::mem::size_of_val(entries));
+    for entry in entries {
+        let entry_bytes = unsafe {
+            std::slice::from_raw_parts(
+                (entry as *const libc::utmpx).cast::<u8>(),
+                std::mem::size_of::<libc::utmpx>(),
+            )
+        };
+        bytes.extend_from_slice(entry_bytes);
+    }
+    std::fs::write(path.to_str().unwrap(), bytes).unwrap();
+}
+
+fn with_temp_utmp_fixture<F>(tag: &str, entries: &[libc::utmpx], f: F)
+where
+    F: FnOnce(),
+{
+    let path = temp_path(tag);
+    let default_utmp = CString::new("/var/run/utmp").unwrap();
+    write_utmp_fixture(&path, entries);
+    let rc = unsafe { utmpname(path.as_ptr()) };
+    assert_eq!(rc, 0, "utmpname failed: errno={}", errno_value());
+    unsafe { setutent() };
+    f();
+    let rc = unsafe { utmpname(default_utmp.as_ptr()) };
+    assert_eq!(rc, 0, "failed to restore default utmp path");
+    unsafe { setutent() };
+    let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
 #[test]
 fn open_write_read_close_round_trip() {
     let path = temp_path("owrc");
@@ -947,6 +1108,312 @@ fn open_write_read_close_round_trip() {
 
     assert_eq!(unsafe { close(fd) }, 0);
     let _ = std::fs::remove_file(path.to_str().unwrap());
+}
+
+#[test]
+fn getutid_and_getutline_follow_native_utmp_fixture() {
+    let entries = [
+        utmp_entry(libc::BOOT_TIME, b"bt0", b"system boot", b""),
+        utmp_entry(libc::USER_PROCESS, b"p42", b"tty-franken", b"alice"),
+    ];
+    with_temp_utmp_fixture("utmp_search", &entries, || {
+        let mut id_query = utmp_entry(libc::USER_PROCESS, b"p42", b"", b"");
+        unsafe { setutent() };
+        let by_id =
+            unsafe { getutid((&mut id_query as *mut libc::utmpx).cast()) as *mut libc::utmpx };
+        assert!(
+            !by_id.is_null(),
+            "getutid should find matching USER_PROCESS"
+        );
+        let line = unsafe { std::ffi::CStr::from_ptr((*by_id).ut_line.as_ptr()) };
+        assert_eq!(line.to_bytes(), b"tty-franken");
+
+        let mut line_query = utmp_entry(0, b"", b"tty-franken", b"");
+        unsafe { setutent() };
+        let by_line =
+            unsafe { getutline((&mut line_query as *mut libc::utmpx).cast()) as *mut libc::utmpx };
+        assert!(
+            !by_line.is_null(),
+            "getutline should find matching LOGIN/USER_PROCESS line"
+        );
+        let user = unsafe { std::ffi::CStr::from_ptr((*by_line).ut_user.as_ptr()) };
+        assert_eq!(user.to_bytes(), b"alice");
+    });
+}
+
+#[test]
+fn getutent_r_and_getutid_r_surface_native_results() {
+    let entries = [utmp_entry(libc::USER_PROCESS, b"p77", b"tty-r", b"bob")];
+    with_temp_utmp_fixture("utmp_reentrant", &entries, || {
+        let mut out: libc::utmpx = unsafe { std::mem::zeroed() };
+        let mut outp = std::ptr::dangling_mut::<c_void>();
+
+        unsafe { setutent() };
+        let rc = unsafe { getutent_r((&mut out as *mut libc::utmpx).cast(), &mut outp) };
+        assert_eq!(rc, 0, "getutent_r should read the first fixture entry");
+        assert_eq!(outp, (&mut out as *mut libc::utmpx).cast());
+        let user = unsafe { std::ffi::CStr::from_ptr(out.ut_user.as_ptr()) };
+        assert_eq!(user.to_bytes(), b"bob");
+
+        let mut query = utmp_entry(libc::USER_PROCESS, b"p77", b"", b"");
+        outp = std::ptr::dangling_mut::<c_void>();
+        unsafe { setutent() };
+        let rc = unsafe {
+            getutid_r(
+                (&mut query as *mut libc::utmpx).cast(),
+                (&mut out as *mut libc::utmpx).cast(),
+                &mut outp,
+            )
+        };
+        assert_eq!(
+            rc, 0,
+            "getutid_r should copy the matched entry into caller storage"
+        );
+        assert_eq!(outp, (&mut out as *mut libc::utmpx).cast());
+        let line = unsafe { std::ffi::CStr::from_ptr(out.ut_line.as_ptr()) };
+        assert_eq!(line.to_bytes(), b"tty-r");
+
+        let mut line_query = utmp_entry(0, b"", b"tty-r", b"");
+        outp = std::ptr::dangling_mut::<c_void>();
+        unsafe { setutent() };
+        let rc = unsafe {
+            getutline_r(
+                (&mut line_query as *mut libc::utmpx).cast(),
+                (&mut out as *mut libc::utmpx).cast(),
+                &mut outp,
+            )
+        };
+        assert_eq!(rc, 0, "getutline_r should copy the matched entry");
+        assert_eq!(outp, (&mut out as *mut libc::utmpx).cast());
+        let user = unsafe { std::ffi::CStr::from_ptr(out.ut_user.as_ptr()) };
+        assert_eq!(user.to_bytes(), b"bob");
+    });
+}
+
+#[test]
+fn getutid_r_invalid_type_sets_einval_and_nulls_result() {
+    let entries = [utmp_entry(
+        libc::USER_PROCESS,
+        b"p88",
+        b"tty-invalid",
+        b"carol",
+    )];
+    with_temp_utmp_fixture("utmp_invalid", &entries, || {
+        let mut query = utmp_entry(0, b"", b"", b"");
+        let mut out: libc::utmpx = unsafe { std::mem::zeroed() };
+        let mut outp = std::ptr::dangling_mut::<c_void>();
+
+        unsafe { setutent() };
+        let rc = unsafe {
+            getutid_r(
+                (&mut query as *mut libc::utmpx).cast(),
+                (&mut out as *mut libc::utmpx).cast(),
+                &mut outp,
+            )
+        };
+        assert_eq!(rc, -1);
+        assert_eq!(errno_value(), libc::EINVAL);
+        assert!(
+            outp.is_null(),
+            "failed getutid_r should null the result pointer"
+        );
+    });
+}
+
+#[test]
+fn getprotobyname_r_resolves_tcp_and_nulls_missing() {
+    let mut proto: libc::protoent = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 512];
+    let mut result = std::ptr::dangling_mut::<c_void>();
+    let name = CString::new("tcp").unwrap();
+
+    let rc = unsafe {
+        getprotobyname_r(
+            name.as_ptr(),
+            (&mut proto as *mut libc::protoent).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(result, (&mut proto as *mut libc::protoent).cast());
+    let resolved_name = unsafe { std::ffi::CStr::from_ptr(proto.p_name) };
+    assert_eq!(resolved_name.to_bytes(), b"tcp");
+    assert_eq!(proto.p_proto, 6);
+
+    let missing = CString::new("frankenlibc-no-such-proto").unwrap();
+    result = std::ptr::dangling_mut::<c_void>();
+    let rc = unsafe {
+        getprotobyname_r(
+            missing.as_ptr(),
+            (&mut proto as *mut libc::protoent).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(
+        result.is_null(),
+        "missing protocol should return rc=0 with NULL result"
+    );
+}
+
+#[test]
+fn getprotobynumber_r_and_getprotoent_r_surface_entries() {
+    let mut proto: libc::protoent = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 512];
+    let mut result = std::ptr::dangling_mut::<c_void>();
+
+    let rc = unsafe {
+        getprotobynumber_r(
+            17,
+            (&mut proto as *mut libc::protoent).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(result, (&mut proto as *mut libc::protoent).cast());
+    let resolved_name = unsafe { std::ffi::CStr::from_ptr(proto.p_name) };
+    assert_eq!(resolved_name.to_bytes(), b"udp");
+    assert_eq!(proto.p_proto, 17);
+
+    unsafe { setprotoent(1) };
+    result = std::ptr::dangling_mut::<c_void>();
+    let rc = unsafe {
+        getprotoent_r(
+            (&mut proto as *mut libc::protoent).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(result, (&mut proto as *mut libc::protoent).cast());
+    assert!(
+        !proto.p_name.is_null(),
+        "first protocol enumeration entry should populate p_name"
+    );
+}
+
+#[test]
+fn gethostent_r_surfaces_host_enumeration_entry() {
+    let mut host: libc::hostent = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 2048];
+    let mut result = std::ptr::dangling_mut::<c_void>();
+    let mut h_errno = -1;
+
+    unsafe { sethostent(1) };
+    let rc = unsafe {
+        gethostent_r(
+            (&mut host as *mut libc::hostent).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+            &mut h_errno,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(result, (&mut host as *mut libc::hostent).cast());
+    assert!(
+        !host.h_name.is_null(),
+        "host enumeration should populate h_name"
+    );
+}
+
+#[test]
+fn getnet_r_wrappers_match_host_success_and_miss_shapes() {
+    let mut net: NetEnt = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 1024];
+    let mut result = std::ptr::dangling_mut::<c_void>();
+    let mut h_errno = -1;
+
+    unsafe { setnetent(1) };
+    let rc = unsafe {
+        getnetent_r(
+            (&mut net as *mut NetEnt).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+            &mut h_errno,
+        )
+    };
+    assert_eq!(rc, 0, "getnetent_r should not hard-fail with ENOENT");
+    if !result.is_null() {
+        assert_eq!(result, (&mut net as *mut NetEnt).cast());
+        assert!(
+            !net.n_name.is_null(),
+            "enumerated network entry should populate n_name"
+        );
+    }
+
+    result = std::ptr::dangling_mut::<c_void>();
+    h_errno = -1;
+    let missing = CString::new("frankenlibc-no-such-network").unwrap();
+    let rc = unsafe {
+        getnetbyname_r(
+            missing.as_ptr(),
+            (&mut net as *mut NetEnt).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+            &mut h_errno,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(
+        result.is_null(),
+        "missing network lookup should return rc=0 with NULL result"
+    );
+
+    result = std::ptr::dangling_mut::<c_void>();
+    h_errno = -1;
+    let rc = unsafe {
+        getnetbyaddr_r(
+            u32::MAX,
+            libc::AF_INET,
+            (&mut net as *mut NetEnt).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+            &mut h_errno,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert!(
+        result.is_null(),
+        "missing network address lookup should return rc=0 with NULL result"
+    );
+}
+
+#[test]
+fn getservent_and_getprotoent_surface_first_entries() {
+    unsafe { setservent(1) };
+    let servent = unsafe { getservent() as *mut libc::servent };
+    assert!(
+        !servent.is_null(),
+        "getservent should enumerate a service entry"
+    );
+    let service_name = unsafe { std::ffi::CStr::from_ptr((*servent).s_name) };
+    assert!(
+        !service_name.to_bytes().is_empty(),
+        "enumerated service entry should populate s_name"
+    );
+
+    unsafe { setprotoent(1) };
+    let protoent = unsafe { getprotoent() as *mut libc::protoent };
+    assert!(
+        !protoent.is_null(),
+        "getprotoent should enumerate a protocol entry"
+    );
+    let proto_name = unsafe { std::ffi::CStr::from_ptr((*protoent).p_name) };
+    assert!(
+        !proto_name.to_bytes().is_empty(),
+        "enumerated protocol entry should populate p_name"
+    );
 }
 
 #[test]

@@ -6,7 +6,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, c_int, c_void};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -26,12 +26,13 @@ use frankenlibc_core::pthread::tls::{
     pthread_setspecific as core_pthread_setspecific,
 };
 use frankenlibc_core::pthread::{
-    CondvarData, MANAGED_CONDVAR_MAGIC, PTHREAD_COND_CLOCK_REALTIME, THREAD_DETACHED,
-    THREAD_FINISHED, THREAD_JOINED, ThreadHandle, condvar_broadcast as core_condvar_broadcast,
-    condvar_destroy as core_condvar_destroy, condvar_init as core_condvar_init,
-    condvar_signal as core_condvar_signal, condvar_timedwait as core_condvar_timedwait,
-    condvar_wait as core_condvar_wait, create_thread as core_create_thread,
-    detach_thread as core_detach_thread, handle_for_tid as core_handle_for_tid,
+    CondvarData, MANAGED_CONDVAR_MAGIC, PTHREAD_COND_CLOCK_MONOTONIC, PTHREAD_COND_CLOCK_REALTIME,
+    THREAD_DETACHED, THREAD_FINISHED, THREAD_JOINED, ThreadHandle,
+    condvar_broadcast as core_condvar_broadcast, condvar_destroy as core_condvar_destroy,
+    condvar_init as core_condvar_init, condvar_signal as core_condvar_signal,
+    condvar_timedwait as core_condvar_timedwait, condvar_wait as core_condvar_wait,
+    create_thread as core_create_thread, detach_thread as core_detach_thread,
+    exit_current_thread as core_exit_current_thread, handle_for_tid as core_handle_for_tid,
     join_thread as core_join_thread, self_tid as core_self_tid,
 };
 use frankenlibc_membrane::check_oracle::CheckStage;
@@ -51,6 +52,8 @@ type HostPthreadJoinFn = unsafe extern "C" fn(libc::pthread_t, *mut *mut c_void)
 type HostPthreadDetachFn = unsafe extern "C" fn(libc::pthread_t) -> c_int;
 type HostPthreadSelfFn = unsafe extern "C" fn() -> libc::pthread_t;
 type HostPthreadEqualFn = unsafe extern "C" fn(libc::pthread_t, libc::pthread_t) -> c_int;
+type HostPthreadGetattrFn =
+    unsafe extern "C" fn(libc::pthread_t, *mut libc::pthread_attr_t) -> c_int;
 type HostPthreadKeyCreateFn = unsafe extern "C" fn(
     *mut libc::pthread_key_t,
     Option<unsafe extern "C" fn(*mut c_void)>,
@@ -64,6 +67,8 @@ type HostPthreadMutexInitFn =
     unsafe extern "C" fn(*mut libc::pthread_mutex_t, *const libc::pthread_mutexattr_t) -> c_int;
 type HostPthreadMutexDestroyFn = unsafe extern "C" fn(*mut libc::pthread_mutex_t) -> c_int;
 type HostPthreadMutexLockFn = unsafe extern "C" fn(*mut libc::pthread_mutex_t) -> c_int;
+type HostPthreadMutexTimedlockFn =
+    unsafe extern "C" fn(*mut libc::pthread_mutex_t, *const libc::timespec) -> c_int;
 type HostPthreadMutexTrylockFn = unsafe extern "C" fn(*mut libc::pthread_mutex_t) -> c_int;
 type HostPthreadMutexUnlockFn = unsafe extern "C" fn(*mut libc::pthread_mutex_t) -> c_int;
 type HostPthreadCondInitFn =
@@ -87,6 +92,7 @@ type HostPthreadCondTimedwaitFn = unsafe extern "C" fn(
 static MUTEX_SPIN_BRANCHES: AtomicU64 = AtomicU64::new(0);
 static MUTEX_WAIT_BRANCHES: AtomicU64 = AtomicU64::new(0);
 static MUTEX_WAKE_BRANCHES: AtomicU64 = AtomicU64::new(0);
+static PTHREAD_CONCURRENCY_LEVEL: AtomicI32 = AtomicI32::new(0);
 
 /// When true, mutex operations skip host delegation and use the native futex
 /// implementation directly. Set by [`pthread_mutex_reset_state_for_tests`] so
@@ -118,7 +124,20 @@ const PTHREAD_CANCEL_ASYNCHRONOUS_TYPE: c_int = 1;
 /// Sentinel value for "no owner" in owner_tid fields.
 const MUTEX_NO_OWNER: i32 = 0;
 const MANAGED_RWLOCK_MAGIC: u32 = 0x4752_5758; // "GRWX"
-static THREAD_HANDLE_REGISTRY: LazyLock<Mutex<HashMap<usize, usize>>> =
+
+struct ManagedThreadRecord {
+    handle_raw: usize,
+    stack_size: usize,
+    detach_state: c_int,
+}
+
+static THREAD_HANDLE_REGISTRY: LazyLock<Mutex<HashMap<usize, ManagedThreadRecord>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static MANAGED_THREAD_TOMBSTONES: LazyLock<Mutex<HashSet<usize>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+static DETACHED_THREAD_TOMBSTONES: LazyLock<Mutex<HashSet<usize>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+static DETACHED_THREAD_TID_SNAPSHOTS: LazyLock<Mutex<HashMap<usize, i32>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static CANCEL_PENDING_REGISTRY: LazyLock<Mutex<HashMap<usize, bool>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -469,6 +488,16 @@ unsafe fn host_pthread_mutex_lock_fn() -> Option<HostPthreadMutexLockFn> {
     } else {
         // SAFETY: resolved symbol has pthread_mutex_lock ABI.
         Some(unsafe { std::mem::transmute::<*mut c_void, HostPthreadMutexLockFn>(ptr) })
+    }
+}
+
+unsafe fn host_pthread_mutex_timedlock_fn() -> Option<HostPthreadMutexTimedlockFn> {
+    let ptr = unsafe { resolve_host_symbol(b"pthread_mutex_timedlock\0") };
+    if ptr.is_null() {
+        None
+    } else {
+        // SAFETY: resolved symbol has pthread_mutex_timedlock ABI.
+        Some(unsafe { std::mem::transmute::<*mut c_void, HostPthreadMutexTimedlockFn>(ptr) })
     }
 }
 
@@ -839,6 +868,11 @@ fn native_pthread_self() -> libc::pthread_t {
             return handle_ptr as usize as libc::pthread_t;
         }
     }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && let Some(host_self) = crate::host_resolve::host_pthread_self_raw()
+    {
+        return unsafe { host_self() };
+    }
     // Fallback for threads not created via our managed pthread_create path.
     tid as libc::pthread_t
 }
@@ -849,6 +883,11 @@ fn native_pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_int {
 }
 
 fn resolve_thread_tid(thread: libc::pthread_t) -> Option<i32> {
+    let self_tid = core_self_tid();
+    if self_tid > 0 && thread == native_pthread_self() {
+        return Some(self_tid);
+    }
+
     let thread_key = thread as usize;
     let handle_ptr = thread as *mut ThreadHandle;
 
@@ -873,26 +912,85 @@ fn resolve_thread_tid(thread: libc::pthread_t) -> Option<i32> {
         }
     }
 
-    // Unmanaged thread fallback: the pthread_t may be the TID itself.
-    let candidate = thread_key as i32;
-    if candidate > 0 {
-        return Some(candidate);
+    let detached_snapshot_tid = DETACHED_THREAD_TID_SNAPSHOTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&thread_key)
+        .copied();
+    if let Some(tid) = detached_snapshot_tid {
+        if tid > 0 && thread_tid_appears_alive(tid) {
+            return Some(tid);
+        }
+        DETACHED_THREAD_TID_SNAPSHOTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&thread_key);
     }
+
     None
 }
 
-/// Convert an absolute `timespec` deadline from `clockid` to `CLOCK_REALTIME`.
-fn clock_convert_to_realtime(clockid: c_int, abstime: *const libc::timespec) -> libc::timespec {
-    let mut clock_now: libc::timespec = unsafe { std::mem::zeroed() };
-    let mut real_now: libc::timespec = unsafe { std::mem::zeroed() };
-    unsafe {
-        libc::syscall(libc::SYS_clock_gettime, clockid, &mut clock_now);
-        libc::syscall(libc::SYS_clock_gettime, libc::CLOCK_REALTIME, &mut real_now);
+fn thread_tid_appears_alive(tid: i32) -> bool {
+    if tid <= 0 {
+        return false;
     }
+    let pid = unsafe { libc::syscall(libc::SYS_getpid) } as i32;
+    let rc = unsafe { libc::syscall(libc::SYS_tgkill, pid, tid, 0) };
+    if rc == 0 {
+        true
+    } else {
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        errno != libc::ESRCH
+    }
+}
+
+fn detached_thread_tid_snapshot(handle_ptr: *mut ThreadHandle) -> Option<i32> {
+    if handle_ptr.is_null() {
+        return None;
+    }
+    let tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
+    if tid > 0 {
+        return Some(tid);
+    }
+    let self_tid = unsafe { (*handle_ptr).self_tid.load(Ordering::Acquire) };
+    (self_tid > 0).then_some(self_tid)
+}
+
+fn clock_gettime_checked(clockid: c_int) -> Result<libc::timespec, c_int> {
+    let mut now: libc::timespec = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::syscall(libc::SYS_clock_gettime, clockid, &mut now) };
+    if rc < 0 {
+        Err(std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(libc::EINVAL))
+    } else {
+        Ok(now)
+    }
+}
+
+/// Convert an absolute `timespec` deadline from `clockid` to `CLOCK_REALTIME`.
+fn clock_convert_to_realtime(
+    clockid: c_int,
+    abstime: *const libc::timespec,
+) -> Result<libc::timespec, c_int> {
+    clock_convert_between(clockid, libc::CLOCK_REALTIME, abstime)
+}
+
+fn clock_convert_between(
+    from_clockid: c_int,
+    to_clockid: c_int,
+    abstime: *const libc::timespec,
+) -> Result<libc::timespec, c_int> {
+    if from_clockid == to_clockid {
+        // SAFETY: caller supplied a valid absolute timespec pointer.
+        return Ok(unsafe { *abstime });
+    }
+    let clock_now = clock_gettime_checked(from_clockid)?;
+    let target_now = clock_gettime_checked(to_clockid)?;
     let deadline = unsafe { &*abstime };
     let mut result = libc::timespec {
-        tv_sec: real_now.tv_sec + (deadline.tv_sec - clock_now.tv_sec),
-        tv_nsec: real_now.tv_nsec + (deadline.tv_nsec - clock_now.tv_nsec),
+        tv_sec: target_now.tv_sec + (deadline.tv_sec - clock_now.tv_sec),
+        tv_nsec: target_now.tv_nsec + (deadline.tv_nsec - clock_now.tv_nsec),
     };
     if result.tv_nsec >= 1_000_000_000 {
         result.tv_sec += 1;
@@ -901,16 +999,54 @@ fn clock_convert_to_realtime(clockid: c_int, abstime: *const libc::timespec) -> 
         result.tv_sec -= 1;
         result.tv_nsec += 1_000_000_000;
     }
-    result
+    Ok(result)
 }
 
-/// Futex wait with absolute timeout (CLOCK_REALTIME).
+fn condvar_clock_to_libc(clock: i32) -> c_int {
+    if clock == PTHREAD_COND_CLOCK_MONOTONIC {
+        libc::CLOCK_MONOTONIC
+    } else {
+        libc::CLOCK_REALTIME
+    }
+}
+
+fn absolute_timespec_valid(abstime: *const libc::timespec) -> bool {
+    if abstime.is_null() {
+        return false;
+    }
+    let ts = unsafe { &*abstime };
+    (0..1_000_000_000).contains(&ts.tv_nsec)
+}
+
+/// Futex wait with an absolute CLOCK_REALTIME deadline.
+///
+/// Linux `FUTEX_WAIT` expects a relative timeout, so convert the caller's
+/// absolute pthread-style deadline to a per-call relative duration.
 #[cfg(target_os = "linux")]
 fn futex_wait_timed_private(
     word: &AtomicI32,
     expected: i32,
     abstime: *const libc::timespec,
 ) -> c_int {
+    let mut now: libc::timespec = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::syscall(libc::SYS_clock_gettime, libc::CLOCK_REALTIME, &mut now);
+    }
+    let deadline = unsafe { &*abstime };
+    let mut rel = libc::timespec {
+        tv_sec: deadline.tv_sec - now.tv_sec,
+        tv_nsec: deadline.tv_nsec - now.tv_nsec,
+    };
+    if rel.tv_nsec < 0 {
+        rel.tv_sec -= 1;
+        rel.tv_nsec += 1_000_000_000;
+    }
+    if rel.tv_sec < 0 || (rel.tv_sec == 0 && rel.tv_nsec <= 0) {
+        unsafe {
+            *libc::__errno_location() = libc::ETIMEDOUT;
+        }
+        return -1;
+    }
     // SAFETY: Linux futex syscall with valid userspace address and timeout.
     unsafe {
         libc::syscall(
@@ -918,7 +1054,7 @@ fn futex_wait_timed_private(
             word as *const AtomicI32 as *const i32,
             libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG,
             expected,
-            abstime,
+            &rel as *const libc::timespec,
         ) as c_int
     }
 }
@@ -938,15 +1074,16 @@ unsafe fn native_pthread_create(
     let mut stack_size: usize = 0;
     let mut detach_state: c_int = 0;
     if !attr.is_null() {
+        if let Some(data_ptr) = managed_attr_data_for_host_translation(attr)
+            && data_ptr.is_null()
+        {
+            return libc::EINVAL;
+        }
         let mut handled = false;
-        if let Some(data) = attr_data_ptr_const(attr) {
-            // SAFETY: data points to caller-owned memory aligned for PthreadAttrData.
-            let magic = unsafe { (*data).magic };
-            if magic == MANAGED_ATTR_MAGIC {
-                stack_size = unsafe { (*data).stack_size };
-                detach_state = unsafe { (*data).detach_state };
-                handled = true;
-            }
+        if let Some(data) = managed_attr_data_ptr_const(attr) {
+            stack_size = unsafe { (*data).stack_size };
+            detach_state = unsafe { (*data).detach_state };
+            handled = true;
         }
         if !handled {
             // SAFETY: attr is non-null, host libc interprets the opaque structure.
@@ -971,6 +1108,12 @@ unsafe fn native_pthread_create(
 
     let thread_key = handle_ptr as usize;
 
+    let effective_stack_size = if stack_size > 0 {
+        stack_size
+    } else {
+        attr_default_stack_size()
+    };
+
     let mut registry = THREAD_HANDLE_REGISTRY
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -978,7 +1121,22 @@ unsafe fn native_pthread_create(
         let _ = unsafe { core_detach_thread(handle_ptr) };
         return libc::EAGAIN;
     }
-    registry.insert(thread_key, handle_ptr as usize);
+    MANAGED_THREAD_TOMBSTONES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&thread_key);
+    DETACHED_THREAD_TOMBSTONES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&thread_key);
+    registry.insert(
+        thread_key,
+        ManagedThreadRecord {
+            handle_raw: handle_ptr as usize,
+            stack_size: effective_stack_size,
+            detach_state,
+        },
+    );
     drop(registry);
 
     // SAFETY: thread_out validated non-null above.
@@ -994,6 +1152,20 @@ unsafe fn native_pthread_create(
                 .unwrap_or_else(|e| e.into_inner());
             registry.remove(&thread_key);
         }
+        if let Some(tid) = detached_thread_tid_snapshot(handle_ptr) {
+            DETACHED_THREAD_TID_SNAPSHOTS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(thread_key, tid);
+        }
+        MANAGED_THREAD_TOMBSTONES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(thread_key);
+        DETACHED_THREAD_TOMBSTONES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(thread_key);
         let _ = unsafe { core_detach_thread(handle_ptr) };
     }
 
@@ -1142,6 +1314,10 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
         return libc::EDEADLK;
     }
 
+    if is_detached_thread_handle(thread) {
+        return libc::EINVAL;
+    }
+
     // Verify this is a valid managed thread handle that we know about.
     // We check the registry to ensure the pointer is still live and managed.
     let is_managed = {
@@ -1168,6 +1344,18 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             registry.remove(&thread_key);
+            DETACHED_THREAD_TID_SNAPSHOTS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&thread_key);
+            MANAGED_THREAD_TOMBSTONES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(thread_key);
+            DETACHED_THREAD_TOMBSTONES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&thread_key);
             0
         }
         Err(errno) => errno,
@@ -1178,6 +1366,11 @@ unsafe fn native_pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void)
 unsafe fn native_pthread_detach(thread: libc::pthread_t) -> c_int {
     let thread_key = thread as usize;
     let handle_ptr = thread as *mut ThreadHandle;
+    let detached_tid_snapshot = detached_thread_tid_snapshot(handle_ptr);
+
+    if is_detached_thread_handle(thread) {
+        return libc::EINVAL;
+    }
 
     // Verify this is a valid managed thread handle that we know about.
     let is_managed = {
@@ -1193,11 +1386,25 @@ unsafe fn native_pthread_detach(thread: libc::pthread_t) -> c_int {
 
     match unsafe { core_detach_thread(handle_ptr) } {
         Ok(()) => {
+            if let Some(tid) = detached_tid_snapshot {
+                DETACHED_THREAD_TID_SNAPSHOTS
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(thread_key, tid);
+            }
             // Remove from registry after successful detach.
             let mut registry = THREAD_HANDLE_REGISTRY
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             registry.remove(&thread_key);
+            MANAGED_THREAD_TOMBSTONES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(thread_key);
+            DETACHED_THREAD_TOMBSTONES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(thread_key);
             0
         }
         Err(errno) => errno,
@@ -1534,6 +1741,20 @@ pub fn pthread_threading_force_native_for_tests() {
     FORCE_NATIVE_THREADING.store(true, Ordering::Release);
 }
 
+/// Test hook: force native threading and return the previous mode so callers
+/// can restore it afterwards.
+#[doc(hidden)]
+pub fn pthread_threading_swap_force_native_for_tests() -> bool {
+    FORCE_NATIVE_THREADING.swap(true, Ordering::AcqRel)
+}
+
+/// Test hook: restore the thread lifecycle delegation mode after temporarily
+/// forcing native behavior in a test.
+#[doc(hidden)]
+pub fn pthread_threading_restore_for_tests(previous: bool) {
+    FORCE_NATIVE_THREADING.store(previous, Ordering::Release);
+}
+
 #[inline]
 #[allow(dead_code)]
 fn stage_index(ordering: &[CheckStage; 7], stage: CheckStage) -> usize {
@@ -1595,10 +1816,11 @@ pub unsafe extern "C" fn pthread_create(
     // Clear __libc_single_threaded on first thread creation.
     crate::glibc_internal_abi::__libc_single_threaded
         .store(0, std::sync::atomic::Ordering::Release);
+    let force_native = FORCE_NATIVE_THREADING.load(Ordering::Acquire);
     // Prefer host pthread_create for correct TLS setup, stack guard pages,
     // and compatibility with programs that depend on glibc thread internals
     // (Python, Node.js, etc.).
-    if let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
+    if !force_native && let Some(host_create) = crate::host_resolve::host_pthread_create_raw() {
         return unsafe {
             host_pthread_create_with_managed_attr(host_create, thread_out, attr, start_routine, arg)
         };
@@ -1611,7 +1833,10 @@ pub unsafe extern "C" fn pthread_create(
 /// POSIX `pthread_join`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void) -> c_int {
-    if let Some(host_join) = crate::host_resolve::host_pthread_join_raw() {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !is_managed_thread_handle(thread)
+        && let Some(host_join) = crate::host_resolve::host_pthread_join_raw()
+    {
         return unsafe { host_join(thread, retval) };
     }
     unsafe { native_pthread_join(thread, retval) }
@@ -1620,7 +1845,10 @@ pub unsafe extern "C" fn pthread_join(thread: libc::pthread_t, retval: *mut *mut
 /// POSIX `pthread_detach`.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_detach(thread: libc::pthread_t) -> c_int {
-    if let Some(host_detach) = crate::host_resolve::host_pthread_detach_raw() {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !is_managed_thread_handle(thread)
+        && let Some(host_detach) = crate::host_resolve::host_pthread_detach_raw()
+    {
         return unsafe { host_detach(thread) };
     }
     unsafe { native_pthread_detach(thread) }
@@ -2305,6 +2533,12 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
     mutex: *mut libc::pthread_mutex_t,
     abstime: *const libc::timespec,
 ) -> c_int {
+    if cond.is_null() || mutex.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if !absolute_timespec_valid(abstime) {
+        return libc::EINVAL;
+    }
     let managed_condvar = is_managed_condvar(cond);
     if !managed_condvar && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
         // SAFETY: host symbol lookup/transmute guarantees ABI if present.
@@ -2312,10 +2546,6 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
             // SAFETY: direct call through resolved host symbol.
             return unsafe { host_timedwait(cond, mutex, abstime) };
         }
-    }
-
-    if cond.is_null() || mutex.is_null() || abstime.is_null() {
-        return libc::EINVAL;
     }
     let Some(cond_ptr) = condvar_data_ptr(cond) else {
         return libc::EINVAL;
@@ -2680,6 +2910,86 @@ fn attr_data_ptr_const(attr: *const libc::pthread_attr_t) -> Option<*const Pthre
     Some(ptr)
 }
 
+fn managed_attr_data_ptr(attr: *mut libc::pthread_attr_t) -> Option<*mut PthreadAttrData> {
+    let data = attr_data_ptr(attr)?;
+    // SAFETY: `data` comes from `attr_data_ptr`, which validated non-null/alignment.
+    let is_managed = unsafe { (*data).magic == MANAGED_ATTR_MAGIC };
+    is_managed.then_some(data)
+}
+
+fn managed_attr_data_ptr_const(
+    attr: *const libc::pthread_attr_t,
+) -> Option<*const PthreadAttrData> {
+    let data = attr_data_ptr_const(attr)?;
+    // SAFETY: `data` comes from `attr_data_ptr_const`, which validated non-null/alignment.
+    let is_managed = unsafe { (*data).magic == MANAGED_ATTR_MAGIC };
+    is_managed.then_some(data)
+}
+
+unsafe fn populate_managed_attr_from_host_attr(
+    dst: *mut libc::pthread_attr_t,
+    host_attr: *const libc::pthread_attr_t,
+) -> c_int {
+    let Some(data) = managed_attr_data_ptr(dst) else {
+        return libc::EINVAL;
+    };
+
+    let mut detach_state = libc::PTHREAD_CREATE_JOINABLE;
+    unsafe extern "C" {
+        fn pthread_attr_getdetachstate(
+            attr: *const libc::pthread_attr_t,
+            detachstate: *mut c_int,
+        ) -> c_int;
+    }
+    let mut stack_size = 0usize;
+    let mut guard_size = 0usize;
+    let mut stack_addr: *mut c_void = std::ptr::null_mut();
+    let mut inherit_sched = 0;
+    let mut sched_policy = 0;
+    let mut sched_param: libc::sched_param = unsafe { std::mem::zeroed() };
+
+    let mut rc = unsafe { pthread_attr_getdetachstate(host_attr, &mut detach_state) };
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_getstacksize(host_attr, &mut stack_size) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_getguardsize(host_attr, &mut guard_size) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_getstack(host_attr, &mut stack_addr, &mut stack_size) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_getinheritsched(host_attr, &mut inherit_sched) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_getschedpolicy(host_attr, &mut sched_policy) };
+    }
+    if rc == 0 {
+        rc = unsafe { libc::pthread_attr_getschedparam(host_attr, &mut sched_param) };
+    }
+    if rc != 0 {
+        return rc;
+    }
+
+    unsafe {
+        (*data).detach_state = detach_state;
+        (*data).stack_size = stack_size;
+        (*data).guard_size = guard_size;
+        (*data).stack_addr = stack_addr as usize;
+        (*data).inherit_sched = inherit_sched;
+        (*data).sched_policy = sched_policy;
+        (*data).sched_priority = sched_param.sched_priority;
+        (*data).flags = 0;
+    }
+
+    let key = dst as usize;
+    let mut reg = EXTENDED_ATTR_REGISTRY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    reg.remove(&key);
+    0
+}
+
 // --- Thread attributes ---
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
@@ -2704,7 +3014,7 @@ pub unsafe extern "C" fn pthread_attr_init(attr: *mut libc::pthread_attr_t) -> c
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut libc::pthread_attr_t) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     // Clean up any extended data (affinity/sigmask).
@@ -2724,7 +3034,7 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
     attr: *mut libc::pthread_attr_t,
     state: c_int,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     if state != libc::PTHREAD_CREATE_JOINABLE && state != libc::PTHREAD_CREATE_DETACHED {
@@ -2742,7 +3052,7 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
     attr: *const libc::pthread_attr_t,
     state: *mut c_int,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if state.is_null() {
@@ -2760,7 +3070,7 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
     attr: *mut libc::pthread_attr_t,
     size: usize,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     if size < ATTR_MIN_STACK_SIZE {
@@ -2778,7 +3088,7 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
     attr: *const libc::pthread_attr_t,
     size: *mut usize,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if size.is_null() {
@@ -3144,8 +3454,35 @@ fn pthread_handle_key(thread: libc::pthread_t) -> usize {
     thread as usize
 }
 
+fn is_managed_thread_handle(thread: libc::pthread_t) -> bool {
+    let thread_key = thread as usize;
+    if THREAD_HANDLE_REGISTRY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains_key(&thread_key)
+    {
+        return true;
+    }
+    MANAGED_THREAD_TOMBSTONES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&thread_key)
+}
+
+fn is_detached_thread_handle(thread: libc::pthread_t) -> bool {
+    DETACHED_THREAD_TOMBSTONES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&(thread as usize))
+}
+
 fn current_cancel_key() -> usize {
     native_pthread_self() as usize
+}
+
+fn current_thread_is_managed() -> bool {
+    let tid = core_self_tid();
+    tid > 0 && core_handle_for_tid(tid).is_some()
 }
 
 fn cancellation_pending(thread_key: usize) -> bool {
@@ -3194,6 +3531,16 @@ pub unsafe extern "C" fn pthread_cancel(thread: libc::pthread_t) -> c_int {
         return libc::ESRCH;
     }
 
+    // Host-backed pthread_create remains the default. Those pthread_t values are
+    // opaque glibc handles, so our native kill/TID path cannot validate or cancel
+    // them reliably. Delegate non-self, non-managed threads back to host pthread.
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !is_managed_thread_handle(thread)
+        && let Some(host_cancel) = crate::host_resolve::host_pthread_cancel_raw()
+    {
+        return unsafe { host_cancel(thread) };
+    }
+
     // Validate that the target looks alive before enqueuing a cancel request.
     // Signal 0 performs existence checking without delivering a signal.
     let liveness = unsafe { pthread_kill(thread, 0) };
@@ -3220,6 +3567,12 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
     if state != PTHREAD_CANCEL_ENABLE_STATE && state != PTHREAD_CANCEL_DISABLE_STATE {
         return libc::EINVAL;
     }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !current_thread_is_managed()
+        && let Some(host_setcancelstate) = crate::host_resolve::host_pthread_setcancelstate_raw()
+    {
+        return unsafe { host_setcancelstate(state, oldstate) };
+    }
 
     let previous = THREAD_CANCEL_STATE.with(|cell| {
         let prev = cell.get();
@@ -3232,7 +3585,7 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
     }
 
     if state == PTHREAD_CANCEL_ENABLE_STATE && cancel_async_for_current_thread() {
-        let _ = consume_pending_cancel_for_current_thread();
+        unsafe { pthread_testcancel() };
     }
     0
 }
@@ -3241,6 +3594,12 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
 pub unsafe extern "C" fn pthread_setcanceltype(typ: c_int, oldtype: *mut c_int) -> c_int {
     if typ != PTHREAD_CANCEL_DEFERRED_TYPE && typ != PTHREAD_CANCEL_ASYNCHRONOUS_TYPE {
         return libc::EINVAL;
+    }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !current_thread_is_managed()
+        && let Some(host_setcanceltype) = crate::host_resolve::host_pthread_setcanceltype_raw()
+    {
+        return unsafe { host_setcanceltype(typ, oldtype) };
     }
 
     let previous = THREAD_CANCEL_TYPE.with(|cell| {
@@ -3254,13 +3613,20 @@ pub unsafe extern "C" fn pthread_setcanceltype(typ: c_int, oldtype: *mut c_int) 
     }
 
     if typ == PTHREAD_CANCEL_ASYNCHRONOUS_TYPE && cancel_enabled_for_current_thread() {
-        let _ = consume_pending_cancel_for_current_thread();
+        unsafe { pthread_testcancel() };
     }
     0
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_testcancel() {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !current_thread_is_managed()
+        && let Some(host_testcancel) = crate::host_resolve::host_pthread_testcancel_raw()
+    {
+        unsafe { host_testcancel() };
+        return;
+    }
     if consume_pending_cancel_for_current_thread() {
         // PTHREAD_CANCELED is typically defined as ((void *) -1)
         unsafe { pthread_exit(!0usize as *mut std::ffi::c_void) };
@@ -3272,6 +3638,36 @@ pub unsafe extern "C" fn pthread_getattr_np(
     thread: libc::pthread_t,
     attr: *mut libc::pthread_attr_t,
 ) -> c_int {
+    if attr.is_null() {
+        return libc::EINVAL;
+    }
+    let force_native = FORCE_NATIVE_THREADING.load(Ordering::Acquire);
+    if !force_native
+        && !is_managed_thread_handle(thread)
+        && let Some(host_addr) = crate::host_resolve::resolve_host_symbol_raw("pthread_getattr_np")
+    {
+        let host_getattr: HostPthreadGetattrFn = unsafe { core::mem::transmute(host_addr) };
+        let mut host_attr: libc::pthread_attr_t = unsafe { std::mem::zeroed() };
+        let rc = unsafe { host_getattr(thread, &mut host_attr) };
+        if rc != 0 {
+            return rc;
+        }
+        let init_rc = unsafe { pthread_attr_init(attr) };
+        if init_rc != 0 {
+            let _ = unsafe { libc::pthread_attr_destroy(&mut host_attr) };
+            return init_rc;
+        }
+        let translate_rc = unsafe { populate_managed_attr_from_host_attr(attr, &host_attr) };
+        let destroy_rc = unsafe { libc::pthread_attr_destroy(&mut host_attr) };
+        return if translate_rc != 0 {
+            translate_rc
+        } else if destroy_rc != 0 {
+            destroy_rc
+        } else {
+            0
+        };
+    }
+
     // Initialize the attr struct with defaults, then fill in thread-specific info.
     let ret = unsafe { pthread_attr_init(attr) };
     if ret != 0 {
@@ -3280,27 +3676,79 @@ pub unsafe extern "C" fn pthread_getattr_np(
     let Some(data) = attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
-    // Look up thread handle in our registry to determine detach state.
-    let handle_raw = thread as usize;
+    // Look up managed thread metadata captured at native create time.
+    let thread_key = thread as usize;
     let registry = THREAD_HANDLE_REGISTRY
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    if registry.values().any(|&v| v == handle_raw) {
-        let handle_ptr = handle_raw as *mut ThreadHandle;
+    if let Some(record) = registry.get(&thread_key) {
+        let handle_ptr = record.handle_raw as *mut ThreadHandle;
         // SAFETY: registry only stores live handles from core_create_thread.
+        let state = unsafe { (*handle_ptr).state.load(Ordering::Acquire) };
+        let detach_state = if state == THREAD_DETACHED {
+            libc::PTHREAD_CREATE_DETACHED
+        } else {
+            record.detach_state
+        };
+        // SAFETY: pointer is non-null and aligned; we initialized it above.
+        unsafe {
+            (*data).detach_state = detach_state;
+            (*data).stack_size = record.stack_size;
+            (*data).guard_size = ATTR_DEFAULT_GUARD_SIZE;
+            (*data).stack_addr = (*handle_ptr).stack_base + ATTR_DEFAULT_GUARD_SIZE;
+        }
+        return 0;
+    }
+    drop(registry);
+
+    if is_managed_thread_handle(thread) && resolve_thread_tid(thread).is_some() {
+        let handle_ptr = thread as *mut ThreadHandle;
+        // SAFETY: a managed detached thread keeps its handle alive until it
+        // exits and self-cleans. `resolve_thread_tid(thread).is_some()` above
+        // established that the thread still appears live, so the handle fields
+        // remain readable here.
+        let state = unsafe { (*handle_ptr).state.load(Ordering::Acquire) };
+        // SAFETY: same liveness argument as above.
+        let stack_total_size = unsafe { (*handle_ptr).stack_total_size };
+        let stack_base = unsafe { (*handle_ptr).stack_base };
+        let detach_state = if state == THREAD_DETACHED {
+            libc::PTHREAD_CREATE_DETACHED
+        } else {
+            libc::PTHREAD_CREATE_JOINABLE
+        };
+        unsafe {
+            (*data).detach_state = detach_state;
+            (*data).stack_size = stack_total_size.saturating_sub(ATTR_DEFAULT_GUARD_SIZE);
+            (*data).guard_size = ATTR_DEFAULT_GUARD_SIZE;
+            (*data).stack_addr = stack_base + ATTR_DEFAULT_GUARD_SIZE;
+        }
+        return 0;
+    }
+
+    if let Some(self_handle) = core_handle_for_tid(core_self_tid())
+        && self_handle == thread as *mut ThreadHandle
+    {
+        let handle_ptr = self_handle;
+        // SAFETY: `self_handle` comes from core TLS lookup for the current thread.
         let state = unsafe { (*handle_ptr).state.load(Ordering::Acquire) };
         let detach_state = if state == THREAD_DETACHED {
             libc::PTHREAD_CREATE_DETACHED
         } else {
             libc::PTHREAD_CREATE_JOINABLE
         };
-        // SAFETY: pointer is non-null and aligned; we initialized it above.
+        // SAFETY: `handle_ptr` is the current thread's live handle.
+        let stack_total_size = unsafe { (*handle_ptr).stack_total_size };
+        let stack_base = unsafe { (*handle_ptr).stack_base };
         unsafe {
             (*data).detach_state = detach_state;
+            (*data).stack_size = stack_total_size.saturating_sub(ATTR_DEFAULT_GUARD_SIZE);
+            (*data).guard_size = ATTR_DEFAULT_GUARD_SIZE;
+            (*data).stack_addr = stack_base + ATTR_DEFAULT_GUARD_SIZE;
         }
+        return 0;
     }
-    drop(registry);
-    0
+
+    libc::ESRCH
 }
 
 // ---------------------------------------------------------------------------
@@ -3674,6 +4122,12 @@ pub unsafe extern "C" fn pthread_setname_np(
         return libc::ERANGE;
     }
     if _thread != native_pthread_self() {
+        if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+            && !is_managed_thread_handle(_thread)
+            && let Some(host_setname) = crate::host_resolve::host_pthread_setname_np_raw()
+        {
+            return unsafe { host_setname(_thread, name) };
+        }
         let Some(tid) = resolve_thread_tid(_thread) else {
             return libc::ESRCH;
         };
@@ -3703,6 +4157,12 @@ pub unsafe extern "C" fn pthread_getname_np(
         return libc::ERANGE;
     }
     if _thread != native_pthread_self() {
+        if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+            && !is_managed_thread_handle(_thread)
+            && let Some(host_getname) = crate::host_resolve::host_pthread_getname_np_raw()
+        {
+            return unsafe { host_getname(_thread, name, len) };
+        }
         let Some(tid) = resolve_thread_tid(_thread) else {
             return libc::ESRCH;
         };
@@ -3810,7 +4270,7 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
     attr: *const libc::pthread_attr_t,
     guardsize: *mut usize,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if guardsize.is_null() {
@@ -3828,7 +4288,7 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
     attr: *mut libc::pthread_attr_t,
     guardsize: usize,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     // SAFETY: pointer is non-null and aligned.
@@ -3844,7 +4304,7 @@ pub unsafe extern "C" fn pthread_attr_getaffinity_np(
     cpusetsize: usize,
     cpuset: *mut libc::cpu_set_t,
 ) -> c_int {
-    if attr.is_null() || cpuset.is_null() || cpusetsize == 0 {
+    if managed_attr_data_ptr_const(attr).is_none() || cpuset.is_null() || cpusetsize == 0 {
         return libc::EINVAL;
     }
     let key = attr as usize;
@@ -3880,7 +4340,7 @@ pub unsafe extern "C" fn pthread_attr_setaffinity_np(
     if attr.is_null() || cpuset.is_null() || cpusetsize == 0 {
         return libc::EINVAL;
     }
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     // Copy the raw bytes of the cpu_set_t.
@@ -3915,7 +4375,7 @@ pub unsafe extern "C" fn pthread_attr_getinheritsched(
     attr: *const libc::pthread_attr_t,
     inheritsched: *mut c_int,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if inheritsched.is_null() {
@@ -3933,7 +4393,7 @@ pub unsafe extern "C" fn pthread_attr_setinheritsched(
     attr: *mut libc::pthread_attr_t,
     inheritsched: c_int,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     // Valid values: PTHREAD_INHERIT_SCHED (0) or PTHREAD_EXPLICIT_SCHED (1).
@@ -3952,7 +4412,7 @@ pub unsafe extern "C" fn pthread_attr_getschedparam(
     attr: *const libc::pthread_attr_t,
     param: *mut libc::sched_param,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if param.is_null() {
@@ -3973,7 +4433,7 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
     attr: *mut libc::pthread_attr_t,
     param: *const libc::sched_param,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     if param.is_null() {
@@ -3991,7 +4451,7 @@ pub unsafe extern "C" fn pthread_attr_getschedpolicy(
     attr: *const libc::pthread_attr_t,
     policy: *mut c_int,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if policy.is_null() {
@@ -4009,7 +4469,7 @@ pub unsafe extern "C" fn pthread_attr_setschedpolicy(
     attr: *mut libc::pthread_attr_t,
     policy: c_int,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     // Valid POSIX policies: SCHED_OTHER(0), SCHED_FIFO(1), SCHED_RR(2).
@@ -4028,7 +4488,7 @@ pub unsafe extern "C" fn pthread_attr_getscope(
     attr: *const libc::pthread_attr_t,
     scope: *mut c_int,
 ) -> c_int {
-    if attr.is_null() || scope.is_null() {
+    if managed_attr_data_ptr_const(attr).is_none() || scope.is_null() {
         return libc::EINVAL;
     }
     // Linux always uses PTHREAD_SCOPE_SYSTEM.
@@ -4043,7 +4503,7 @@ pub unsafe extern "C" fn pthread_attr_setscope(
     attr: *mut libc::pthread_attr_t,
     scope: c_int,
 ) -> c_int {
-    if attr.is_null() {
+    if managed_attr_data_ptr(attr).is_none() {
         return libc::EINVAL;
     }
     if scope == PTHREAD_SCOPE_SYSTEM {
@@ -4061,7 +4521,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
     stackaddr: *mut *mut c_void,
     stacksize: *mut usize,
 ) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     if stackaddr.is_null() || stacksize.is_null() {
@@ -4083,7 +4543,7 @@ pub unsafe extern "C" fn pthread_attr_setstack(
     stackaddr: *mut c_void,
     stacksize: usize,
 ) -> c_int {
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     if stackaddr.is_null() || stacksize < ATTR_MIN_STACK_SIZE {
@@ -4098,31 +4558,38 @@ pub unsafe extern "C" fn pthread_attr_setstack(
 }
 
 /// Deprecated `pthread_attr_getstackaddr` — get stack address.
-/// Returns NULL since we don't track custom stack addresses in our overlay.
+/// Native implementation using the managed attr overlay.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_attr_getstackaddr(
     attr: *const libc::pthread_attr_t,
     stackaddr: *mut *mut c_void,
 ) -> c_int {
-    if attr.is_null() || stackaddr.is_null() {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
+        return libc::EINVAL;
+    };
+    if stackaddr.is_null() {
         return libc::EINVAL;
     }
-    // Deprecated API: return null (no custom stack address set).
-    unsafe { *stackaddr = std::ptr::null_mut() };
+    // SAFETY: pointers are non-null and aligned.
+    unsafe { *stackaddr = (*data).stack_addr as *mut c_void };
     0
 }
 
 /// Deprecated `pthread_attr_setstackaddr` — set stack address.
-/// Accepts and ignores the value (deprecated, use pthread_attr_setstack instead).
+/// Native implementation using the managed attr overlay.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_attr_setstackaddr(
     attr: *mut libc::pthread_attr_t,
-    _stackaddr: *mut c_void,
+    stackaddr: *mut c_void,
 ) -> c_int {
-    if attr.is_null() {
+    let Some(data) = managed_attr_data_ptr(attr) else {
+        return libc::EINVAL;
+    };
+    if stackaddr.is_null() {
         return libc::EINVAL;
     }
-    // Deprecated API: accept but don't store (use setstack instead).
+    // SAFETY: pointer is non-null and aligned.
+    unsafe { (*data).stack_addr = stackaddr as usize };
     0
 }
 
@@ -4431,13 +4898,84 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
     if mutex.is_null() || abstime.is_null() {
         return libc::EINVAL;
     }
+    if !absolute_timespec_valid(abstime) {
+        return libc::EINVAL;
+    }
+    if !is_managed_mutex(mutex)
+        && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire)
+        && let Some(host_timedlock) = unsafe { host_pthread_mutex_timedlock_fn() }
+    {
+        return unsafe { host_timedlock(mutex, abstime) };
+    }
     let Some(word_ptr) = mutex_word_ptr(mutex) else {
         return libc::EINVAL;
     };
     // SAFETY: alignment validated by `mutex_word_ptr`.
     let word = unsafe { &*word_ptr };
 
-    // Fast path: uncontended.
+    match read_mutex_type(mutex) {
+        PTHREAD_MUTEX_RECURSIVE_TYPE => {
+            let self_tid = core_self_tid();
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) == self_tid
+                    && self_tid != MUTEX_NO_OWNER
+                    && let Some(count_ptr) = mutex_lock_count_ptr(mutex)
+                {
+                    // SAFETY: alignment checked.
+                    let count = unsafe { &*count_ptr };
+                    let cur = count.load(Ordering::Relaxed);
+                    if cur == u32::MAX {
+                        return libc::EAGAIN;
+                    }
+                    count.store(cur + 1, Ordering::Release);
+                    return 0;
+                }
+            }
+            let rc = timed_futex_lock_normal(word, abstime);
+            if rc != 0 {
+                return rc;
+            }
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(self_tid, Ordering::Release);
+            }
+            if let Some(count_ptr) = mutex_lock_count_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let count = unsafe { &*count_ptr };
+                count.store(1, Ordering::Release);
+            }
+            return 0;
+        }
+        PTHREAD_MUTEX_ERRORCHECK_TYPE => {
+            let self_tid = core_self_tid();
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                if owner.load(Ordering::Acquire) == self_tid && self_tid != MUTEX_NO_OWNER {
+                    return libc::EDEADLK;
+                }
+            }
+            let rc = timed_futex_lock_normal(word, abstime);
+            if rc != 0 {
+                return rc;
+            }
+            if let Some(owner_ptr) = mutex_owner_ptr(mutex) {
+                // SAFETY: alignment checked.
+                let owner = unsafe { &*owner_ptr };
+                owner.store(self_tid, Ordering::Release);
+            }
+            return 0;
+        }
+        _ => {}
+    }
+
+    timed_futex_lock_normal(word, abstime)
+}
+
+fn timed_futex_lock_normal(word: &AtomicI32, abstime: *const libc::timespec) -> c_int {
     if word
         .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
         .is_ok()
@@ -4445,7 +4983,6 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
         return 0;
     }
 
-    // Slow path: CAS loop with futex timed wait.
     loop {
         let observed = word.load(Ordering::Relaxed);
         if observed == 0 {
@@ -4515,7 +5052,10 @@ pub unsafe extern "C" fn pthread_mutex_clocklock(
         return unsafe { pthread_mutex_timedlock(mutex, abstime) };
     }
     // Convert to CLOCK_REALTIME deadline.
-    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    let real_deadline = match clock_convert_to_realtime(clockid, abstime) {
+        Ok(deadline) => deadline,
+        Err(err) => return err,
+    };
     unsafe { pthread_mutex_timedlock(mutex, &real_deadline) }
 }
 
@@ -4528,6 +5068,9 @@ pub unsafe extern "C" fn pthread_rwlock_timedrdlock(
     abstime: *const libc::timespec,
 ) -> c_int {
     if rwlock.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if !absolute_timespec_valid(abstime) {
         return libc::EINVAL;
     }
     if !is_managed_rwlock(rwlock) {
@@ -4549,6 +5092,9 @@ pub unsafe extern "C" fn pthread_rwlock_timedwrlock(
     abstime: *const libc::timespec,
 ) -> c_int {
     if rwlock.is_null() || abstime.is_null() {
+        return libc::EINVAL;
+    }
+    if !absolute_timespec_valid(abstime) {
         return libc::EINVAL;
     }
     if !is_managed_rwlock(rwlock) {
@@ -4576,7 +5122,10 @@ pub unsafe extern "C" fn pthread_rwlock_clockrdlock(
     if clockid == libc::CLOCK_REALTIME {
         return unsafe { pthread_rwlock_timedrdlock(rwlock, abstime) };
     }
-    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    let real_deadline = match clock_convert_to_realtime(clockid, abstime) {
+        Ok(deadline) => deadline,
+        Err(err) => return err,
+    };
     unsafe { pthread_rwlock_timedrdlock(rwlock, &real_deadline) }
 }
 
@@ -4595,7 +5144,10 @@ pub unsafe extern "C" fn pthread_rwlock_clockwrlock(
     if clockid == libc::CLOCK_REALTIME {
         return unsafe { pthread_rwlock_timedwrlock(rwlock, abstime) };
     }
-    let real_deadline = clock_convert_to_realtime(clockid, abstime);
+    let real_deadline = match clock_convert_to_realtime(clockid, abstime) {
+        Ok(deadline) => deadline,
+        Err(err) => return err,
+    };
     unsafe { pthread_rwlock_timedwrlock(rwlock, &real_deadline) }
 }
 
@@ -4613,11 +5165,45 @@ pub unsafe extern "C" fn pthread_cond_clockwait(
     if cond.is_null() || mutex.is_null() || abstime.is_null() {
         return libc::EINVAL;
     }
-    if clockid == libc::CLOCK_REALTIME {
-        return unsafe { pthread_cond_timedwait(cond, mutex, abstime) };
+    if !absolute_timespec_valid(abstime) {
+        return libc::EINVAL;
     }
-    let real_deadline = clock_convert_to_realtime(clockid, abstime);
-    unsafe { pthread_cond_timedwait(cond, mutex, &real_deadline) }
+    let managed_condvar = is_managed_condvar(cond);
+    if !managed_condvar && !FORCE_NATIVE_MUTEX.load(Ordering::Acquire) {
+        if let Some(host_addr) =
+            crate::host_resolve::resolve_host_symbol_raw("pthread_cond_clockwait")
+        {
+            let host_clockwait: unsafe extern "C" fn(
+                *mut libc::pthread_cond_t,
+                *mut libc::pthread_mutex_t,
+                c_int,
+                *const libc::timespec,
+            ) -> c_int = unsafe { core::mem::transmute(host_addr) };
+            return unsafe { host_clockwait(cond, mutex, clockid, abstime) };
+        }
+        if clockid == libc::CLOCK_REALTIME {
+            return unsafe { pthread_cond_timedwait(cond, mutex, abstime) };
+        }
+    }
+    if !managed_condvar {
+        return libc::EINVAL;
+    }
+    let Some(cond_ptr) = condvar_data_ptr(cond) else {
+        return libc::EINVAL;
+    };
+    let cond_clock =
+        condvar_clock_to_libc(unsafe { (&*cond_ptr).clock_id.load(Ordering::Acquire) as i32 });
+    let converted_deadline;
+    let effective_deadline = if cond_clock == clockid {
+        abstime
+    } else {
+        converted_deadline = match clock_convert_between(clockid, cond_clock, abstime) {
+            Ok(deadline) => deadline,
+            Err(err) => return err,
+        };
+        &converted_deadline
+    };
+    unsafe { pthread_cond_timedwait(cond, mutex, effective_deadline) }
 }
 
 // ---------------------------------------------------------------------------
@@ -4634,14 +5220,35 @@ pub unsafe extern "C" fn pthread_timedjoin_np(
     retval: *mut *mut c_void,
     abstime: *const libc::timespec,
 ) -> c_int {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !is_managed_thread_handle(thread)
+        && let Some(host_addr) =
+            crate::host_resolve::resolve_host_symbol_raw("pthread_timedjoin_np")
+    {
+        let host_timedjoin: unsafe extern "C" fn(
+            libc::pthread_t,
+            *mut *mut c_void,
+            *const libc::timespec,
+        ) -> c_int = unsafe { core::mem::transmute(host_addr) };
+        return unsafe { host_timedjoin(thread, retval, abstime) };
+    }
     if abstime.is_null() {
         // NULL timeout = blocking join.
         return unsafe { native_pthread_join(thread, retval) };
     }
+    if !absolute_timespec_valid(abstime) {
+        return libc::EINVAL;
+    }
     let thread_key = thread as usize;
+    let handle_ptr = thread as *mut ThreadHandle;
     let my_tid = core_self_tid();
 
     // Self-join detection.
+    if let Some(my_handle) = core_handle_for_tid(my_tid)
+        && handle_ptr == my_handle
+    {
+        return libc::EDEADLK;
+    }
     if my_tid > 0 && thread_key == my_tid as usize {
         return libc::EDEADLK;
     }
@@ -4652,15 +5259,20 @@ pub unsafe extern "C" fn pthread_timedjoin_np(
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         match registry.get(&thread_key) {
-            Some(&raw) => {
-                let hp = raw as *mut ThreadHandle;
+            Some(record) => {
+                let hp = record.handle_raw as *mut ThreadHandle;
                 let state = unsafe { (*hp).state.load(Ordering::Acquire) };
                 if state == THREAD_DETACHED || state == THREAD_JOINED {
                     return libc::EINVAL;
                 }
                 hp
             }
-            None => return libc::ESRCH,
+            None => {
+                if is_detached_thread_handle(thread) {
+                    return libc::EINVAL;
+                }
+                return libc::ESRCH;
+            }
         }
     };
 
@@ -4704,7 +5316,26 @@ pub unsafe extern "C" fn pthread_tryjoin_np(
     thread: libc::pthread_t,
     retval: *mut *mut c_void,
 ) -> c_int {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !is_managed_thread_handle(thread)
+        && let Some(host_addr) = crate::host_resolve::resolve_host_symbol_raw("pthread_tryjoin_np")
+    {
+        let host_tryjoin: unsafe extern "C" fn(libc::pthread_t, *mut *mut c_void) -> c_int =
+            unsafe { core::mem::transmute(host_addr) };
+        return unsafe { host_tryjoin(thread, retval) };
+    }
     let thread_key = thread as usize;
+    let handle_ptr = thread as *mut ThreadHandle;
+    let my_tid = core_self_tid();
+
+    if let Some(my_handle) = core_handle_for_tid(my_tid)
+        && handle_ptr == my_handle
+    {
+        return libc::EDEADLK;
+    }
+    if my_tid > 0 && thread_key == my_tid as usize {
+        return libc::EDEADLK;
+    }
 
     // Check if thread is finished without removing from registry.
     {
@@ -4712,8 +5343,8 @@ pub unsafe extern "C" fn pthread_tryjoin_np(
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         match registry.get(&thread_key) {
-            Some(&raw) => {
-                let handle_ptr = raw as *mut ThreadHandle;
+            Some(record) => {
+                let handle_ptr = record.handle_raw as *mut ThreadHandle;
                 // SAFETY: registry stores valid handles.
                 let state = unsafe { (*handle_ptr).state.load(Ordering::Acquire) };
                 match state {
@@ -4729,7 +5360,12 @@ pub unsafe extern "C" fn pthread_tryjoin_np(
                     }
                 }
             }
-            None => return libc::ESRCH,
+            None => {
+                if is_detached_thread_handle(thread) {
+                    return libc::EINVAL;
+                }
+                return libc::ESRCH;
+            }
         }
     }
 
@@ -4748,6 +5384,19 @@ pub unsafe extern "C" fn pthread_clockjoin_np(
     clockid: c_int,
     abstime: *const libc::timespec,
 ) -> c_int {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && !is_managed_thread_handle(thread)
+        && let Some(host_addr) =
+            crate::host_resolve::resolve_host_symbol_raw("pthread_clockjoin_np")
+    {
+        let host_clockjoin: unsafe extern "C" fn(
+            libc::pthread_t,
+            *mut *mut c_void,
+            c_int,
+            *const libc::timespec,
+        ) -> c_int = unsafe { core::mem::transmute(host_addr) };
+        return unsafe { host_clockjoin(thread, retval, clockid, abstime) };
+    }
     if abstime.is_null() {
         return unsafe { native_pthread_join(thread, retval) };
     }
@@ -4755,29 +5404,10 @@ pub unsafe extern "C" fn pthread_clockjoin_np(
         return unsafe { pthread_timedjoin_np(thread, retval, abstime) };
     }
     // Convert from the specified clock to CLOCK_REALTIME.
-    let mut clock_now: libc::timespec = unsafe { std::mem::zeroed() };
-    let mut real_now: libc::timespec = unsafe { std::mem::zeroed() };
-    unsafe {
-        libc::syscall(libc::SYS_clock_gettime, clockid, &mut clock_now);
-        libc::syscall(libc::SYS_clock_gettime, libc::CLOCK_REALTIME, &mut real_now);
-    }
-    // delta = abstime - clock_now
-    let deadline = unsafe { &*abstime };
-    let delta_sec = deadline.tv_sec - clock_now.tv_sec;
-    let delta_nsec = deadline.tv_nsec - clock_now.tv_nsec;
-    // real_deadline = real_now + delta
-    let mut real_deadline = libc::timespec {
-        tv_sec: real_now.tv_sec + delta_sec,
-        tv_nsec: real_now.tv_nsec + delta_nsec,
+    let real_deadline = match clock_convert_to_realtime(clockid, abstime) {
+        Ok(deadline) => deadline,
+        Err(err) => return err,
     };
-    // Normalise nanoseconds.
-    if real_deadline.tv_nsec >= 1_000_000_000 {
-        real_deadline.tv_sec += 1;
-        real_deadline.tv_nsec -= 1_000_000_000;
-    } else if real_deadline.tv_nsec < 0 {
-        real_deadline.tv_sec -= 1;
-        real_deadline.tv_nsec += 1_000_000_000;
-    }
     unsafe { pthread_timedjoin_np(thread, retval, &real_deadline) }
 }
 
@@ -4793,6 +5423,13 @@ pub unsafe extern "C" fn pthread_kill(thread: libc::pthread_t, sig: c_int) -> c_
     // Validate signal number (0 is allowed for existence check).
     if !(0..=64).contains(&sig) {
         return libc::EINVAL;
+    }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && thread != native_pthread_self()
+        && !is_managed_thread_handle(thread)
+        && let Some(host_kill) = crate::host_resolve::host_pthread_kill_raw()
+    {
+        return unsafe { host_kill(thread, sig) };
     }
     match resolve_thread_tid(thread) {
         Some(tid) => {
@@ -4820,22 +5457,32 @@ pub unsafe extern "C" fn pthread_sigqueue(
     if !(1..=64).contains(&sig) {
         return libc::EINVAL;
     }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && thread != native_pthread_self()
+        && !is_managed_thread_handle(thread)
+        && let Some(host_sigqueue) = crate::host_resolve::host_pthread_sigqueue_raw()
+    {
+        return unsafe { host_sigqueue(thread, sig, value) };
+    }
     match resolve_thread_tid(thread) {
         Some(tid) => {
             let pid = unsafe { libc::syscall(libc::SYS_getpid) } as i32;
-            // Build a siginfo_t structure with SI_QUEUE.
             let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
             info.si_signo = sig;
+            info.si_errno = 0;
             info.si_code = libc::SI_QUEUE;
-            // si_pid and si_uid are part of the _kill union in siginfo_t.
-            // Set them via raw byte access for portability.
+            // Encode sender identity and queued payload using the Linux queue
+            // siginfo layout instead of hard-coded byte offsets.
+            let info_words = (&mut info as *mut libc::siginfo_t).cast::<u32>();
+            let caller_uid = unsafe { libc::syscall(libc::SYS_getuid) } as u32;
+            let value_bits = value.sival_ptr as usize as u64;
             unsafe {
-                let p = &mut info as *mut libc::siginfo_t as *mut u8;
-                // si_pid at offset 16, si_uid at offset 20 on x86_64
-                *(p.add(16).cast::<i32>()) = pid;
-                *(p.add(20).cast::<u32>()) = libc::syscall(libc::SYS_getuid) as libc::uid_t;
-                // si_value at offset 24
-                *(p.add(24).cast::<libc::sigval>()) = value;
+                *info_words.add(3) = pid as u32;
+                *info_words.add(4) = caller_uid;
+                *info_words.add(5) = value_bits as u32;
+                if std::mem::size_of::<usize>() > 4 {
+                    *info_words.add(6) = (value_bits >> 32) as u32;
+                }
             }
             let ret = unsafe {
                 libc::syscall(
@@ -4871,6 +5518,13 @@ pub unsafe extern "C" fn pthread_getaffinity_np(
 ) -> c_int {
     if cpuset.is_null() {
         return libc::EINVAL;
+    }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && thread != native_pthread_self()
+        && !is_managed_thread_handle(thread)
+        && let Some(host_getaffinity) = crate::host_resolve::host_pthread_getaffinity_np_raw()
+    {
+        return unsafe { host_getaffinity(thread, cpusetsize, cpuset) };
     }
     match resolve_thread_tid(thread) {
         Some(tid) => {
@@ -4909,6 +5563,13 @@ pub unsafe extern "C" fn pthread_setaffinity_np(
     if cpuset.is_null() {
         return libc::EINVAL;
     }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && thread != native_pthread_self()
+        && !is_managed_thread_handle(thread)
+        && let Some(host_setaffinity) = crate::host_resolve::host_pthread_setaffinity_np_raw()
+    {
+        return unsafe { host_setaffinity(thread, cpusetsize, cpuset) };
+    }
     match resolve_thread_tid(thread) {
         Some(tid) => {
             let ret =
@@ -4929,16 +5590,18 @@ pub unsafe extern "C" fn pthread_setaffinity_np(
 
 /// Obsolete POSIX `pthread_setconcurrency` — set concurrency level (no-op on Linux).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn pthread_setconcurrency(_level: c_int) -> c_int {
-    // Linux uses 1:1 threading model; concurrency hint is meaningless.
+pub unsafe extern "C" fn pthread_setconcurrency(level: c_int) -> c_int {
+    if level < 0 {
+        return libc::EINVAL;
+    }
+    PTHREAD_CONCURRENCY_LEVEL.store(level, Ordering::Release);
     0
 }
 
 /// Obsolete POSIX `pthread_getconcurrency` — get concurrency level.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_getconcurrency() -> c_int {
-    // Always 0 (system decides).
-    0
+    PTHREAD_CONCURRENCY_LEVEL.load(Ordering::Acquire)
 }
 
 /// Deprecated `pthread_yield` — yield processor (GNU extension, same as sched_yield).
@@ -4956,31 +5619,18 @@ pub unsafe extern "C" fn pthread_yield() -> c_int {
 /// POSIX `pthread_exit` — terminate calling thread.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
-    // Store the return value for any thread that calls pthread_join.
     let tid = core_self_tid();
-    if let Ok(reg) = THREAD_HANDLE_REGISTRY.lock() {
-        for &raw in reg.values() {
-            let handle_ptr = raw as *mut ThreadHandle;
-            // SAFETY: registry only stores live handles.
-            let handle_tid = unsafe { (*handle_ptr).tid.load(Ordering::Acquire) };
-            if handle_tid == tid {
-                // SAFETY: retval is synchronized — written here before state transition,
-                // read by joiner after observing THREAD_FINISHED.
-                // SAFETY: retval and state are synchronized — written here before
-                // state transition, read by joiner after observing THREAD_FINISHED.
-                unsafe {
-                    *(*handle_ptr).retval.get() = retval as usize;
-                    (*handle_ptr)
-                        .state
-                        .store(THREAD_FINISHED, Ordering::Release);
-                }
-                break;
-            }
-        }
+    if let Some(handle_ptr) = core_handle_for_tid(tid) {
+        unsafe { core_exit_current_thread(handle_ptr, retval as usize) };
     }
-    // Exit the thread via the kernel. SYS_exit terminates only the calling thread.
+
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && let Some(host_exit) = crate::host_resolve::host_pthread_exit_raw()
+    {
+        unsafe { host_exit(retval) };
+    }
+
     unsafe { libc::syscall(libc::SYS_exit, 0) };
-    // Unreachable, but compiler needs a divergent path.
     loop {
         std::hint::spin_loop();
     }
@@ -4988,8 +5638,9 @@ pub unsafe extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
 
 /// GNU `pthread_getcpuclockid` — get CPU-time clock for a thread.
 ///
-/// Native implementation using kernel CPUCLOCK formula:
-/// `clockid = (~tid << 3) | 2` (CPUCLOCK_SCHED flag for thread CPU time).
+/// Native implementation using the Linux kernel per-thread CPUCLOCK formula:
+/// `clockid = (~tid << 3) | 6`
+/// (`CPUCLOCK_SCHED | CPUCLOCK_PERTHREAD_MASK` for thread CPU time).
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_getcpuclockid(
     thread: libc::pthread_t,
@@ -4998,10 +5649,18 @@ pub unsafe extern "C" fn pthread_getcpuclockid(
     if clockid.is_null() {
         return libc::EINVAL;
     }
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && thread != native_pthread_self()
+        && !is_managed_thread_handle(thread)
+        && let Some(host_getcpuclockid) = crate::host_resolve::host_pthread_getcpuclockid_raw()
+    {
+        return unsafe { host_getcpuclockid(thread, clockid) };
+    }
     match resolve_thread_tid(thread) {
         Some(tid) => {
-            // Kernel CPUCLOCK formula: (~pid << 3) | CPUCLOCK_SCHED(2)
-            let cid: libc::clockid_t = (!tid as libc::clockid_t) << 3 | 2;
+            // Linux per-thread CPUCLOCK formula:
+            // (~tid << 3) | (CPUCLOCK_SCHED(2) | CPUCLOCK_PERTHREAD_MASK(4))
+            let cid: libc::clockid_t = (!tid as libc::clockid_t) << 3 | 6;
             // Validate that the clock is usable via clock_getres.
             let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
             let ret = unsafe {
@@ -5022,6 +5681,13 @@ pub unsafe extern "C" fn pthread_getcpuclockid(
 /// Native implementation using `THREAD_HANDLE_REGISTRY` lookup.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_gettid_np(thread: libc::pthread_t) -> libc::pid_t {
+    if !FORCE_NATIVE_THREADING.load(Ordering::Acquire)
+        && thread != native_pthread_self()
+        && !is_managed_thread_handle(thread)
+        && let Some(host_gettid) = crate::host_resolve::host_pthread_gettid_np_raw()
+    {
+        return unsafe { host_gettid(thread) };
+    }
     resolve_thread_tid(thread).unwrap_or(-1) as libc::pid_t
 }
 
@@ -5032,7 +5698,7 @@ pub unsafe extern "C" fn pthread_attr_getsigmask_np(
     attr: *const libc::pthread_attr_t,
     sigmask: *mut libc::sigset_t,
 ) -> c_int {
-    if attr.is_null() || sigmask.is_null() {
+    if managed_attr_data_ptr_const(attr).is_none() || sigmask.is_null() {
         return libc::EINVAL;
     }
     let key = attr as usize;
@@ -5064,7 +5730,7 @@ pub unsafe extern "C" fn pthread_attr_setsigmask_np(
     if attr.is_null() {
         return libc::EINVAL;
     }
-    let Some(data) = attr_data_ptr(attr) else {
+    let Some(data) = managed_attr_data_ptr(attr) else {
         return libc::EINVAL;
     };
     let key = attr as usize;
@@ -5144,7 +5810,7 @@ pub unsafe extern "C" fn pthread_getattr_default_np(attr: *mut libc::pthread_att
 /// Native implementation using global default attr state.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn pthread_setattr_default_np(attr: *const libc::pthread_attr_t) -> c_int {
-    let Some(data) = attr_data_ptr_const(attr) else {
+    let Some(data) = managed_attr_data_ptr_const(attr) else {
         return libc::EINVAL;
     };
     let key = attr as usize;

@@ -72,16 +72,40 @@ fn maybe_pin_thread() {
 
     #[cfg(target_os = "linux")]
     unsafe {
+        fn first_allowed_cpu() -> Option<usize> {
+            unsafe {
+                let mut set: libc::cpu_set_t = std::mem::zeroed();
+                let rc = libc::sched_getaffinity(
+                    0,
+                    std::mem::size_of::<libc::cpu_set_t>(),
+                    (&mut set as *mut libc::cpu_set_t).cast(),
+                );
+                if rc != 0 {
+                    return None;
+                }
+                for cpu in 0..libc::CPU_SETSIZE as usize {
+                    if libc::CPU_ISSET(cpu, &set) {
+                        return Some(cpu);
+                    }
+                }
+                None
+            }
+        }
+
+        let Some(cpu) = first_allowed_cpu() else {
+            eprintln!("MEMBRANE_BENCH_META pinning_skipped no_allowed_cpu");
+            return;
+        };
         // SAFETY: Best-effort pinning for benchmarking determinism. Failure is not fatal.
         let mut set: libc::cpu_set_t = std::mem::zeroed();
         libc::CPU_ZERO(&mut set);
-        libc::CPU_SET(0, &mut set);
+        libc::CPU_SET(cpu, &mut set);
         let rc = libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set);
         if rc != 0 {
             let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             eprintln!("MEMBRANE_BENCH_META pinning_failed errno={errno}");
         } else {
-            println!("MEMBRANE_BENCH_META pinned_to_cpu=0");
+            println!("MEMBRANE_BENCH_META pinned_to_cpu={cpu}");
         }
     }
 }

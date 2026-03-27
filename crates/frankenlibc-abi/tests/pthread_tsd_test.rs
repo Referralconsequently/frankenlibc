@@ -3,6 +3,7 @@
 //! Integration tests for pthread thread-specific data (TSD / pthread_key_*).
 
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, Once};
 
 use frankenlibc_abi::pthread_abi::{
@@ -38,6 +39,9 @@ struct ThreadTsdCtx {
 const TSD_SET_FAILED: usize = usize::MAX;
 
 #[cfg(target_arch = "x86_64")]
+static TSD_DESTRUCTOR_LAST: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(target_arch = "x86_64")]
 unsafe extern "C" fn tsd_roundtrip_start(arg: *mut c_void) -> *mut c_void {
     if arg.is_null() {
         return TSD_SET_FAILED as *mut c_void;
@@ -50,6 +54,11 @@ unsafe extern "C" fn tsd_roundtrip_start(arg: *mut c_void) -> *mut c_void {
         return TSD_SET_FAILED as *mut c_void;
     }
     unsafe { pthread_getspecific(ctx.key) }
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn record_tsd_destructor(value: *mut c_void) {
+    TSD_DESTRUCTOR_LAST.store(value as usize, Ordering::Release);
 }
 
 #[test]
@@ -280,6 +289,52 @@ fn key_create_many_keys_are_unique() {
     for &key in &keys {
         assert_eq!(unsafe { pthread_key_delete(key) }, 0);
     }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn tsd_destructor_runs_on_thread_exit() {
+    let _guard = lock_and_force_native();
+    TSD_DESTRUCTOR_LAST.store(0, Ordering::Release);
+
+    let mut key: libc::pthread_key_t = 0;
+    assert_eq!(
+        unsafe { pthread_key_create(&mut key, Some(record_tsd_destructor)) },
+        0
+    );
+
+    let mut ctx = ThreadTsdCtx {
+        key,
+        value: 0x4444,
+        observed_initial: usize::MAX,
+    };
+    let mut tid: libc::pthread_t = 0;
+    assert_eq!(
+        unsafe {
+            pthread_create(
+                &mut tid as *mut libc::pthread_t,
+                std::ptr::null(),
+                Some(tsd_roundtrip_start),
+                (&mut ctx as *mut ThreadTsdCtx).cast::<c_void>(),
+            )
+        },
+        0
+    );
+
+    let mut retval: *mut c_void = std::ptr::null_mut();
+    assert_eq!(
+        unsafe { pthread_join(tid, &mut retval as *mut *mut c_void) },
+        0
+    );
+    assert_eq!(retval as usize, ctx.value);
+    assert_eq!(ctx.observed_initial, 0);
+    assert_eq!(
+        TSD_DESTRUCTOR_LAST.load(Ordering::Acquire),
+        ctx.value,
+        "thread exit should run the registered TSD destructor"
+    );
+
+    assert_eq!(unsafe { pthread_key_delete(key) }, 0);
 }
 
 #[cfg(target_arch = "x86_64")]

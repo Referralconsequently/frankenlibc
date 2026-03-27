@@ -507,6 +507,7 @@ pub unsafe extern "C" fn execvpe(
 /// Internal file action kinds.
 enum SpawnFileAction {
     Close(c_int),
+    CloseFrom(c_int),
     Dup2 {
         oldfd: c_int,
         newfd: c_int,
@@ -521,6 +522,7 @@ enum SpawnFileAction {
         path: Vec<u8>,
     },
     Fchdir(c_int),
+    TcSetPgrp(c_int),
 }
 
 /// Internal file actions list, heap-allocated.
@@ -536,6 +538,8 @@ struct SpawnAttrs {
     sigmask: u64,
     schedpolicy: c_int,
     schedparam_priority: c_int,
+    cgroup_fd: c_int,
+    has_cgroup: bool,
 }
 
 /// Magic value to tag our internal pointers.
@@ -606,6 +610,8 @@ pub unsafe extern "C" fn posix_spawnattr_init(attrp: *mut c_void) -> c_int {
         sigmask: 0,
         schedpolicy: 0,
         schedparam_priority: 0,
+        cgroup_fd: -1,
+        has_cgroup: false,
     });
     let raw = Box::into_raw(attr);
     let p = attrp as *mut u8;
@@ -907,6 +913,22 @@ unsafe fn read_file_actions(fa_ptr: *const c_void) -> Option<&'static SpawnFileA
     Some(unsafe { &*raw })
 }
 
+unsafe fn read_file_actions_mut(fa_ptr: *mut c_void) -> Option<&'static mut SpawnFileActions> {
+    if fa_ptr.is_null() {
+        return None;
+    }
+    let p = fa_ptr as *mut u8;
+    let magic = unsafe { *(p.add(FA_MAGIC_OFF) as *const u64) };
+    if magic != SPAWN_FA_MAGIC {
+        return None;
+    }
+    let raw = unsafe { *(p.add(FA_PTR_OFF) as *const *mut SpawnFileActions) };
+    if raw.is_null() {
+        return None;
+    }
+    Some(unsafe { &mut *raw })
+}
+
 /// Apply spawn attributes in the child process.
 /// Returns 0 on success, errno on failure.
 unsafe fn apply_spawn_attrs(attr: &SpawnAttrs) -> c_int {
@@ -1010,6 +1032,40 @@ unsafe fn apply_spawn_attrs(attr: &SpawnAttrs) -> c_int {
         }
     }
 
+    if attr.has_cgroup {
+        let cgroup_name = b"cgroup.procs\0";
+        let fd = unsafe {
+            libc::syscall(
+                libc::SYS_openat,
+                attr.cgroup_fd,
+                cgroup_name.as_ptr().cast::<c_char>(),
+                libc::O_WRONLY,
+                0,
+            )
+        } as c_int;
+        if fd < 0 {
+            return std::io::Error::last_os_error()
+                .raw_os_error()
+                .unwrap_or(libc::EBADF);
+        }
+
+        let current = b"0";
+        let write_rc = unsafe {
+            libc::syscall(
+                libc::SYS_write,
+                fd,
+                current.as_ptr().cast::<c_void>(),
+                current.len(),
+            )
+        };
+        let close_rc = unsafe { libc::syscall(libc::SYS_close, fd) };
+        if write_rc < 0 || close_rc < 0 {
+            return std::io::Error::last_os_error()
+                .raw_os_error()
+                .unwrap_or(libc::EIO);
+        }
+    }
+
     0
 }
 
@@ -1064,6 +1120,24 @@ unsafe fn apply_file_actions(fa: &SpawnFileActions) -> c_int {
                     }
                 }
             }
+            SpawnFileAction::CloseFrom(from) => {
+                let rc =
+                    unsafe { libc::syscall(libc::SYS_close_range, *from, u32::MAX, 0) } as c_int;
+                if rc < 0 {
+                    let err = std::io::Error::last_os_error()
+                        .raw_os_error()
+                        .unwrap_or(libc::EINVAL);
+                    if err != libc::ENOSYS {
+                        return err;
+                    }
+
+                    let max_fd = unsafe { libc::sysconf(libc::_SC_OPEN_MAX) };
+                    let end = if max_fd > 0 { max_fd as c_int } else { 1024 };
+                    for fd in *from..end {
+                        let _ = unsafe { libc::syscall(libc::SYS_close, fd) };
+                    }
+                }
+            }
             SpawnFileAction::Chdir { path } => {
                 let rc = unsafe { libc::syscall(libc::SYS_chdir, path.as_ptr()) };
                 if rc < 0 {
@@ -1078,6 +1152,18 @@ unsafe fn apply_file_actions(fa: &SpawnFileActions) -> c_int {
                     return std::io::Error::last_os_error()
                         .raw_os_error()
                         .unwrap_or(libc::EBADF);
+                }
+            }
+            SpawnFileAction::TcSetPgrp(fd) => {
+                const TIOCSPGRP: std::os::raw::c_ulong = 0x5410;
+                let pgrp = unsafe { libc::syscall(libc::SYS_getpgrp) as libc::pid_t };
+                let rc = unsafe {
+                    libc::syscall(libc::SYS_ioctl, *fd, TIOCSPGRP, &pgrp as *const libc::pid_t)
+                } as c_int;
+                if rc < 0 {
+                    return std::io::Error::last_os_error()
+                        .raw_os_error()
+                        .unwrap_or(libc::ENOTTY);
                 }
             }
         }
@@ -1333,16 +1419,9 @@ pub unsafe extern "C" fn posix_spawn_file_actions_addclose(
     if file_actions.is_null() || fd < 0 {
         return libc::EINVAL;
     }
-    let p = file_actions as *mut u8;
-    let magic = unsafe { *(p.add(FA_MAGIC_OFF) as *const u64) };
-    if magic != SPAWN_FA_MAGIC {
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
         return libc::EINVAL;
-    }
-    let raw = unsafe { *(p.add(FA_PTR_OFF) as *mut *mut SpawnFileActions) };
-    if raw.is_null() {
-        return libc::EINVAL;
-    }
-    let fa = unsafe { &mut *raw };
+    };
     fa.actions.push(SpawnFileAction::Close(fd));
     0
 }
@@ -1357,16 +1436,9 @@ pub unsafe extern "C" fn posix_spawn_file_actions_adddup2(
     if file_actions.is_null() || oldfd < 0 || newfd < 0 {
         return libc::EINVAL;
     }
-    let p = file_actions as *mut u8;
-    let magic = unsafe { *(p.add(FA_MAGIC_OFF) as *const u64) };
-    if magic != SPAWN_FA_MAGIC {
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
         return libc::EINVAL;
-    }
-    let raw = unsafe { *(p.add(FA_PTR_OFF) as *mut *mut SpawnFileActions) };
-    if raw.is_null() {
-        return libc::EINVAL;
-    }
-    let fa = unsafe { &mut *raw };
+    };
     fa.actions.push(SpawnFileAction::Dup2 { oldfd, newfd });
     0
 }
@@ -1383,19 +1455,12 @@ pub unsafe extern "C" fn posix_spawn_file_actions_addopen(
     if file_actions.is_null() || fd < 0 || path.is_null() {
         return libc::EINVAL;
     }
-    let p_fa = file_actions as *mut u8;
-    let magic = unsafe { *(p_fa.add(FA_MAGIC_OFF) as *const u64) };
-    if magic != SPAWN_FA_MAGIC {
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
         return libc::EINVAL;
-    }
-    let raw = unsafe { *(p_fa.add(FA_PTR_OFF) as *mut *mut SpawnFileActions) };
-    if raw.is_null() {
-        return libc::EINVAL;
-    }
+    };
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let mut path_bytes = path_cstr.to_bytes().to_vec();
     path_bytes.push(0); // NUL terminate for later syscall
-    let fa = unsafe { &mut *raw };
     fa.actions.push(SpawnFileAction::Open {
         fd,
         path: path_bytes,
@@ -1418,19 +1483,12 @@ pub unsafe extern "C" fn posix_spawn_file_actions_addchdir_np(
     if file_actions.is_null() || path.is_null() {
         return libc::EINVAL;
     }
-    let p = file_actions as *mut u8;
-    let magic = unsafe { *(p.add(FA_MAGIC_OFF) as *const u64) };
-    if magic != SPAWN_FA_MAGIC {
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
         return libc::EINVAL;
-    }
-    let raw = unsafe { *(p.add(FA_PTR_OFF) as *mut *mut SpawnFileActions) };
-    if raw.is_null() {
-        return libc::EINVAL;
-    }
+    };
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let mut path_bytes = path_cstr.to_bytes().to_vec();
     path_bytes.push(0); // NUL terminate
-    let fa = unsafe { &mut *raw };
     fa.actions.push(SpawnFileAction::Chdir { path: path_bytes });
     0
 }
@@ -1448,16 +1506,62 @@ pub unsafe extern "C" fn posix_spawn_file_actions_addfchdir_np(
     if file_actions.is_null() || fd < 0 {
         return libc::EINVAL;
     }
-    let p = file_actions as *mut u8;
-    let magic = unsafe { *(p.add(FA_MAGIC_OFF) as *const u64) };
-    if magic != SPAWN_FA_MAGIC {
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
         return libc::EINVAL;
-    }
-    let raw = unsafe { *(p.add(FA_PTR_OFF) as *mut *mut SpawnFileActions) };
-    if raw.is_null() {
-        return libc::EINVAL;
-    }
-    let fa = unsafe { &mut *raw };
+    };
     fa.actions.push(SpawnFileAction::Fchdir(fd));
+    0
+}
+
+pub unsafe fn posix_spawn_file_actions_addclosefrom_np_impl(
+    file_actions: *mut c_void,
+    from: c_int,
+) -> c_int {
+    if file_actions.is_null() || from < 0 {
+        return libc::EINVAL;
+    }
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
+        return libc::EINVAL;
+    };
+    fa.actions.push(SpawnFileAction::CloseFrom(from));
+    0
+}
+
+pub unsafe fn posix_spawn_file_actions_addtcsetpgrp_np_impl(
+    file_actions: *mut c_void,
+    fd: c_int,
+) -> c_int {
+    if file_actions.is_null() || fd < 0 {
+        return libc::EINVAL;
+    }
+    let Some(fa) = (unsafe { read_file_actions_mut(file_actions) }) else {
+        return libc::EINVAL;
+    };
+    fa.actions.push(SpawnFileAction::TcSetPgrp(fd));
+    0
+}
+
+pub unsafe fn posix_spawnattr_getcgroup_np_impl(attrp: *const c_void, cgroup: *mut c_int) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if cgroup.is_null() {
+        return libc::EINVAL;
+    }
+    unsafe {
+        *cgroup = if attr.has_cgroup { attr.cgroup_fd } else { -1 };
+    }
+    0
+}
+
+pub unsafe fn posix_spawnattr_setcgroup_np_impl(attrp: *mut c_void, cgroup: c_int) -> c_int {
+    let Some(attr) = (unsafe { read_spawn_attrs_mut(attrp) }) else {
+        return libc::EINVAL;
+    };
+    if cgroup < 0 {
+        return libc::EINVAL;
+    }
+    attr.cgroup_fd = cgroup;
+    attr.has_cgroup = true;
     0
 }

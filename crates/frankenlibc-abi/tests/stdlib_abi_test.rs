@@ -12,16 +12,18 @@ use frankenlibc_abi::stdlib_abi::{
     strtoull, system, unsetenv,
 };
 use frankenlibc_abi::unistd_abi::{
-    creat64, ctermid, ether_aton, ether_aton_r, ether_ntoa, ether_ntoa_r, fpathconf, fstat64,
-    fstatat64, ftruncate64, getdomainname, gethostid, getlogin, getlogin_r, getopt, getopt_long,
-    getpagesize, grantpt, herror, hstrerror, lockf, lseek64, lstat64, mkdtemp, mq_close,
-    mq_getattr, mq_open, mq_receive, mq_send, mq_setattr, mq_unlink, msgctl, msgget, msgrcv,
-    msgsnd, nice, open64, pathconf, posix_fallocate, posix_madvise, posix_openpt, pread64, ptsname,
-    pwrite64, sched_get_priority_max, sched_get_priority_min, sched_getparam, sched_getscheduler,
-    sched_rr_get_interval, sched_setparam, sched_setscheduler, semctl, semget, semop,
-    setdomainname, sethostname, shm_open, shm_unlink, shmat, shmctl, shmdt, shmget, sigqueue,
-    sigtimedwait, sigwaitinfo, stat64, sysconf, timer_create, timer_delete, timer_getoverrun,
-    timer_gettime, timer_settime, truncate64, ttyname, ttyname_r, unlockpt,
+    __sched_cpualloc, __sched_cpucount, __sched_cpufree, creat64, ctermid, ether_aton,
+    ether_aton_r, ether_ntoa, ether_ntoa_r, eventfd_read, eventfd_write, fpathconf, fstat64,
+    fstatat64, ftruncate64, getcpu, getdomainname, gethostid, getlogin, getlogin_r, getopt,
+    getopt_long, getpagesize, grantpt, herror, hstrerror, lockf, lseek64, lstat64, mkdtemp,
+    mount_setattr, mq_close, mq_getattr, mq_open, mq_receive, mq_send, mq_setattr, mq_unlink,
+    msgctl, msgget, msgrcv, msgsnd, nice, open64, pathconf, posix_fadvise, posix_fallocate,
+    posix_madvise, posix_openpt, pread64, ptsname, pwrite64, renameat2, sched_get_priority_max,
+    sched_get_priority_min, sched_getaffinity, sched_getcpu, sched_getparam, sched_getscheduler,
+    sched_rr_get_interval, sched_setaffinity, sched_setparam, sched_setscheduler, semctl, semget,
+    semop, setdomainname, sethostname, shm_open, shm_unlink, shmat, shmctl, shmdt, shmget,
+    signalfd4, sigqueue, sigtimedwait, sigwaitinfo, stat64, sysconf, timer_create, timer_delete,
+    timer_getoverrun, timer_gettime, timer_settime, truncate64, ttyname, ttyname_r, unlockpt,
 };
 use std::ffi::CString;
 use std::os::fd::AsRawFd;
@@ -66,6 +68,7 @@ struct EtherAddr {
 static SHM_NAME_NONCE: AtomicU64 = AtomicU64::new(1);
 static MQ_NAME_NONCE: AtomicU64 = AtomicU64::new(1);
 static GETOPT_TEST_GUARD: Mutex<()> = Mutex::new(());
+static SCHED_AFFINITY_TEST_GUARD: Mutex<()> = Mutex::new(());
 
 fn unique_shm_name(prefix: &str) -> CString {
     let n = SHM_NAME_NONCE.fetch_add(1, Ordering::Relaxed);
@@ -117,6 +120,48 @@ fn atoll_parses_i64_limits() {
 
     assert_eq!(max, i64::MAX);
     assert_eq!(min, i64::MIN);
+}
+
+#[test]
+fn sched_getaffinity_returns_zero_on_success() {
+    let _guard = SCHED_AFFINITY_TEST_GUARD
+        .lock()
+        .expect("affinity test guard lock should succeed");
+    let mut cpuset: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+    let rc = unsafe {
+        sched_getaffinity(
+            0,
+            std::mem::size_of::<libc::cpu_set_t>(),
+            (&mut cpuset as *mut libc::cpu_set_t).cast(),
+        )
+    };
+    assert_eq!(rc, 0, "sched_getaffinity should normalize success to 0");
+}
+
+#[test]
+fn sched_setaffinity_accepts_current_mask() {
+    let _guard = SCHED_AFFINITY_TEST_GUARD
+        .lock()
+        .expect("affinity test guard lock should succeed");
+    let mut cpuset: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+    assert_eq!(
+        unsafe {
+            sched_getaffinity(
+                0,
+                std::mem::size_of::<libc::cpu_set_t>(),
+                (&mut cpuset as *mut libc::cpu_set_t).cast(),
+            )
+        },
+        0
+    );
+    let rc = unsafe {
+        sched_setaffinity(
+            0,
+            std::mem::size_of::<libc::cpu_set_t>(),
+            (&cpuset as *const libc::cpu_set_t).cast(),
+        )
+    };
+    assert_eq!(rc, 0, "sched_setaffinity should accept the current mask");
 }
 
 #[test]
@@ -969,7 +1014,15 @@ fn sigqueue_invalid_signal_sets_einval() {
     // SAFETY: getpid has no pointer preconditions.
     let pid = unsafe { libc::getpid() };
     // SAFETY: invalid signal number should deterministically fail.
-    let rc = unsafe { sigqueue(pid, -1, ptr::null()) };
+    let rc = unsafe {
+        sigqueue(
+            pid,
+            -1,
+            libc::sigval {
+                sival_ptr: ptr::null_mut(),
+            },
+        )
+    };
     // SAFETY: read errno after call.
     let err = unsafe { *__errno_location() };
 
@@ -2609,4 +2662,135 @@ fn on_exit_handler_called_during_exit_in_child() {
 
     assert_eq!(n, 1, "on_exit handler should write 1 byte to pipe");
     assert_eq!(buf[0], 42, "on_exit handler should receive exit status 42");
+}
+
+#[test]
+fn eventfd_read_invalid_fd_preserves_ebadf() {
+    let mut value = 0_u64;
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { eventfd_read(-1, &mut value) };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, -1);
+    assert_eq!(err, libc::EBADF);
+}
+
+#[test]
+fn eventfd_write_invalid_fd_preserves_ebadf() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { eventfd_write(-1, 1) };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, -1);
+    assert_eq!(err, libc::EBADF);
+}
+
+#[test]
+fn posix_fadvise_invalid_fd_returns_ebadf_directly() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { posix_fadvise(-1, 0, 0, 0) };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, libc::EBADF);
+    assert_eq!(err, 0, "posix_fadvise should not report errors via errno");
+}
+
+#[test]
+fn renameat2_null_paths_set_efault() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { renameat2(libc::AT_FDCWD, ptr::null(), libc::AT_FDCWD, ptr::null(), 0) };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, -1);
+    assert_eq!(err, libc::EFAULT);
+}
+
+#[test]
+fn getcpu_invalid_pointer_sets_efault() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe {
+        getcpu(
+            std::ptr::dangling_mut::<libc::c_uint>(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        )
+    };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, -1);
+    assert_eq!(err, libc::EFAULT);
+}
+
+#[test]
+fn signalfd4_invalid_flags_set_einval() {
+    let mut mask: libc::sigset_t = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::sigemptyset(&mut mask);
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { signalfd4(-1, (&mask as *const libc::sigset_t).cast(), -1) };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, -1);
+    assert_eq!(err, libc::EINVAL);
+}
+
+#[test]
+fn mount_setattr_null_path_sets_efault_or_perm() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let rc = unsafe { mount_setattr(libc::AT_FDCWD, ptr::null(), 0, ptr::null_mut(), 0) };
+    let err = unsafe { *__errno_location() };
+
+    assert_eq!(rc, -1);
+    assert!(
+        matches!(
+            err,
+            libc::EFAULT | libc::EPERM | libc::EINVAL | libc::ENOSYS
+        ),
+        "unexpected errno from mount_setattr(null): {err}"
+    );
+}
+
+#[test]
+fn sched_getcpu_success_does_not_set_errno() {
+    unsafe {
+        *__errno_location() = 0;
+    }
+    let cpu = unsafe { sched_getcpu() };
+    let err = unsafe { *__errno_location() };
+
+    assert!(cpu >= 0, "sched_getcpu should succeed on Linux");
+    assert_eq!(err, 0, "sched_getcpu success should not touch errno");
+}
+
+#[test]
+fn sched_cpualloc_large_set_roundtrips_and_frees() {
+    const CPU_COUNT: libc::c_int = 4096;
+    let set = unsafe { __sched_cpualloc(CPU_COUNT) };
+    assert!(
+        !set.is_null(),
+        "__sched_cpualloc should allocate large cpusets"
+    );
+
+    let size = (CPU_COUNT as usize).div_ceil(8).max(128);
+    let bytes = unsafe { std::slice::from_raw_parts_mut(set.cast::<u8>(), size) };
+    bytes[0] = 0b0000_0011;
+    bytes[size - 1] = 0b1000_0000;
+
+    let count = unsafe { __sched_cpucount(size, set.cast()) };
+    assert_eq!(count, 3, "__sched_cpucount should count all set bits");
+
+    unsafe { __sched_cpufree(set) };
 }

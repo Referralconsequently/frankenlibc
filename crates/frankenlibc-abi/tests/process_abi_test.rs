@@ -11,10 +11,15 @@
 
 use std::ffi::{CString, c_char, c_int};
 use std::os::unix::fs::symlink;
+use std::os::unix::io::AsRawFd;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::process_abi::*;
+use frankenlibc_abi::unistd_abi::{
+    posix_spawn_file_actions_addclosefrom_np, posix_spawn_file_actions_addtcsetpgrp_np,
+    posix_spawnattr_getcgroup_np, posix_spawnattr_setcgroup_np,
+};
 
 /// Serializes tests that fork+wait with pid=-1 (wait, wait3) to prevent
 /// them from reaping children belonging to other concurrent tests.
@@ -365,6 +370,30 @@ fn file_actions_addfchdir_np() {
 }
 
 #[test]
+fn file_actions_addclosefrom_np() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let mut fa = AlignedBuf::new();
+    unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) };
+
+    let rc = unsafe { posix_spawn_file_actions_addclosefrom_np(fa.as_mut_ptr().cast(), 5) };
+    assert_eq!(rc, 0, "addclosefrom_np should succeed");
+
+    unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };
+}
+
+#[test]
+fn file_actions_addtcsetpgrp_np() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let mut fa = AlignedBuf::new();
+    unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) };
+
+    let rc = unsafe { posix_spawn_file_actions_addtcsetpgrp_np(fa.as_mut_ptr().cast(), 0) };
+    assert_eq!(rc, 0, "addtcsetpgrp_np should succeed");
+
+    unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };
+}
+
+#[test]
 fn file_actions_multiple() {
     let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
     let mut fa = AlignedBuf::new();
@@ -416,6 +445,30 @@ fn spawnattr_getpgroup_null_out() {
 
     let rc = unsafe { posix_spawnattr_getpgroup(attr.as_ptr().cast(), std::ptr::null_mut()) };
     assert_eq!(rc, libc::EINVAL);
+
+    unsafe { posix_spawnattr_destroy(attr.as_mut_ptr().cast()) };
+}
+
+#[test]
+fn spawnattr_cgroup_default_and_roundtrip() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let mut attr = AlignedBuf::new();
+    unsafe { posix_spawnattr_init(attr.as_mut_ptr().cast()) };
+
+    let mut cgroup = 123;
+    let rc = unsafe { posix_spawnattr_getcgroup_np(attr.as_ptr().cast(), &mut cgroup) };
+    assert_eq!(rc, 0);
+    assert_eq!(cgroup, -1, "default cgroup fd should be unset");
+
+    let dev_null = std::fs::File::open("/dev/null").unwrap();
+    let rc =
+        unsafe { posix_spawnattr_setcgroup_np(attr.as_mut_ptr().cast(), dev_null.as_raw_fd()) };
+    assert_eq!(rc, 0);
+
+    let mut out = -1;
+    let rc = unsafe { posix_spawnattr_getcgroup_np(attr.as_ptr().cast(), &mut out) };
+    assert_eq!(rc, 0);
+    assert_eq!(out, dev_null.as_raw_fd());
 
     unsafe { posix_spawnattr_destroy(attr.as_mut_ptr().cast()) };
 }
@@ -478,6 +531,59 @@ fn posix_spawnp_missing_binary_returns_enoent() {
         "posix_spawnp should surface ENOENT when PATH search finds nothing"
     );
     assert_eq!(pid, -1, "pid must remain unchanged on spawn failure");
+}
+
+#[test]
+fn posix_spawn_closefrom_np_closes_high_fd_in_child() {
+    let _lock = FORK_WAIT_ANY_LOCK.lock().unwrap();
+    let file = std::fs::File::open("/dev/null").unwrap();
+    let high_fd: c_int = 200;
+    let dup_rc = unsafe { libc::dup2(file.as_raw_fd(), high_fd) };
+    assert_eq!(
+        dup_rc, high_fd,
+        "dup2 should place test fd at a high descriptor"
+    );
+
+    let mut fa = AlignedBuf::new();
+    assert_eq!(
+        unsafe { posix_spawn_file_actions_init(fa.as_mut_ptr().cast()) },
+        0
+    );
+    assert_eq!(
+        unsafe { posix_spawn_file_actions_addclosefrom_np(fa.as_mut_ptr().cast(), high_fd) },
+        0
+    );
+
+    let shell = CString::new("/bin/sh").unwrap();
+    let script = CString::new(format!("test ! -e /proc/self/fd/{high_fd}")).unwrap();
+    let argv: [*const c_char; 4] = [
+        shell.as_ptr(),
+        c"-c".as_ptr(),
+        script.as_ptr(),
+        std::ptr::null(),
+    ];
+    let mut pid: libc::pid_t = 0;
+    let rc = unsafe {
+        posix_spawn(
+            &mut pid,
+            shell.as_ptr(),
+            fa.as_ptr().cast(),
+            std::ptr::null(),
+            argv.as_ptr().cast(),
+            std::ptr::null(),
+        )
+    };
+    assert_eq!(rc, 0, "posix_spawn with closefrom_np should succeed");
+
+    let mut status = 0;
+    assert_eq!(unsafe { libc::waitpid(pid, &mut status, 0) }, pid);
+    assert!(
+        libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+        "child should observe fd {high_fd} closed after closefrom_np"
+    );
+
+    assert_eq!(unsafe { libc::close(high_fd) }, 0);
+    unsafe { posix_spawn_file_actions_destroy(fa.as_mut_ptr().cast()) };
 }
 
 #[test]

@@ -236,66 +236,9 @@ unsafe extern "C" fn thread_trampoline(args_raw: usize) -> usize {
         unsafe { core::mem::transmute(start_routine_addr) };
     let retval = unsafe { start_fn(arg) };
 
-    // Run TLS destructors before exit (bd-rth1).
-    // Per POSIX, destructors fire after start_routine returns.
-    #[cfg(target_arch = "x86_64")]
-    super::tls::teardown_thread_tls(handle.tid.load(Ordering::Acquire));
-
-    // Store the return value. No concurrent readers until after tid is cleared.
-    // SAFETY: retval is only read by the joiner after tid becomes 0 (kernel
-    // clears tid via CLONE_CHILD_CLEARTID after this function returns).
-    unsafe { *handle.retval.get() = retval };
-
-    // Try to transition RUNNING → FINISHED. If someone already set DETACHED
-    // (via detach_thread), we need to self-cleanup since no joiner will do it.
-    let prev = handle.state.compare_exchange(
-        THREAD_RUNNING,
-        THREAD_FINISHED,
-        Ordering::AcqRel,
-        Ordering::Acquire,
-    );
-
-    match prev {
-        Ok(_) => {
-            // Successfully set FINISHED. A future joiner will free resources.
-        }
-        Err(THREAD_DETACHED) => {
-            // Thread was detached while running. Free the heap-allocated
-            // handle and reclaim the stack.
-            //
-            // CRITICAL: Before freeing the handle, tell the kernel not to
-            // write to the TID address on thread exit. Otherwise
-            // CLONE_CHILD_CLEARTID would write 0 to freed memory.
-            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-            {
-                syscall::sys_set_tid_address(0);
-            }
-
-            // Save stack info before freeing the handle.
-            let stack_base = handle.stack_base;
-            let stack_total_size = handle.stack_total_size;
-
-            // SAFETY: handle_ptr was created via Box::into_raw in create_thread,
-            // and no other thread will access it after detach.
-            unsafe { drop(Box::from_raw(handle_ptr)) };
-
-            // Unmap our own stack and exit in a single register-only sequence.
-            // This prevents the 2 MiB stack leak for detached threads.
-            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-            if stack_base != 0 && stack_total_size != 0 {
-                unsafe { unmapself_and_exit(stack_base, stack_total_size) };
-            }
-
-            // Fallback: exit without stack reclamation (non-x86_64 or zero stack).
-        }
-        Err(_) => {
-            // Unexpected state — shouldn't happen with correct usage.
-            // Fall through and let the asm trampoline exit normally.
-        }
-    }
-
-    // Return value becomes the exit status (asm trampoline calls sys_exit with it).
-    0
+    // Explicit and implicit thread exit must follow the same teardown/state
+    // transition path so detached threads self-clean and TLS destructors run.
+    unsafe { exit_current_thread(handle_ptr, retval) }
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +274,84 @@ unsafe fn unmapself_and_exit(stack_base: usize, stack_total_size: usize) -> ! {
             in("rsi") stack_total_size,
             options(noreturn)
         );
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+unsafe fn detached_thread_self_cleanup_and_exit(handle_ptr: *mut ThreadHandle) -> ! {
+    // SAFETY: caller guarantees `handle_ptr` is a live detached thread handle
+    // that is no longer accessible by any joiner.
+    let handle = unsafe { &*handle_ptr };
+
+    // CRITICAL: Before freeing the handle, tell the kernel not to write to the
+    // TID address on thread exit. Otherwise CLONE_CHILD_CLEARTID would write 0
+    // to freed memory.
+    let _ = syscall::sys_set_tid_address(0);
+
+    let stack_base = handle.stack_base;
+    let stack_total_size = handle.stack_total_size;
+
+    // SAFETY: `handle_ptr` was allocated via Box::into_raw in create_thread and
+    // detached threads own their final cleanup path.
+    unsafe { drop(Box::from_raw(handle_ptr)) };
+
+    if stack_base != 0 && stack_total_size != 0 {
+        unsafe { unmapself_and_exit(stack_base, stack_total_size) };
+    }
+
+    let _ = unsafe { syscall::syscall1(syscall::SYS_EXIT, 0) };
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+/// Finalize the current native-managed thread and terminate it.
+///
+/// This is shared by the clone trampoline return path and the ABI
+/// `pthread_exit` entrypoint so both honor TLS destructor teardown, FINISHED
+/// state publication, and detached-thread self-cleanup.
+///
+/// # Safety
+///
+/// `handle_ptr` must be the current thread's live `ThreadHandle`.
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+pub unsafe fn exit_current_thread(handle_ptr: *mut ThreadHandle, retval: usize) -> ! {
+    let tid = syscall::sys_gettid();
+    super::tls::teardown_thread_tls(tid);
+
+    // SAFETY: `handle_ptr` is the current thread's live handle. The return
+    // value becomes visible only after the FINISHED/DETACHED synchronization.
+    unsafe { *(*handle_ptr).retval.get() = retval };
+
+    let handle = unsafe { &*handle_ptr };
+    loop {
+        let state = handle.state.load(Ordering::Acquire);
+        match state {
+            THREAD_STARTING | THREAD_RUNNING => {
+                match handle.state.compare_exchange(
+                    state,
+                    THREAD_FINISHED,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(THREAD_DETACHED) => {
+                        unsafe { detached_thread_self_cleanup_and_exit(handle_ptr) };
+                    }
+                    Err(_) => continue,
+                }
+            }
+            THREAD_DETACHED => unsafe { detached_thread_self_cleanup_and_exit(handle_ptr) },
+            THREAD_FINISHED | THREAD_JOINED => break,
+            _ => break,
+        }
+    }
+
+    let _ = unsafe { syscall::syscall1(syscall::SYS_EXIT, 0) };
+    loop {
+        core::hint::spin_loop();
     }
 }
 
