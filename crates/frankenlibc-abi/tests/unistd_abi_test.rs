@@ -15,17 +15,19 @@ use std::sync::atomic::AtomicI32;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::errno_abi::__errno_location;
+use frankenlibc_abi::glibc_internal_abi::getdate_err;
 use frankenlibc_abi::unistd_abi::{
     access, alarm, chdir, chmod, chown, close, creat, eaccess, euidaccess, faccessat, fchmod,
     fchown, fdatasync, flock, fstat, fsync, ftruncate, gai_cancel, gai_error, gai_suspend,
-    getaddrinfo_a, getcwd, getegid, geteuid, getfsent, getfsfile, getfsspec, getgid, gethostent_r,
-    gethostname, getnetbyaddr_r, getnetbyname_r, getnetent_r, getpid, getppid, getprotobyname_r,
-    getprotobynumber_r, getprotoent, getprotoent_r, getservent, getservent_r, getttyent, getttynam,
-    getuid, getutent_r, getutid, getutid_r, getutline, getutline_r, gsignal, isatty, link, lseek,
-    lstat, mkdir, mkfifo, msgrcv, msgsnd, open, pathconf, process_madvise, process_mrelease,
-    process_vm_readv, process_vm_writev, read, readlink, rename, rmdir, semctl, semop, setfsent,
-    sethostent, setnetent, setprotoent, setservent, setttyent, setutent, shmdt, ssignal, stat,
-    strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname, unlink, usleep, utmpname, write,
+    getaddrinfo_a, getcwd, getdate, getdate_r, getegid, geteuid, getfsent, getfsfile, getfsspec,
+    getgid, gethostent_r, gethostname, getnetbyaddr_r, getnetbyname_r, getnetent_r, getpid,
+    getppid, getprotobyname_r, getprotobynumber_r, getprotoent, getprotoent_r, getservent,
+    getservent_r, getttyent, getttynam, getuid, getutent_r, getutid, getutid_r, getutline,
+    getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd, open,
+    pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
+    readlink, rename, rmdir, semctl, semop, setfsent, sethostent, setnetent, setprotoent,
+    setservent, setttyent, setutent, shmdt, ssignal, stat, strfmon, strfmon_l, symlink, sysconf,
+    truncate, umask, uname, unlink, usleep, utmpname, write,
 };
 
 static SIGNAL_HIT: AtomicI32 = AtomicI32::new(0);
@@ -1548,6 +1550,48 @@ fn ttyent_wrappers_match_host_miss_shape() {
 
     let end_rc = unsafe { endttyent() };
     assert_eq!(end_rc, 1, "endttyent should mirror host success shape");
+}
+
+#[test]
+fn getdate_and_getdate_r_follow_host_datemsk_contract() {
+    let datemsk = temp_path("datemsk");
+    std::fs::write(datemsk.to_str().unwrap(), "%Y-%m-%d %H:%M:%S\n").unwrap();
+    let datemsk_value = CString::new(datemsk.to_str().unwrap()).unwrap();
+    unsafe {
+        libc::setenv(c"DATEMSK".as_ptr(), datemsk_value.as_ptr(), 1);
+    }
+
+    let date = CString::new("1970-01-01 00:00:00").unwrap();
+    unsafe { getdate_err = -1 };
+    let parsed = unsafe { getdate(date.as_ptr()) as *mut libc::tm };
+    assert!(
+        !parsed.is_null(),
+        "getdate should parse with DATEMSK template"
+    );
+    assert_eq!(unsafe { getdate_err }, 0);
+    assert_eq!(unsafe { (*parsed).tm_year + 1900 }, 1970);
+    assert_eq!(unsafe { (*parsed).tm_mon + 1 }, 1);
+    assert_eq!(unsafe { (*parsed).tm_mday }, 1);
+
+    let bad = CString::new("frankenlibc definitely invalid").unwrap();
+    unsafe { getdate_err = -1 };
+    let missing = unsafe { getdate(bad.as_ptr()) };
+    assert!(missing.is_null(), "invalid getdate input should fail");
+    assert_eq!(unsafe { getdate_err }, 7);
+
+    let mut out: libc::tm = unsafe { std::mem::zeroed() };
+    let rc = unsafe { getdate_r(date.as_ptr(), (&mut out as *mut libc::tm).cast()) };
+    assert_eq!(rc, 0);
+    assert_eq!(out.tm_year + 1900, 1970);
+    assert_eq!(out.tm_mon + 1, 1);
+    assert_eq!(out.tm_mday, 1);
+
+    let rc = unsafe { getdate_r(bad.as_ptr(), (&mut out as *mut libc::tm).cast()) };
+    assert_eq!(rc, 7);
+
+    unsafe {
+        libc::unsetenv(c"DATEMSK".as_ptr());
+    }
 }
 
 #[test]

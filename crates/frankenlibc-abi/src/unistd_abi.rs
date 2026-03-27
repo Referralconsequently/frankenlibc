@@ -11098,86 +11098,135 @@ pub unsafe extern "C" fn gethostbyname2(name: *const c_char, af: c_int) -> *mut 
 
 /// `setservent` — rewind /etc/services enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn setservent(_stayopen: c_int) {
-    unsafe { host_setservent(_stayopen) }
+pub unsafe extern "C" fn setservent(stayopen: c_int) {
+    // Use ELF resolver to avoid link_name recursion under LD_PRELOAD.
+    type F = unsafe extern "C" fn(c_int);
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("setservent") {
+        unsafe { core::mem::transmute::<usize, F>(a)(stayopen) };
+    }
 }
 
 /// `endservent` — close /etc/services enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endservent() {
-    unsafe { host_endservent() }
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("endservent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
 }
 
 /// `getservent` — get next /etc/services entry.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getservent() -> *mut c_void {
-    unsafe { host_getservent().cast() }
+    type F = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getservent") {
+        return unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
+    std::ptr::null_mut()
 }
 
 /// `setnetent` — rewind /etc/networks enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn setnetent(_stayopen: c_int) {
-    unsafe { host_setnetent(_stayopen) }
+pub unsafe extern "C" fn setnetent(stayopen: c_int) {
+    type F = unsafe extern "C" fn(c_int);
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("setnetent") {
+        unsafe { core::mem::transmute::<usize, F>(a)(stayopen) };
+    }
 }
 
 /// `endnetent` — close /etc/networks enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endnetent() {
-    unsafe { host_endnetent() }
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("endnetent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
 }
 
 /// `getnetent` — get next /etc/networks entry.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getnetent() -> *mut c_void {
-    unsafe { host_getnetent().cast() }
+    type F = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getnetent") {
+        return unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
+    std::ptr::null_mut()
 }
 
 /// `getnetbyname` — look up network by name.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getnetbyname(name: *const c_char) -> *mut c_void {
-    unsafe { host_getnetbyname(name).cast() }
+    type F = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getnetbyname") {
+        return unsafe { core::mem::transmute::<usize, F>(a)(name) };
+    }
+    std::ptr::null_mut()
 }
 
 /// `getnetbyaddr` — look up network by address.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getnetbyaddr(net: u32, type_: c_int) -> *mut c_void {
-    unsafe { host_getnetbyaddr(net, type_).cast() }
+    type F = unsafe extern "C" fn(u32, c_int) -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getnetbyaddr") {
+        return unsafe { core::mem::transmute::<usize, F>(a)(net, type_) };
+    }
+    std::ptr::null_mut()
 }
 
 /// `setprotoent` — rewind /etc/protocols enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn setprotoent(_stayopen: c_int) {
-    unsafe { host_setprotoent(_stayopen) }
+pub unsafe extern "C" fn setprotoent(stayopen: c_int) {
+    type F = unsafe extern "C" fn(c_int);
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("setprotoent") {
+        unsafe { core::mem::transmute::<usize, F>(a)(stayopen) };
+    }
 }
 
 /// `endprotoent` — close /etc/protocols enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endprotoent() {
-    unsafe { host_endprotoent() }
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("endprotoent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
 }
 
 /// `getprotoent` — get next /etc/protocols entry.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getprotoent() -> *mut c_void {
-    unsafe { host_getprotoent().cast() }
+    type F = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getprotoent") {
+        return unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
+    std::ptr::null_mut()
 }
 
 /// `sethostent` — rewind /etc/hosts enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn sethostent(_stayopen: c_int) {
-    unsafe { host_sethostent(_stayopen) }
+pub unsafe extern "C" fn sethostent(stayopen: c_int) {
+    type F = unsafe extern "C" fn(c_int);
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("sethostent") {
+        unsafe { core::mem::transmute::<usize, F>(a)(stayopen) };
+    }
 }
 
 /// `endhostent` — close /etc/hosts enumeration.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endhostent() {
-    unsafe { host_endhostent() }
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("endhostent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
 }
 
 /// `gethostent` — get next /etc/hosts entry.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn gethostent() -> *mut c_void {
-    unsafe { host_gethostent().cast() }
+    type F = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("gethostent") {
+        return unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
+    std::ptr::null_mut()
 }
 
 // ===========================================================================
@@ -14802,13 +14851,33 @@ pub unsafe extern "C" fn getttynam(name: *const c_char) -> *mut c_void {
 // ===========================================================================
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getdate(_string: *const c_char) -> *mut c_void {
-    std::ptr::null_mut() // not supported
+pub unsafe extern "C" fn getdate(string: *const c_char) -> *mut c_void {
+    use crate::glibc_internal_abi::getdate_err;
+
+    type GetdateFn = unsafe extern "C" fn(*const c_char) -> *mut libc::tm;
+    let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getdate") else {
+        unsafe { getdate_err = 7 };
+        return std::ptr::null_mut();
+    };
+    let host_getdate: GetdateFn = unsafe { core::mem::transmute(addr) };
+    let result = unsafe { host_getdate(string) };
+    let host_err = crate::host_resolve::resolve_host_symbol_raw("getdate_err")
+        .map(|addr| unsafe { *(addr as *const c_int) })
+        .unwrap_or(if result.is_null() { 7 } else { 0 });
+    unsafe {
+        getdate_err = host_err;
+    }
+    result.cast()
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getdate_r(_string: *const c_char, _result: *mut c_void) -> c_int {
-    -1 // not supported
+pub unsafe extern "C" fn getdate_r(string: *const c_char, result: *mut c_void) -> c_int {
+    type GetdateRFn = unsafe extern "C" fn(*const c_char, *mut libc::tm) -> c_int;
+    let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("getdate_r") else {
+        return 7;
+    };
+    let host_getdate_r: GetdateRFn = unsafe { core::mem::transmute(addr) };
+    unsafe { host_getdate_r(string, result.cast()) }
 }
 
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
