@@ -12823,7 +12823,9 @@ pub unsafe extern "C" fn getnetgrent_r(
         usize,
     ) -> c_int;
     if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getnetgrent_r") {
-        return unsafe { core::mem::transmute::<usize, F>(a)(hostp, userp, domainp, buffer, buflen) };
+        return unsafe {
+            core::mem::transmute::<usize, F>(a)(hostp, userp, domainp, buffer, buflen)
+        };
     }
     0
 }

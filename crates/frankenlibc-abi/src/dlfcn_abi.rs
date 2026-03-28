@@ -158,15 +158,20 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
             return std::ptr::null_mut();
         }
         let name = unsafe { CStr::from_ptr(filename) }.to_bytes();
-        return if name.is_empty()
+        if name.is_empty()
             || ((flags & dlfcn_core::RTLD_NOLOAD) != 0 && library_alias_matches(name))
         {
             clear_dlerror();
-            open_main_program_handle()
-        } else {
-            set_dlerror(dlfcn_core::ERR_NOT_FOUND);
-            std::ptr::null_mut()
-        };
+            return open_main_program_handle();
+        }
+        // During bootstrap, delegate to host dlopen for actual .so loading.
+        type DlopenFn = unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void;
+        if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("dlopen") {
+            let host_dlopen: DlopenFn = unsafe { core::mem::transmute(addr) };
+            return unsafe { host_dlopen(filename, flags) };
+        }
+        set_dlerror(dlfcn_core::ERR_NOT_FOUND);
+        return std::ptr::null_mut();
     }
 
     let (mode, decision) =
@@ -205,18 +210,26 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c
     let handle = if filename.is_null() {
         open_main_program_handle()
     } else {
-        // SAFETY: filename was checked for null above and is expected to be a NUL-terminated C string.
         let name = unsafe { CStr::from_ptr(filename) }.to_bytes();
         if name.is_empty()
             || ((flags & dlfcn_core::RTLD_NOLOAD) != 0 && library_alias_matches(name))
         {
             open_main_program_handle()
         } else {
-            std::ptr::null_mut()
+            // Delegate to host libc's dlopen for actual shared object loading.
+            // Our dlopen cannot load ELF files natively — the host's dynamic
+            // linker handles symbol resolution, relocations, and dependency loading.
+            type DlopenFn = unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void;
+            if let Some(addr) = crate::host_resolve::resolve_host_symbol_raw("dlopen") {
+                let host_dlopen: DlopenFn = unsafe { core::mem::transmute(addr) };
+                unsafe { host_dlopen(filename, flags) }
+            } else {
+                std::ptr::null_mut()
+            }
         }
     };
     let adverse = handle.is_null();
-    if adverse {
+    if adverse && filename.is_null() {
         set_dlerror(dlfcn_core::ERR_NOT_FOUND);
     }
     runtime_policy::observe(ApiFamily::Loader, decision.profile, 12, adverse);
