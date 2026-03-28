@@ -1,7 +1,6 @@
 /target/
 target-*/
 legacy_glibc_code/
-Cargo.lock
 *.swp
 *.swo
 *~
