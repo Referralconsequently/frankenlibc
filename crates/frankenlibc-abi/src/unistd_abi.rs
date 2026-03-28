@@ -11795,7 +11795,7 @@ pub unsafe extern "C" fn gethostbyname2_r(
             *result = std::ptr::null_mut();
             *h_errnop = 1; // HOST_NOT_FOUND
         }
-        return libc::ENOENT;
+        return 0;
     }
     // Fill result_buf from first addrinfo result
     if !res.is_null() {
@@ -11847,7 +11847,7 @@ pub unsafe extern "C" fn gethostbyname2_r(
         *result = std::ptr::null_mut();
         *h_errnop = 1; // HOST_NOT_FOUND
     }
-    libc::ENOENT
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -12653,27 +12653,52 @@ pub unsafe extern "C" fn endaliasent() {
 
 /// `getaliasbyname` — look up alias by name.
 ///
-/// Native implementation: returns NULL (no alias database configured).
-/// The mail alias database (/etc/aliases) is MTA-specific and rarely used via NSS.
+/// Delegates to host libc so missing-alias errno behavior matches glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn getaliasbyname(_name: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn getaliasbyname(name: *const c_char) -> *mut c_void {
+    type F = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getaliasbyname") {
+        let result = unsafe { core::mem::transmute::<usize, F>(a)(name) };
+        if result.is_null() {
+            unsafe { set_abi_errno(last_host_errno(libc::ENOENT)) };
+        }
+        return result;
+    }
+    unsafe { set_abi_errno(libc::ENOENT) };
     std::ptr::null_mut()
 }
 
 /// `getaliasbyname_r` — reentrant alias lookup.
 ///
-/// Native implementation: returns ENOENT (no alias database configured).
+/// Delegates to host libc so return value and errno shape match glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getaliasbyname_r(
-    _name: *const c_char,
-    _result_buf: *mut c_void,
-    _buffer: *mut c_char,
-    _buflen: usize,
+    name: *const c_char,
+    result_buf: *mut c_void,
+    buffer: *mut c_char,
+    buflen: usize,
     result: *mut *mut c_void,
 ) -> c_int {
     if !result.is_null() {
         unsafe { *result = std::ptr::null_mut() };
     }
+    type F = unsafe extern "C" fn(
+        *const c_char,
+        *mut c_void,
+        *mut c_char,
+        usize,
+        *mut *mut c_void,
+    ) -> c_int;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getaliasbyname_r") {
+        let rc = unsafe {
+            core::mem::transmute::<usize, F>(a)(name, result_buf, buffer, buflen, result)
+        };
+        if rc != 0 {
+            unsafe { set_abi_errno(last_host_errno(rc)) };
+        }
+        return rc;
+    }
+    unsafe { set_abi_errno(libc::ENOENT) };
     libc::ENOENT
 }
 

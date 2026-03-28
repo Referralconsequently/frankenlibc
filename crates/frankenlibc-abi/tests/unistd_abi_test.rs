@@ -20,15 +20,16 @@ use frankenlibc_abi::resolv_abi::__h_errno_location;
 use frankenlibc_abi::unistd_abi::{
     access, alarm, chdir, chmod, chown, close, creat, eaccess, euidaccess, faccessat, fchmod,
     fchown, fdatasync, flock, fstat, fsync, ftruncate, gai_cancel, gai_error, gai_suspend,
-    getaddrinfo_a, getcwd, getdate, getdate_r, getegid, geteuid, getfsent, getfsfile, getfsspec,
-    getgid, gethostbyname2, gethostent_r, gethostname, getnetbyaddr_r, getnetbyname_r, getnetent_r,
-    getnetgrent, getpid, getppid, getprotobyname_r, getprotobynumber_r, getprotoent, getprotoent_r,
-    getservent, getservent_r, getttyent, getttynam, getuid, getutent_r, getutid, getutid_r,
-    getutline, getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd,
-    open, pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
-    readlink, rename, rmdir, semctl, semop, setfsent, sethostent, setnetent, setnetgrent,
-    setprotoent, setservent, setttyent, setutent, shmdt, ssignal, stat, strfmon, strfmon_l,
-    symlink, sysconf, truncate, umask, uname, unlink, usleep, utmpname, write,
+    getaddrinfo_a, getaliasbyname, getaliasbyname_r, getcwd, getdate, getdate_r, getegid, geteuid,
+    getfsent, getfsfile, getfsspec, getgid, gethostbyname2, gethostent_r, gethostname,
+    getnetbyaddr_r, getnetbyname_r, getnetent_r, getnetgrent, getpid, getppid, getprotobyname_r,
+    getprotobynumber_r, getprotoent, getprotoent_r, getservent, getservent_r, getttyent, getttynam,
+    getuid, getutent_r, getutid, getutid_r, getutline, getutline_r, gsignal, isatty, link, lseek,
+    lstat, mkdir, mkfifo, msgrcv, msgsnd, open, pathconf, process_madvise, process_mrelease,
+    process_vm_readv, process_vm_writev, read, readlink, rename, rmdir, semctl, semop, setfsent,
+    sethostent, setnetent, setnetgrent, setprotoent, setservent, setttyent, setutent, shmdt,
+    ssignal, stat, strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname, unlink, usleep,
+    utmpname, write,
 };
 
 static SIGNAL_HIT: AtomicI32 = AtomicI32::new(0);
@@ -1633,6 +1634,43 @@ fn setnetgrent_missing_group_matches_host_miss_shape() {
     assert_eq!(host, std::ptr::dangling_mut::<c_char>());
     assert_eq!(user, std::ptr::dangling_mut::<c_char>());
     assert_eq!(domain, std::ptr::dangling_mut::<c_char>());
+}
+
+#[test]
+fn alias_lookup_missing_entry_sets_errno() {
+    let missing = CString::new("frankenlibc-no-such-alias").unwrap();
+    unsafe { *__errno_location() = 0 };
+    let plain = unsafe { getaliasbyname(missing.as_ptr()) };
+    assert!(plain.is_null(), "missing alias should return NULL");
+    assert_eq!(unsafe { *__errno_location() }, libc::ENOENT);
+
+    #[repr(C)]
+    struct AliasEnt {
+        alias_name: *mut c_char,
+        alias_members_len: usize,
+        alias_members: *mut *mut c_char,
+        alias_local: c_int,
+    }
+
+    let mut ent: AliasEnt = unsafe { std::mem::zeroed() };
+    let mut buf = [0i8; 512];
+    let mut result = std::ptr::dangling_mut::<c_void>();
+    unsafe { *__errno_location() = 0 };
+    let rc = unsafe {
+        getaliasbyname_r(
+            missing.as_ptr(),
+            (&mut ent as *mut AliasEnt).cast(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        )
+    };
+    assert_eq!(rc, libc::ENOENT);
+    assert!(
+        result.is_null(),
+        "missing alias should null the result pointer"
+    );
+    assert_eq!(unsafe { *__errno_location() }, libc::ENOENT);
 }
 
 #[test]
