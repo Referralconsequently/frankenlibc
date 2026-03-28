@@ -5534,9 +5534,14 @@ pub unsafe extern "C" fn sem_clockwait(
         }
     }
 }
-// setaliasent: mail alias — no-op (no /etc/aliases support)
+// setaliasent: mail alias iterator reset
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
-pub unsafe extern "C" fn setaliasent() {}
+pub unsafe extern "C" fn setaliasent() {
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("setaliasent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
+}
 // setfsgid/setfsuid: native syscalls
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn setfsgid(fsgid: c_uint) -> c_int {

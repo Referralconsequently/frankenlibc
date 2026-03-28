@@ -16,21 +16,22 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use frankenlibc_abi::errno_abi::__errno_location;
 use frankenlibc_abi::glibc_internal_abi::getdate_err;
+use frankenlibc_abi::glibc_internal_abi::setaliasent as abi_setaliasent;
 use frankenlibc_abi::resolv_abi::__h_errno_location;
 use frankenlibc_abi::unistd_abi::{
-    access, alarm, chdir, chmod, chown, close, creat, eaccess, ether_line, euidaccess, faccessat,
-    fchmod, fchown, fdatasync, fgetgrent_r, fgetpwent_r, fgetspent, fgetspent_r, flock, fstat,
-    fsync, ftruncate, gai_cancel, gai_error, gai_suspend, getaddrinfo_a, getaliasbyname,
-    getaliasbyname_r, getcwd, getdate, getdate_r, getegid, geteuid, getfsent, getfsfile, getfsspec,
-    getgid, gethostbyname2, gethostbyname2_r, gethostent_r, gethostname, getnetbyaddr_r,
-    getnetbyname_r, getnetent_r, getnetgrent, getpid, getppid, getprotobyname_r,
-    getprotobynumber_r, getprotoent, getprotoent_r, getservent, getservent_r, getttyent, getttynam,
-    getuid, getutent_r, getutid, getutid_r, getutline, getutline_r, gsignal, isatty, link, lseek,
-    lstat, mkdir, mkfifo, msgrcv, msgsnd, open, pathconf, process_madvise, process_mrelease,
-    process_vm_readv, process_vm_writev, read, readlink, rename, rmdir, semctl, semop, setfsent,
-    sethostent, setnetent, setnetgrent, setprotoent, setservent, setttyent, setutent, shmdt,
-    ssignal, stat, strfmon, strfmon_l, symlink, sysconf, truncate, umask, uname, unlink, usleep,
-    utmpname, write,
+    access, alarm, chdir, chmod, chown, close, creat, eaccess, endaliasent, ether_line, euidaccess,
+    faccessat, fchmod, fchown, fdatasync, fgetgrent_r, fgetpwent_r, fgetspent, fgetspent_r, flock,
+    fstat, fsync, ftruncate, gai_cancel, gai_error, gai_suspend, getaddrinfo_a, getaliasbyname,
+    getaliasbyname_r, getaliasent, getaliasent_r, getcwd, getdate, getdate_r, getegid, geteuid,
+    getfsent, getfsfile, getfsspec, getgid, gethostbyname2, gethostbyname2_r, gethostent_r,
+    gethostname, getnetbyaddr_r, getnetbyname_r, getnetent_r, getnetgrent, getnetgrent_r, getpid,
+    getppid, getprotobyname_r, getprotobynumber_r, getprotoent, getprotoent_r, getservent,
+    getservent_r, getttyent, getttynam, getuid, getutent_r, getutid, getutid_r, getutline,
+    getutline_r, gsignal, isatty, link, lseek, lstat, mkdir, mkfifo, msgrcv, msgsnd, open,
+    pathconf, process_madvise, process_mrelease, process_vm_readv, process_vm_writev, read,
+    readlink, rename, rmdir, semctl, semop, setfsent, sethostent, setnetent, setnetgrent,
+    setprotoent, setservent, setttyent, setutent, shmdt, ssignal, stat, strfmon, strfmon_l,
+    symlink, sysconf, truncate, umask, uname, unlink, usleep, utmpname, write,
 };
 
 static SIGNAL_HIT: AtomicI32 = AtomicI32::new(0);
@@ -439,6 +440,24 @@ unsafe extern "C" {
     fn fgetgrent(stream: *mut c_void) -> *mut c_void;
 }
 
+#[repr(C)]
+struct AliasEnt {
+    alias_name: *mut c_char,
+    alias_members: *mut *mut c_char,
+    alias_local: c_int,
+}
+
+unsafe fn load_host_symbol(name: &str) -> Option<*mut c_void> {
+    let libc_name = CString::new("libc.so.6").unwrap();
+    let handle = unsafe { libc::dlopen(libc_name.as_ptr(), libc::RTLD_NOW) };
+    if handle.is_null() {
+        return None;
+    }
+    let sym = CString::new(name).unwrap();
+    let ptr = unsafe { libc::dlsym(handle, sym.as_ptr()) };
+    if ptr.is_null() { None } else { Some(ptr) }
+}
+
 #[test]
 fn fgetpwent_reads_etc_passwd() {
     let path = b"/etc/passwd\0";
@@ -688,6 +707,180 @@ fn fgetspent_skips_comments_and_blank_lines() {
 
     unsafe { fclose(stream) };
     std::fs::remove_file(path_str).unwrap();
+}
+
+#[test]
+fn alias_iterators_match_host_shape() {
+    type HostSetaliasentFn = unsafe extern "C" fn();
+    type HostEndaliasentFn = unsafe extern "C" fn();
+    type HostGetaliasentFn = unsafe extern "C" fn() -> *mut c_void;
+    type HostGetaliasentRFn =
+        unsafe extern "C" fn(*mut c_void, *mut c_char, usize, *mut *mut c_void) -> c_int;
+
+    let Some(host_setaliasent) = (unsafe { load_host_symbol("setaliasent") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostSetaliasentFn>(p) })
+    else {
+        return;
+    };
+    let Some(host_endaliasent) = (unsafe { load_host_symbol("endaliasent") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostEndaliasentFn>(p) })
+    else {
+        return;
+    };
+    let Some(host_getaliasent) = (unsafe { load_host_symbol("getaliasent") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostGetaliasentFn>(p) })
+    else {
+        return;
+    };
+    let Some(host_getaliasent_r) = (unsafe { load_host_symbol("getaliasent_r") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostGetaliasentRFn>(p) })
+    else {
+        return;
+    };
+
+    unsafe { host_setaliasent() };
+    let host_plain = unsafe { host_getaliasent() };
+    let host_plain_errno = unsafe { *libc::__errno_location() };
+    unsafe { host_endaliasent() };
+
+    unsafe { abi_setaliasent() };
+    let ours_plain = unsafe { getaliasent() };
+    let ours_plain_errno = unsafe { *__errno_location() };
+    unsafe { endaliasent() };
+
+    assert_eq!(ours_plain.is_null(), host_plain.is_null());
+    if host_plain.is_null() {
+        assert_eq!(ours_plain_errno, host_plain_errno);
+    }
+
+    let mut host_entry = AliasEnt {
+        alias_name: std::ptr::null_mut(),
+        alias_members: std::ptr::null_mut(),
+        alias_local: 0,
+    };
+    let mut host_buf = [0 as c_char; 1024];
+    let mut host_result: *mut c_void = std::ptr::dangling_mut::<c_void>();
+    unsafe { host_setaliasent() };
+    let host_rc = unsafe {
+        host_getaliasent_r(
+            (&mut host_entry as *mut AliasEnt).cast(),
+            host_buf.as_mut_ptr(),
+            host_buf.len(),
+            &mut host_result,
+        )
+    };
+    let host_errno = unsafe { *libc::__errno_location() };
+    unsafe { host_endaliasent() };
+
+    let mut our_entry = AliasEnt {
+        alias_name: std::ptr::null_mut(),
+        alias_members: std::ptr::null_mut(),
+        alias_local: 0,
+    };
+    let mut our_buf = [0 as c_char; 1024];
+    let mut our_result: *mut c_void = std::ptr::dangling_mut::<c_void>();
+    unsafe { abi_setaliasent() };
+    let our_rc = unsafe {
+        getaliasent_r(
+            (&mut our_entry as *mut AliasEnt).cast(),
+            our_buf.as_mut_ptr(),
+            our_buf.len(),
+            &mut our_result,
+        )
+    };
+    let our_errno = unsafe { *__errno_location() };
+    unsafe { endaliasent() };
+
+    assert_eq!(our_rc, host_rc);
+    assert_eq!(our_result.is_null(), host_result.is_null());
+    if host_rc != 0 {
+        assert_eq!(our_errno, host_errno);
+    }
+}
+
+#[test]
+fn netgroup_iterators_match_host_shape() {
+    type HostSetnetgrentFn = unsafe extern "C" fn(*const c_char) -> c_int;
+    type HostEndnetgrentFn = unsafe extern "C" fn();
+    type HostGetnetgrentFn =
+        unsafe extern "C" fn(*mut *mut c_char, *mut *mut c_char, *mut *mut c_char) -> c_int;
+    type HostGetnetgrentRFn = unsafe extern "C" fn(
+        *mut *mut c_char,
+        *mut *mut c_char,
+        *mut *mut c_char,
+        *mut c_char,
+        usize,
+    ) -> c_int;
+
+    let Some(host_setnetgrent) = (unsafe { load_host_symbol("setnetgrent") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostSetnetgrentFn>(p) })
+    else {
+        return;
+    };
+    let Some(host_endnetgrent) = (unsafe { load_host_symbol("endnetgrent") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostEndnetgrentFn>(p) })
+    else {
+        return;
+    };
+    let Some(host_getnetgrent) = (unsafe { load_host_symbol("getnetgrent") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostGetnetgrentFn>(p) })
+    else {
+        return;
+    };
+    let Some(host_getnetgrent_r) = (unsafe { load_host_symbol("getnetgrent_r") })
+        .map(|p| unsafe { std::mem::transmute::<*mut c_void, HostGetnetgrentRFn>(p) })
+    else {
+        return;
+    };
+
+    let missing = CString::new("frankenlibc-no-such-netgroup").unwrap();
+
+    let host_set_rc = unsafe { host_setnetgrent(missing.as_ptr()) };
+    let host_set_errno = unsafe { *libc::__errno_location() };
+    let mut host_h = std::ptr::dangling_mut::<c_char>();
+    let mut host_u = std::ptr::dangling_mut::<c_char>();
+    let mut host_d = std::ptr::dangling_mut::<c_char>();
+    let host_plain_rc = unsafe { host_getnetgrent(&mut host_h, &mut host_u, &mut host_d) };
+    let host_plain_errno = unsafe { *libc::__errno_location() };
+    let mut host_buf = [0 as c_char; 1024];
+    let host_r_rc = unsafe {
+        host_getnetgrent_r(
+            &mut host_h,
+            &mut host_u,
+            &mut host_d,
+            host_buf.as_mut_ptr(),
+            host_buf.len(),
+        )
+    };
+    let host_r_errno = unsafe { *libc::__errno_location() };
+    unsafe { host_endnetgrent() };
+
+    let our_set_rc = unsafe { setnetgrent(missing.as_ptr()) };
+    let our_set_errno = unsafe { *__errno_location() };
+    let mut our_h = std::ptr::dangling_mut::<c_char>();
+    let mut our_u = std::ptr::dangling_mut::<c_char>();
+    let mut our_d = std::ptr::dangling_mut::<c_char>();
+    let our_plain_rc = unsafe { getnetgrent(&mut our_h, &mut our_u, &mut our_d) };
+    let our_plain_errno = unsafe { *__errno_location() };
+    let mut our_buf = [0 as c_char; 1024];
+    let our_r_rc = unsafe {
+        getnetgrent_r(
+            &mut our_h,
+            &mut our_u,
+            &mut our_d,
+            our_buf.as_mut_ptr(),
+            our_buf.len(),
+        )
+    };
+    let our_r_errno = unsafe { *__errno_location() };
+    unsafe { frankenlibc_abi::unistd_abi::endnetgrent() };
+
+    assert_eq!(our_set_rc, host_set_rc);
+    assert_eq!(our_set_errno, host_set_errno);
+    assert_eq!(our_plain_rc, host_plain_rc);
+    assert_eq!(our_plain_errno, host_plain_errno);
+    assert_eq!(our_r_rc, host_r_rc);
+    assert_eq!(our_r_errno, host_r_errno);
 }
 
 fn errno_value() -> i32 {

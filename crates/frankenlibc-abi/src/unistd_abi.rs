@@ -12656,10 +12656,13 @@ pub unsafe extern "C" fn dn_comp(
 
 /// `endaliasent` — close alias database.
 ///
-/// Native implementation: no-op (alias database iteration state is per-process).
+/// Delegates to host libc so alias database iteration semantics match glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endaliasent() {
-    // No-op: alias database is rarely used on modern systems.
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("endaliasent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
 }
 
 /// `getaliasbyname` — look up alias by name.
@@ -12715,24 +12718,36 @@ pub unsafe extern "C" fn getaliasbyname_r(
 
 /// `getaliasent` — get next alias entry.
 ///
-/// Native implementation: returns NULL (no alias entries).
+/// Delegates to host libc so iterator state matches glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getaliasent() -> *mut c_void {
+    type F = unsafe extern "C" fn() -> *mut c_void;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getaliasent") {
+        let result = unsafe { core::mem::transmute::<usize, F>(a)() };
+        if result.is_null() {
+            unsafe { set_abi_errno(last_host_errno(libc::ENOENT)) };
+        }
+        return result;
+    }
     std::ptr::null_mut()
 }
 
 /// `getaliasent_r` — reentrant get next alias entry.
 ///
-/// Native implementation: returns ENOENT (no alias entries).
+/// Delegates to host libc so return/result shape matches glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getaliasent_r(
-    _result_buf: *mut c_void,
-    _buffer: *mut c_char,
-    _buflen: usize,
+    result_buf: *mut c_void,
+    buffer: *mut c_char,
+    buflen: usize,
     result: *mut *mut c_void,
 ) -> c_int {
     if !result.is_null() {
         unsafe { *result = std::ptr::null_mut() };
+    }
+    type F = unsafe extern "C" fn(*mut c_void, *mut c_char, usize, *mut *mut c_void) -> c_int;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getaliasent_r") {
+        return unsafe { core::mem::transmute::<usize, F>(a)(result_buf, buffer, buflen, result) };
     }
     libc::ENOENT
 }
@@ -12752,10 +12767,13 @@ pub unsafe extern "C" fn endfsent() {
 
 /// `endnetgrent` — end netgroup iteration.
 ///
-/// Native implementation: no-op (netgroup is legacy NIS; no persistent state).
+/// Delegates to host libc so iterator state matches glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn endnetgrent() {
-    // No-op: netgroup is a legacy NIS mechanism.
+    type F = unsafe extern "C" fn();
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("endnetgrent") {
+        unsafe { core::mem::transmute::<usize, F>(a)() };
+    }
 }
 
 /// `setnetgrent` — start netgroup iteration.
@@ -12772,28 +12790,42 @@ pub unsafe extern "C" fn setnetgrent(netgroup: *const c_char) -> c_int {
 
 /// `getnetgrent` — get next netgroup entry (host, user, domain triple).
 ///
-/// Native implementation: always returns 0 (no more entries).
+/// Delegates to host libc so enumeration semantics match glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getnetgrent(
-    _hostp: *mut *mut c_char,
-    _userp: *mut *mut c_char,
-    _domainp: *mut *mut c_char,
+    hostp: *mut *mut c_char,
+    userp: *mut *mut c_char,
+    domainp: *mut *mut c_char,
 ) -> c_int {
-    0 // No entries.
+    type F = unsafe extern "C" fn(*mut *mut c_char, *mut *mut c_char, *mut *mut c_char) -> c_int;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getnetgrent") {
+        return unsafe { core::mem::transmute::<usize, F>(a)(hostp, userp, domainp) };
+    }
+    0
 }
 
 /// `getnetgrent_r` — reentrant netgroup entry.
 ///
-/// Native implementation: always returns 0 (no more entries).
+/// Delegates to host libc so reentrant enumeration matches glibc.
 #[cfg_attr(not(debug_assertions), unsafe(no_mangle))]
 pub unsafe extern "C" fn getnetgrent_r(
-    _hostp: *mut *mut c_char,
-    _userp: *mut *mut c_char,
-    _domainp: *mut *mut c_char,
-    _buffer: *mut c_char,
-    _buflen: usize,
+    hostp: *mut *mut c_char,
+    userp: *mut *mut c_char,
+    domainp: *mut *mut c_char,
+    buffer: *mut c_char,
+    buflen: usize,
 ) -> c_int {
-    0 // No entries.
+    type F = unsafe extern "C" fn(
+        *mut *mut c_char,
+        *mut *mut c_char,
+        *mut *mut c_char,
+        *mut c_char,
+        usize,
+    ) -> c_int;
+    if let Some(a) = crate::host_resolve::resolve_host_symbol_raw("getnetgrent_r") {
+        return unsafe { core::mem::transmute::<usize, F>(a)(hostp, userp, domainp, buffer, buflen) };
+    }
+    0
 }
 
 // ---------------------------------------------------------------------------
