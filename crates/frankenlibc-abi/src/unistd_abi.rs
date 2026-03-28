@@ -13198,64 +13198,64 @@ pub unsafe extern "C" fn fgetspent(stream: *mut c_void) -> *mut libc::spwd {
         return std::ptr::null_mut();
     }
 
-    // Read a line using fgets.
     let mut line_buf = [0u8; 1024];
-    let line_ptr = unsafe {
-        libc::fgets(
-            line_buf.as_mut_ptr() as *mut c_char,
-            line_buf.len() as c_int,
-            stream as *mut libc::FILE,
-        )
-    };
-    if line_ptr.is_null() {
-        return std::ptr::null_mut();
-    }
-    // Convert to string for parsing.
-    let len = unsafe { crate::string_abi::strlen(line_ptr) };
-    let line = unsafe {
-        std::str::from_utf8_unchecked(std::slice::from_raw_parts(line_ptr as *const u8, len))
-    };
-    let line = line.trim_end_matches('\n');
-    if line.is_empty() || line.starts_with('#') {
-        return std::ptr::null_mut();
-    }
-    let parts: Vec<&str> = line.split(':').collect();
-    if parts.len() < 8 {
-        return std::ptr::null_mut();
-    }
+    loop {
+        let line_ptr = unsafe {
+            libc::fgets(
+                line_buf.as_mut_ptr() as *mut c_char,
+                line_buf.len() as c_int,
+                stream as *mut libc::FILE,
+            )
+        };
+        if line_ptr.is_null() {
+            return std::ptr::null_mut();
+        }
+        let len = unsafe { crate::string_abi::strlen(line_ptr) };
+        let line = unsafe {
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(line_ptr as *const u8, len))
+        };
+        let line = line.trim_end_matches('\n');
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() < 8 {
+            continue;
+        }
 
-    BUF.with(|buf| {
-        ENTRY.with(|entry| {
-            let mut buf = buf.borrow_mut();
-            let mut entry = entry.borrow_mut();
-            let name_bytes = parts[0].as_bytes();
-            let pass_bytes = parts[1].as_bytes();
-            let needed = name_bytes.len() + 1 + pass_bytes.len() + 1;
-            if needed > buf.len() {
-                return std::ptr::null_mut();
-            }
-            buf[..name_bytes.len()].copy_from_slice(name_bytes);
-            buf[name_bytes.len()] = 0;
-            let pass_off = name_bytes.len() + 1;
-            buf[pass_off..pass_off + pass_bytes.len()].copy_from_slice(pass_bytes);
-            buf[pass_off + pass_bytes.len()] = 0;
+        return BUF.with(|buf| {
+            ENTRY.with(|entry| {
+                let mut buf = buf.borrow_mut();
+                let mut entry = entry.borrow_mut();
+                let name_bytes = parts[0].as_bytes();
+                let pass_bytes = parts[1].as_bytes();
+                let needed = name_bytes.len() + 1 + pass_bytes.len() + 1;
+                if needed > buf.len() {
+                    return std::ptr::null_mut();
+                }
+                buf[..name_bytes.len()].copy_from_slice(name_bytes);
+                buf[name_bytes.len()] = 0;
+                let pass_off = name_bytes.len() + 1;
+                buf[pass_off..pass_off + pass_bytes.len()].copy_from_slice(pass_bytes);
+                buf[pass_off + pass_bytes.len()] = 0;
 
-            entry.sp_namp = buf.as_mut_ptr() as *mut c_char;
-            entry.sp_pwdp = buf[pass_off..].as_mut_ptr() as *mut c_char;
-            entry.sp_lstchg = parts[2].parse().unwrap_or(-1);
-            entry.sp_min = parts[3].parse().unwrap_or(-1);
-            entry.sp_max = parts[4].parse().unwrap_or(-1);
-            entry.sp_warn = parts[5].parse().unwrap_or(-1);
-            entry.sp_inact = parts[6].parse().unwrap_or(-1);
-            entry.sp_expire = parts[7].parse().unwrap_or(-1);
-            entry.sp_flag = if parts.len() > 8 {
-                parts[8].parse().unwrap_or(0)
-            } else {
-                0
-            };
-            &mut *entry as *mut libc::spwd
-        })
-    })
+                entry.sp_namp = buf.as_mut_ptr() as *mut c_char;
+                entry.sp_pwdp = buf[pass_off..].as_mut_ptr() as *mut c_char;
+                entry.sp_lstchg = parts[2].parse().unwrap_or(-1);
+                entry.sp_min = parts[3].parse().unwrap_or(-1);
+                entry.sp_max = parts[4].parse().unwrap_or(-1);
+                entry.sp_warn = parts[5].parse().unwrap_or(-1);
+                entry.sp_inact = parts[6].parse().unwrap_or(-1);
+                entry.sp_expire = parts[7].parse().unwrap_or(-1);
+                entry.sp_flag = if parts.len() > 8 {
+                    parts[8].parse().unwrap_or(0)
+                } else {
+                    0
+                };
+                &mut *entry as *mut libc::spwd
+            })
+        });
+    }
 }
 
 /// `fgetspent_r` — reentrant read shadow entry from stream.
